@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Hâmid Antik - Yönetim Paneli</title>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: Arial, sans-serif; margin: 0; padding: 15px; text-align: center; }
+        .container { max-width: 650px; margin: auto; background: #1e293b; padding: 20px; border-radius: 8px; border: 1px solid #334155; }
+        h1 { color: #f59e0b; font-size: 20px; }
+        .box { background: #0f172a; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #334155; text-align: left; }
+        input, select { width: 100%; padding: 8px; margin: 5px 0 10px 0; box-sizing: border-box; background: #1e293b; border: 1px solid #475569; color: #fff; border-radius: 4px; }
+        button { background: #3b82f6; color: white; border: none; padding: 10px; font-weight: bold; width: 100%; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        .btn-kirmizi { background: #ef4444; }
+        .btn-kirmizi:hover { background: #dc2626; }
+        .btn-yesil { background: #10b981; }
+        .btn-yesil:hover { background: #059669; }
+        .urun-satir { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 14px; }
+        .talep-satir { background: #1e293b; padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 13px; border-left: 3px solid #f59e0b; }
+    </style>
+</head>
+<body>
+
+<audio id="alarmSesi" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+<div class="container">
+    <h1>🏛️ HÂMİD ANTİK - YÖNETİM PANELİ</h1>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:15px;">Yeni Ürün Ekle</h3>
+        <label>Ürün Adı / Açıklama:</label>
+        <input type="text" id="y_ad" placeholder="Örn: Osmanlı Gümüş Şamdan">
+        <label>Açılış Fiyatı (TL):</label>
+        <input type="number" id="y_acilis" value="100">
+        <label>Hemen Al Fiyatı (TL):</label>
+        <input type="number" id="y_hemen" value="500">
+        <button onclick="urunEkle()" class="btn-yesil">➕ Ürünü Mezata Ekle</button>
+    </div>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:15px;">Sahne ve Mezat Kontrolü</h3>
+        <p><b>Aktif Ürün:</b> <span id="adm_aktif" style="color:#f59e0b;">Yükleniyor...</span></p>
+        <p><b>Anlık Pey:</b> <span id="adm_pey" style="color:#10b981;">0 TL</span> | <b>Kazanan:</b> <span id="adm_kazanan">Yok</span></p>
+        <p><b>Durum:</b> <span id="adm_durum">Bekliyor</span> | <b>Sayaç:</b> <span id="adm_sayac" style="color:#f59e0b;">--</span> sn</p>
+        
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button onclick="mezatBaslat(20)" class="btn-yesil">▶️ 20 Saniye Sayımı Başlat</button>
+            <button onclick="erkenKapat()" class="btn-kirmizi">⏹️ Satışı Bitir / Kapat</button>
+        </div>
+    </div>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:15px;">🔔 Müşteri Pey ve Talep Edilen Ürünler</h3>
+        <div id="adm_musteri_talepleri">Henüz talep bırakan olmadı.</div>
+    </div>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:15px;">Mezat Ürünleri Listesi</h3>
+        <div id="adm_urun_listesi">Yükleniyor...</div>
+    </div>
+</div>
+
+<script>
+let sonSahneUrunId = null;
+
+function zilCal() {
+    let ses = document.getElementById('alarmSesi');
+    ses.play().catch(e => console.log("Ses çalma izni bekleniyor"));
+}
+
+function veriCekAdmin() {
+    fetch('/durum-getir')
+    .then(res => res.json())
+    .then(data => {
+        let listHTML = "";
+        if(data.urunler && data.urunler.length > 0) {
+            data.urunler.forEach(u => {
+                listHTML += `<div class="urun-satir">
+                    <span><b>#${u.lot}</b> - ${u.ad} (${u.acilis} TL)</span>
+                    <div>
+                        <button onclick="sahneyeAl(${u.id})" style="padding:5px 10px; font-size:12px; background:#f59e0b; margin-right:5px;">🎯 Sahneye Al</button>
+                        <button onclick="urunSil(${u.id})" style="padding:5px 10px; font-size:12px; background:#ef4444;">Sil</button>
+                    </div>
+                </div>`;
+            });
+        } else {
+            listHTML = "<p style='color:#94a3b8; font-size:13px;'>Listede ürün bulunmuyor.</p>";
+        }
+        document.getElementById('adm_urun_listesi').innerHTML = listHTML;
+
+        let talepHTML = "";
+        if(data.musteri_pey_listesi && data.musteri_pey_listesi.length > 0) {
+            data.musteri_pey_listesi.forEach(t => {
+                talepHTML += `<div class="talep-satir">
+                    <b>${t.musteri}</b>, <b>#${t.lot} - ${t.urun_ad}</b> ürününe <b>${t.fiyat} TL</b> pey/talep bıraktı.
+                </div>`;
+            });
+        } else {
+            talepHTML = "<p style='color:#94a3b8; font-size:13px;'>Henüz pey veren müşteri yok.</p>";
+        }
+        document.getElementById('adm_musteri_talepleri').innerHTML = talepHTML;
+
+        let aktif = data.aktif_urun;
+        if(aktif) {
+            document.getElementById('adm_aktif').innerText = "#" + aktif.lot + " - " + aktif.ad;
+            if (sonSahneUrunId !== aktif.id) {
+                sonSahneUrunId = aktif.id;
+            }
+        } else {
+            document.getElementById('adm_aktif').innerText = "Sahnede ürün yok";
+            sonSahneUrunId = null;
+        }
+
+        document.getElementById('adm_pey').innerText = data.pey + " TL";
+        document.getElementById('adm_kazanan').innerText = data.kazanan;
+        document.getElementById('adm_durum').innerText = data.durum;
+
+        if(data.durum === "Sayim") {
+            let kalan = Math.max(0, Math.ceil(data.sure_bitis - (Date.now() / 1000)));
+            document.getElementById('adm_sayac').innerText = kalan;
+        } else {
+            document.getElementById('adm_sayac').innerText = "Bekliyor";
+        }
+    });
+}
+
+function urunEkle() {
+    let ad = document.getElementById('y_ad').value;
+    let acilis = document.getElementById('y_acilis').value;
+    let hemen = document.getElementById('y_hemen').value;
+
+    if(!ad) {
+        alert("Lütfen ürün adı giriniz!");
+        return;
+    }
+
+    fetch('/admin-islem', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ islem: 'urun_ekle', ad: ad, acilis: acilis, hemen_al: hemen })
+    }).then(() => {
+        document.getElementById('y_ad').value = "";
+        veriCekAdmin();
+    });
+}
+
+function urunSil(id) {
+    if(!confirm("Bu ürünü silmek istediğinize emin misiniz?")) return;
+    fetch('/admin-islem', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ islem: 'urun_sil', urun_id: id })
+    }).then(() => veriCekAdmin());
+}
+
+function sahneyeAl(id) {
+    fetch('/admin-islem', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ islem: 'sahneye_al', urun_id: id })
+    }).then(() => veriCekAdmin());
+}
+
+function mezatBaslat(saniye) {
+    fetch('/admin-islem', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ islem: 'mezat_baslat', saniye: saniye })
+    }).then(() => veriCekAdmin());
+}
+
+function erkenKapat() {
+    fetch('/admin-islem', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ islem: 'erken_kapat' })
+    }).then(() => veriCekAdmin());
+}
+
+setInterval(veriCekAdmin, 1000);
+veriCekAdmin();
+</script>
+</body>
+</html>

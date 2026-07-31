@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Hâmid Antik - Canlı İzleyici Paneli</title>
+    <style>
+        body { background-color: #0d1b2a; color: #fff; font-family: Arial, sans-serif; margin: 0; padding: 15px; text-align: center; }
+        .container { max-width: 500px; margin: auto; background: #1b263b; padding: 20px; border-radius: 8px; border: 1px solid #415a77; }
+        h1 { color: #ffb703; font-size: 18px; }
+        .box { background: #111b2b; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #415a77; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box; background: #0d1b2a; border: 1px solid #415a77; color: #fff; border-radius: 4px; }
+        .fiyat { font-size: 26px; color: #48cae4; font-weight: bold; margin: 8px 0; }
+        .pey-grid { display: flex; gap: 5px; margin-top: 10px; }
+        .btn-hemen-al { background: #ffb703; color: #000; border: none; padding: 10px; font-weight: bold; width: 100%; border-radius: 4px; margin-top: 8px; cursor: pointer; }
+        .btn-sahneye-al { background: #48cae4; color: #0d1b2a; border: none; padding: 9px; font-weight: bold; width: 100%; border-radius: 4px; margin-top: 8px; cursor: pointer; }
+        .kilitli { opacity: 0.4; pointer-events: none; }
+        .sayac { font-size: 22px; color: #ffb703; font-weight: bold; margin: 8px 0; }
+        .urun-listesi-kutu { max-height: 150px; overflow-y: auto; text-align: left; margin-bottom: 10px; }
+        .urun-item { background: #1b263b; padding: 6px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; font-size: 13px; }
+        .urun-item:hover, .urun-item.secili { background: #415a77; border-left: 4px solid #ffb703; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🏛️ HÂMİD ANTİK - CANLI İZLEYİCİ</h1>
+
+    <div class="box" id="kayit_kutusu">
+        <h3 style="font-size: 14px; margin-top:0; color:#90e0ef;">Katılım İçin Kayıt Olun (Mail ve Adres Zorunludur)</h3>
+        <input type="text" id="m_ad" placeholder="Adınız Soyadınız">
+        <input type="text" id="m_tel" placeholder="Telefon Numaranız">
+        <input type="email" id="m_mail" placeholder="E-Posta Adresiniz (Zorunlu)">
+        <textarea id="m_adres" placeholder="Açık Kargo Adresiniz (Zorunlu)" rows="2"></textarea>
+        <button onclick="kayitOl()" style="background:#06d6a0; border:none; padding:9px; font-weight:bold; border-radius:4px; width:100%; cursor:pointer; margin-top:5px;">Sisteme Katıl / Kayıt Ol</button>
+    </div>
+
+    <div class="box">
+        <h3 style="font-size: 14px; margin-top:0; color:#90e0ef;">Mezat Ürünleri Listesi</h3>
+        <div id="izleyici_urun_listesi" class="urun-listesi-kutu">Yükleniyor...</div>
+        <button onclick="secilenUrunuSahneyeAl()" class="btn-sahneye-al">🎯 Seçili Ürüne Pey / Talep Bırak</button>
+    </div>
+
+    <div class="box kilitli" id="mezat_alani">
+        <h3 id="i_lot" style="margin:0; font-size:15px;">Lot # -</h3>
+        <p id="i_ad" style="font-size: 20px; font-weight: bold; margin: 5px 0;">Sahnede ürün yok</p>
+        <div id="i_pey" class="fiyat">0 TL</div>
+        <p style="color: #ffd166; font-size: 13px; margin:3px 0;">Hemen Al Fiyatı: <b id="i_hemen">0</b> TL</p>
+        <p style="color: #90e0ef; font-size: 13px; margin:3px 0;">Son Pey Veren: <b id="i_kazanan">Yok</b></p>
+        <p style="color: #ffb703; font-size: 13px; margin:3px 0;">Durum: <b id="i_durum">Bekliyor</b></p>
+        
+        <div class="sayac">Geri Sayım: <span id="i_sayac">--</span> sn</div>
+
+        <div class="pey-grid">
+            <button onclick="peyGonder(50)" style="background:#06d6a0; border:none; padding:9px; font-weight:bold; border-radius:4px; width:100%; cursor:pointer;">+50 TL Pey</button>
+            <button onclick="peyGonder(100)" style="background:#118ab2; color:#fff; border:none; padding:9px; font-weight:bold; border-radius:4px; width:100%; cursor:pointer;">+100 TL Pey</button>
+            <button onclick="peyGonder(250)" style="background:#ef476f; color:#fff; border:none; padding:9px; font-weight:bold; border-radius:4px; width:100%; cursor:pointer;">+250 TL Pey</button>
+        </div>
+
+        <button onclick="hemenAlGonder()" class="btn-hemen-al">⚡ HEMEN AL</button>
+    </div>
+</div>
+
+<script>
+let seciliUrunId = null;
+
+function bipSesiCal() {
+    try {
+        let ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 800;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.15);
+        osc.stop(ctx.currentTime + 0.15);
+    } catch(e) {
+        console.log("Ses çalma hatası engellendi");
+    }
+}
+
+function kayitOl() {
+    let ad = document.getElementById('m_ad').value;
+    let tel = document.getElementById('m_tel').value;
+    let mail = document.getElementById('m_mail').value;
+    let adres = document.getElementById('m_adres').value;
+
+    if(!ad || !mail || !mail.includes('@') || !adres) {
+        alert("Lütfen adınızı, e-postanızı ve açık kargo adresinizi eksiksiz giriniz!");
+        return;
+    }
+
+    fetch('/kayit-ol', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ad: ad, tel: tel, mail: mail, adres: adres })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert("Kayıt başarılı! Mezat butonları açıldı.");
+            document.getElementById('kayit_kutusu').style.display = 'none';
+            document.getElementById('mezat_alani').classList.remove('kilitli');
+        } else {
+            alert(data.mesaj);
+        }
+    }).catch(err => console.log("Kayıt hatası:", err));
+}
+
+function veriCek() {
+    fetch('/durum-getir')
+    .then(res => res.json())
+    .then(data => {
+        let uListHTML = "";
+        if(data.urunler && data.urunler.length > 0) {
+            if(!seciliUrunId || !data.urunler.some(u => u.id === seciliUrunId)) {
+                seciliUrunId = data.urunler[0].id;
+            }
+
+            data.urunler.forEach(u => {
+                let aktifClass = (u.id === seciliUrunId) ? 'secili' : '';
+                uListHTML += `<div class="urun-item ${aktifClass}" onclick="urunSec(${u.id})">
+                    <span><b>#${u.lot}</b> - ${u.ad}</span>
+                    <span style="color:#ffd166;">${u.acilis} TL</span>
+                </div>`;
+            });
+        } else {
+            uListHTML = "<div style='padding:5px; color:#adb5bd;'>Listede ürün kalmadı.</div>";
+            seciliUrunId = null;
+        }
+        document.getElementById('izleyici_urun_listesi').innerHTML = uListHTML;
+
+        let aktif = data.aktif_urun;
+        if(aktif) {
+            document.getElementById('i_lot').innerText = "Lot #" + aktif.lot;
+            document.getElementById('i_ad').innerText = aktif.ad;
+            document.getElementById('i_hemen').innerText = aktif.hemen_al;
+            document.getElementById('i_pey').innerText = data.pey + " TL";
+            document.getElementById('i_kazanan').innerText = data.kazanan;
+            document.getElementById('i_durum').innerText = data.durum;
+        } else {
+            document.getElementById('i_lot').innerText = "Lot # -";
+            document.getElementById('i_ad').innerText = "Sahnede ürün yok (Listeden seçim yapabilirsiniz)";
+            document.getElementById('i_hemen').innerText = "0";
+            document.getElementById('i_pey').innerText = "0 TL";
+            document.getElementById('i_kazanan').innerText = "Yok";
+            document.getElementById('i_durum').innerText = "Bekliyor";
+        }
+
+        if(data.durum === "Sayim") {
+            let kalan = Math.max(0, Math.ceil(data.sure_bitis - (Date.now() / 1000)));
+            document.getElementById('i_sayac').innerText = kalan;
+        } else {
+            document.getElementById('i_sayac').innerText = "Bekliyor";
+        }
+    }).catch(err => {
+        console.log("Bağlantı bekleniyor...", err);
+    });
+}
+
+function urunSec(id) {
+    seciliUrunId = id;
+    bipSesiCal();
+    veriCek();
+}
+
+function secilenUrunuSahneyeAl() {
+    if(!seciliUrunId) {
+        alert("Lütfen listeden bir ürün seçiniz!");
+        return;
+    }
+    bipSesiCal();
+    let ad = document.getElementById('m_ad').value || "Müşteri";
+    fetch('/pey-ver', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ urun_id: seciliUrunId, miktar: 0, musteri_adi: ad })
+    }).then(res => res.json()).then(data => {
+        if(!data.success && data.mesaj) alert(data.mesaj);
+        veriCek();
+    }).catch(err => console.log("Talep hatası:", err));
+}
+
+function peyGonder(miktar) {
+    if(!seciliUrunId) {
+        alert("Lütfen önce listeden pey vermek istediğiniz ürüne tıklayın!");
+        return;
+    }
+    bipSesiCal();
+    let ad = document.getElementById('m_ad').value || "Müşteri";
+    fetch('/pey-ver', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ urun_id: seciliUrunId, miktar: miktar, musteri_adi: ad })
+    }).then(res => res.json()).then(data => {
+        if(!data.success) alert(data.mesaj);
+        veriCek();
+    }).catch(err => console.log("Pey hatası:", err));
+}
+
+function hemenAlGonder() {
+    if(!seciliUrunId) {
+        alert("Lütfen önce listeden ürün seçin!");
+        return;
+    }
+    bipSesiCal();
+    let ad = document.getElementById('m_ad').value || "Müşteri";
+    fetch('/pey-ver', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ urun_id: seciliUrunId, islem: 'hemen_al', musteri_adi: ad })
+    }).then(res => res.json()).then(data => {
+        if(!data.success) alert(data.mesaj);
+        veriCek();
+    }).catch(err => console.log("Hemen al hatası:", err));
+}
+
+setInterval(veriCek, 1000);
+veriCek();
+</script>
+</body>
+</html>
