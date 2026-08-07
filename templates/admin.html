@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haliç Antik - Yönetim Paneli</title>
+    <style>
+        body { background-color: #0d1b2a; color: #fff; font-family: Arial, sans-serif; margin: 0; padding: 15px; }
+        .container { max-width: 650px; margin: auto; background: #1b263b; padding: 20px; border-radius: 8px; border: 1px solid #415a77; }
+        h1 { color: #ffb703; font-size: 20px; text-align: center; margin-top: 0; }
+        .box { background: #111b2b; padding: 15px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #415a77; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; background: #0d1b2a; border: 1px solid #415a77; color: #fff; border-radius: 4px; font-size: 15px; }
+        button { padding: 12px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; width: 100%; font-size: 15px; }
+        .btn-yesil { background: #10b981; color: #fff; }
+        .btn-kirmizi { background: #ef4444; color: #fff; }
+        .btn-mavi { background: #3b82f6; color: #fff; }
+        .urun-karti { background: #0d1b2a; border: 1px solid #38bdf8; padding: 10px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🏛️ HALİÇ ANTİK - YÖNETİM PANELİ</h1>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#ffb703; font-size:16px;">🎵 Müzik Listesine Parça Ekle</h3>
+        <input type="file" id="muzikDosya" accept="audio/*">
+        <button onclick="muzikYukle()" class="btn-mavi" style="margin-top:8px;">🎵 Müzik Dosyasını Yükle</button>
+    </div>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:16px;">➕ Yeni Ürün Ekle (Fotoğraf & Video Sürükle Bırak)</h3>
+        <label>Lot Numarasi:</label> <input type="number" id="lotNo" placeholder="Örn: 1">
+        <label>Ürün Adı / Açıklama:</label> <input type="text" id="urunAd" placeholder="Örn: Osmanlı Gümüş Şamdan">
+        <label>Kategori:</label> 
+        <select id="urunKategori">
+            <option value="Mobilya ve ahşap ürünler">Mobilya ve ahşap ürünler</option>
+            <option value="Halı Kilim bez dan örtüler">Halı Kilim bez ve örtüler</option>
+            <option value="Obje ve Aksesuarlar">Obje ve Aksesuarlar</option>
+            <option value="Porselen dan Seramik">Porselen ve Seramik</option>
+            <option value="Tablolar ve Resim">Tablolar ve Resim</option>
+            <option value="Aydınlatma ve aksesuarları">Aydınlatma ve aksesuarları</option>
+            <option value="Kitap dergi resim dan efemera">Kitap dergi resim ve efemera</option>
+            <option value="Takı ve bijuteri">Takı ve bijuteri</option>
+        </select>
+        <label>Açılış Fiyatı (TL):</label> <input type="number" id="acilisFiyat" placeholder="100">
+        <label>Hemen Al Fiyatı (TL):</label> <input type="number" id="hemenAlFiyat" placeholder="500">
+        <label>Ürün Tanıtım ve Hikayesi (Secere):</label> <textarea id="tanitimYazisi" rows="3" placeholder="Antikanın dönemi, kondisyonu..."></textarea>
+        
+        <label style="margin-top:8px; display:block;">Medya Dosyası (Fotoğraf veya Video Seçin):</label>
+        <input type="file" id="medyaDosya" accept="image/*,video/*" style="background:#1b263b;">
+        
+        <button onclick="urunEkle()" class="btn-yesil" style="margin-top:10px;">💾 Ürünü Arşive Kaydet</button>
+    </div>
+
+    <div class="box" style="border: 2px solid #ffb703;">
+        <h3 style="margin-top:0; color:#ffb703; font-size:16px;">📢 Canlı Mezat Sahne Kontrolü</h3>
+        <label>Sahneye Alınacak Ürünü Seç:</label>
+        <select id="aktifUrunSecim">
+            <option value="">Arşivden ürün seçilmedi...</option>
+        </select>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button onclick="urunuSahneyeAl()" class="btn-mavi">🚀 Ürünü Sahneye Sür</button>
+            <button onclick="mezatiBaslat()" class="btn-yesil">⏳ 30 Sn Geri Sayımı Başlat</button>
+            <button onclick="satildiIsaretle()" class="btn-kirmizi">🏷️ Satıldı Olarak Kapat</button>
+        </div>
+    </div>
+
+    <div class="box" style="border: 1px dashed #38bdf8;">
+        <h3 style="margin-top:0; color:#38bdf8; font-size:16px;">📥 Müşterilerden Gelen Ön Teklifler</h3>
+        <div id="yoneticiOnTekliflerListe" style="font-size: 13px; max-height: 150px; overflow-y: auto; color: #cbd5e1;">
+            Henüz gelen ön teklif yok.
+        </div>
+    </div>
+
+    <div class="box">
+        <h3 style="margin-top:0; color:#ffb703; font-size:16px;">📦 Arşivdeki Tüm Ürünler</h3>
+        <div id="arsivListesi" style="max-height: 250px; overflow-y: auto;">
+            Arşiv boş.
+        </div>
+    </div>
+</div>
+
+<script>
+let tumUrunler = [];
+let tumTeklifler = [];
+
+function veriGetirYonetici() {
+    fetch('/durum-getir')
+    .then(res => res.json())
+    .then(data => {
+        if(data.urunler) {
+            tumUrunler = data.urunler;
+            let select = document.getElementById('aktifUrunSecim');
+            let mevcutSecim = select.value;
+            select.innerHTML = '<option value="">Arşivden ürün seçilmedi...</option>';
+            
+            let listeDiv = document.getElementById('arsivListesi');
+            listeDiv.innerHTML = "";
+
+            tumUrunler.forEach(u => {
+                let opt = document.createElement('option');
+                opt.value = u.id;
+                opt.innerText = `Lot #${u.lot} - ${u.ad} (${u.fiyat} TL) [${u.durum || 'Normal'}]`;
+                select.appendChild(opt);
+
+                let kart = document.createElement('div');
+                kart.className = 'urun-karti';
+                kart.innerHTML = `<span><b>Lot #${u.lot}</b>: ${u.ad} - <b style="color:#38bdf8;">${u.fiyat} TL</b> (${u.durum || 'Normal'})</span>
+                                  <button onclick="urunSil('${u.id}')" style="background:#ef4444; color:#fff; border:none; padding:5px 10px; border-radius:4px; cursor:pointer; width:auto;">Sil</button>`;
+                listeDiv.appendChild(kart);
+            });
+            if(mevcutSecim) select.value = mevcutSecim;
+        }
+
+        if(data.on_teklifler) {
+            tumTeklifler = data.on_teklifler;
+            let onTeklifDiv = document.getElementById('yoneticiOnTekliflerListe');
+            if(tumTeklifler.length > 0) {
+                let html = '<ul style="margin:0; padding-left:15px;">';
+                tumTeklifler.forEach(t => {
+                    html += `<li><b>${t.musteri_adi}</b>, Ürün ID #${t.urun_id}'e <span style="color:#10b981; font-weight:bold;">${t.teklif} TL</span> teklif verdi. <button onclick="tekniKabulEt('${t.urun_id}', '${t.teklif}')" style="background:#10b981; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-size:11px; margin-left:5px;">Sahneye Taşı</button></li>`;
+                });
+                html += '</ul>';
+                onTeklifDiv.innerHTML = html;
+            } else {
+                onTeklifDiv.innerHTML = 'Henüz gelen ön teklif yok.';
+            }
+        }
+    });
+}
+
+function urunEkle() {
+    let lot = document.getElementById('lotNo').value;
+    let ad = document.getElementById('urunAd').value;
+    let kategori = document.getElementById('urunKategori').value;
+    let fiyat = document.getElementById('acilisFiyat').value;
+    let hemen_al_fiyat = document.getElementById('hemenAlFiyat').value;
+    let tanitim_yazisi = document.getElementById('tanitimYazisi').value;
+    let dosyaInput = document.getElementById('medyaDosya');
+
+    if(!lot || !ad || !fiyat) { alert("Lot, Ad ve Açılış Fiyatı zorunludur!"); return; }
+
+    let formData = new FormData();
+    formData.append('lot', lot);
+    formData.append('ad', ad);
+    formData.append('kategori', kategori);
+    formData.append('fiyat', fiyat);
+    formData.append('hemen_al_fiyat', hemen_al_fiyat);
+    formData.append('tanitim_yazisi', tanitim_yazisi);
+    if(dosyaInput.files[0]) {
+        formData.append('medya', dosyaInput.files[0]);
+    }
+
+    fetch('/urun-ekle', {
+        method: 'POST',
+        body: formData
+    }).then(res => res.json()).then(d => {
+        if(d.success) {
+            alert("✅ Ürün arşive başarıyla eklendi!");
+            document.getElementById('lotNo').value = "";
+            document.getElementById('urunAd').value = "";
+            document.getElementById('acilisFiyat').value = "";
+            document.getElementById('hemenAlFiyat').value = "";
+            document.getElementById('tanitimYazisi').value = "";
+            document.getElementById('medyaDosya').value = "";
+            veriGetirYonetici();
+        } else {
+            alert("Ürün eklenemedi.");
+        }
+    });
+}
+
+function urunSil(id) {
+    if(!confirm("Bu ürünü arşivden silmek istediğinize emin misiniz?")) return;
+    fetch('/urun-sil', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    }).then(() => veriGetirYonetici());
+}
+
+function urunuSahneyeAl() {
+    let id = document.getElementById('aktifUrunSecim').value;
+    if(!id) { alert("Lütfen bir ürün seçin!"); return; }
+    fetch('/sahneye-al', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id })
+    }).then(res => res.json()).then(d => {
+        if(d.success) alert("🚀 Ürün canlı sahneye aktarıldı!");
+    });
+}
+
+function mezatiBaslat() {
+    fetch('/mezat-baslat', { method: 'POST' }).then(() => alert("⏳ 30 saniyelik geri sayım başlatıldı!"));
+}
+
+function satildiIsaretle() {
+    fetch('/satildi-isaretle', { method: 'POST' }).then(() => alert("🏷️ Ürün satıldı olarak kapatıldı!"));
+}
+
+function muzikYukle() {
+    let dosya = document.getElementById('muzikDosya').files[0];
+    if(!dosya) { alert("Lütfen bir müzik dosyası seçin!"); return; }
+    let formData = new FormData();
+    formData.append('muzik', dosya);
+    fetch('/muzik-ekle', { method: 'POST', body: formData }).then(() => {
+        alert("🎵 Müzik başarıyla yüklendi ve yayına alındı!");
+        document.getElementById('muzikDosya').value = "";
+    });
+}
+
+function tekniKabulEt(urunId, teklifTutar) {
+    fetch('/sahneye-al', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: urunId })
+    }).then(() => {
+        fetch('/pey-ver', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_adi: "Ön Teklif Sahibi", miktar: parseFloat(teklifTutar), islem: 'pey' })
+        }).then(() => {
+            alert("Ürün sahneye alındı ve teklif işlendi!");
+            veriGetirYonetici();
+        });
+    });
+}
+
+setInterval(veriGetirYonetici, 2000);
+veriGetirYonetici();
+</script>
+</body>
+</html>
