@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HALİÇ ANTİK - Canlı İzleyici Paneli</title>
+    <title>HALİÇ ANTİK MEZAT CANLI</title>
     <style>
         body { background-color: #0d1b2a; color: #fff; font-family: Arial, sans-serif; margin: 0; padding: 10px; text-align: center; }
         .container { max-width: 550px; margin: auto; background: #1b263b; padding: 15px; border-radius: 8px; border: 1px solid #415a77; }
@@ -32,11 +32,11 @@
 <body>
 
 <div class="container">
-    <h1>🏛️ HÂMİD ANTİK - CANLI İZLEYİCİ</h1>
+    <h1>🏛️ HALİÇ ANTİK MEZAT CANLI</h1>
 
     <div class="box" id="kayitEkrani">
         <h3 style="margin-top:0; color:#ffb703; font-size:16px;">📝 Katılım Bilgileri</h3>
-        <label>Ad Soyad:</label> <input type="text" id="k_ad">
+        <label>Ad Soyad:</label> <input type="text" id="k_ad" placeholder="Adınızı ve Soyadınızı girin">
         <label>Telefon:</label> <input type="text" id="k_tel">
         <label>E-posta:</label> <input type="email" id="k_mail">
         <label>Kargo Adresi:</label> <textarea id="k_adres" rows="2"></textarea>
@@ -46,7 +46,7 @@
     <div id="mezatAlani" class="kilitli">
         <div class="box" style="background: #0f172a; border: 1px solid #10b981; display: flex; justify-content: space-between; align-items: center; padding: 10px;">
             <span style="font-size: 13px;">👤 <b id="aktifKullaniciGosterge">-</b> | Puan: <b id="bonusGosterge" style="color:#ffb703;">0</b></span>
-            <button onclick="localStorage.clear(); location.reload();" style="background: #ef4444; color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Değiştir</button>
+            <button onclick="kullaniciyiSifirla()" style="background: #ef4444; color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size:12px;">İsmi Değiştir</button>
         </div>
 
         <div class="box" style="border: 2px solid #38bdf8;">
@@ -151,8 +151,8 @@ let sonGlobalOnTeklifler = [];
 let sonYuklenenMedyaUrl = null; 
 
 window.onload = function() {
-    let ad = localStorage.getItem('hamid_antik_ad');
-    if(ad) {
+    let ad = localStorage.getItem('halic_antik_ad');
+    if(ad && ad !== "null" && ad !== "undefined") {
         kullaniciAdi = ad;
         document.getElementById('aktifKullaniciGosterge').innerText = ad;
         document.getElementById('kayitEkrani').style.display = 'none';
@@ -165,7 +165,8 @@ function kayitOl() {
     let tel = document.getElementById('k_tel').value.trim();
     let mail = document.getElementById('k_mail').value.trim();
     let adres = document.getElementById('k_adres').value.trim();
-    if(!ad || !mail || !adres) { alert("Zorunlu alanları doldurun!"); return; }
+    
+    if(!ad) { alert("Lütfen Ad Soyad alanını doldurun!"); return; }
 
     fetch('/kayit-ol', {
         method: 'POST',
@@ -173,11 +174,22 @@ function kayitOl() {
         body: JSON.stringify({ ad, tel, mail, adres })
     }).then(() => {
         kullaniciAdi = ad;
-        localStorage.setItem('hamid_antik_ad', ad);
+        localStorage.setItem('halic_antik_ad', ad);
+        document.getElementById('aktifKullaniciGosterge').innerText = ad;
+        document.getElementById('kayitEkrani').style.display = 'none';
+        document.getElementById('mezatAlani').classList.remove('kilitli');
+    }).catch(() => {
+        kullaniciAdi = ad;
+        localStorage.setItem('halic_antik_ad', ad);
         document.getElementById('aktifKullaniciGosterge').innerText = ad;
         document.getElementById('kayitEkrani').style.display = 'none';
         document.getElementById('mezatAlani').classList.remove('kilitli');
     });
+}
+
+function kullanıcıyiSifirla() {
+    localStorage.removeItem('halic_antik_ad');
+    location.reload();
 }
 
 function veriCekIzleyici() {
@@ -219,7 +231,6 @@ function veriCekIzleyici() {
 
         let aktif = data.aktif_urun;
         
-        // Eğer izleyici arşivden bir ürün seçmediyse yöneticinin canlı ürününü göster
         if (!secilenUrunId) {
             if (!aktif || aktif.durum === 'Satıldı' || data.durum === "Satıldı") {
                 document.getElementById('aktif_baslik').innerText = "Lot # - Sahnede aktif ürün yok";
@@ -313,7 +324,6 @@ function urunSecimDegisti() {
     let anaMedyaDiv = document.getElementById('medyaKapsayici');
 
     if (!secilenUrunId) {
-        // Seçim kaldırıldıysa paneli gizle ve canlı akışa geri dön
         anaKutu.style.display = 'none';
         tekliflerKutusu.style.display = 'none';
         sonYuklenenMedyaUrl = null;
@@ -323,14 +333,12 @@ function urunSecimDegisti() {
 
     let secilenUrun = tumUrunlerArsivi.find(u => String(u.id) === String(secilenUrunId));
     if (secilenUrun) {
-        // Üst Bilgileri Doldur
         anaKutu.style.display = 'block';
         document.getElementById('secilenUrunBaslik').innerText = `Lot #${secilenUrun.lot} - ${secilenUrun.ad}`;
         document.getElementById('secilenUrunKategori').innerText = secilenUrun.kategori || "Belirtilmemiş";
         document.getElementById('secilenUrunFiyat').innerText = secilenUrun.fiyat + " TL";
         document.getElementById('secilenUrunSecere').innerText = secilenUrun.tanitim_yazisi || secilenUrun.secere || "Hikaye / secere girilmemiş.";
 
-        // Canlı Paneli Arşivdeki Ürüne Göre Güncelle
         document.getElementById('aktif_baslik').innerText = `Lot #${secilenUrun.lot} - ${secilenUrun.ad}`;
         document.getElementById('aktif_fiyat').innerText = secilenUrun.fiyat + " TL";
         document.getElementById('aktif_acilis_fiyat').innerText = secilenUrun.fiyat + " TL";
@@ -362,7 +370,6 @@ function urunSecimDegisti() {
             }
         }
 
-        // Ön Teklifleri Listele
         let buUruneTeklifler = sonGlobalOnTeklifler.filter(t => String(t.urun_id) === String(secilenUrunId));
         tekliflerKutusu.style.display = 'block';
         if(buUruneTeklifler.length > 0) {
@@ -379,7 +386,6 @@ function urunSecimDegisti() {
 }
 
 function urunSecimGuncellemeEkrani(uId) {
-    // Arka plandaki teklif güncellemeleri için yardımcı fonksiyon
     let buUruneTeklifler = sonGlobalOnTeklifler.filter(t => String(t.urun_id) === String(uId));
     let tekliflerListeIci = document.getElementById('urunOnTekliflerListeIci');
     if(buUruneTeklifler.length > 0 && tekliflerListeIci) {
