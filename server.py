@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-# server.py - Hâmid Antik Mezat Yönetim Sistemi
+
 import os
 import time
 from flask import Flask, jsonify, render_template, request
