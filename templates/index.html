@@ -143,12 +143,23 @@
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 <script>
 let kullaniciAdi = "", secilenUrunId = null;
 let tumUrunlerArsivi = [];
 let muzikListesiGuncel = [];
 let sonGlobalOnTeklifler = []; 
 let sonYuklenenMedyaUrl = null; 
+
+// Socket.IO Bağlantısı ve Anlık Senkronizasyon
+var socket = io();
+socket.on('veri_guncellendi', function() {
+    if (typeof veriCekIzleyici === 'function') {
+        veriCekIzleyici();
+    } else {
+        location.reload();
+    }
+});
 
 window.onload = function() {
     let ad = localStorage.getItem('halic_antik_ad');
