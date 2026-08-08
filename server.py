@@ -34,7 +34,16 @@ KATEGORILER = [
 def index():
     return render_template('index.html')
 
-@app.route('/admin')
+@app.route('/admin', methods=['GET', 'POST'])
+def admin():
+    # Tarayıcıdan ?sifre=1453 şeklinde şifre istenir
+    sifre = request.args.get('sifre')
+    
+    # Şifre yanlışsa veya yazılmadıysa içeri almaz
+    if sifre != '1453':
+        return "<h3>Yetkisiz erişim! Bu sayfayı görme yetkiniz yok. Şifre gerekli.</h3>", 403
+        
+    return render_template('admin.html')
 def admin():
     return render_template('admin.html')
 
