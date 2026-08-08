@@ -204,7 +204,7 @@ function kullanıcıyiSifirla() {
 }
 
 function veriCekIzleyici() {
-    fetch('/durum-getir')
+    fetch('/durum-getir', { cache: 'no-store' })
     .then(res => res.json())
     .then(data => {
         if(data.on_teklifler) {
@@ -277,7 +277,7 @@ function veriCekIzleyici() {
                         v.playsInline = true;
                         v.preload = "auto";
                         v.style.pointerEvents = "none";
-                        v.play().catch(e => { console.log("Otomatik oynatma engellendi:", e); });
+                        v.play().catch(e => {});
                         medyaDiv.appendChild(v);
                     } else if(aktifFoto) {
                         let img = document.createElement('img');
@@ -372,7 +372,7 @@ function urunSecimDegisti() {
                 v.playsInline = true;
                 v.preload = "auto";
                 v.style.pointerEvents = "none";
-                v.play().catch(e => { console.log("Ana sahne video hata:", e); });
+                v.play().catch(e => {});
                 anaMedyaDiv.appendChild(v);
             } else if (fotografKaynak) {
                 let img = document.createElement('img');
@@ -511,6 +511,7 @@ function sesliDinle() {
     }
 }
 
+// Render gecikmelerini önlemek ve anında yakalamak için her 1 saniyede bir kontrol döngüsü
 setInterval(veriCekIzleyici, 1000);
 veriCekIzleyici();
 </script>
