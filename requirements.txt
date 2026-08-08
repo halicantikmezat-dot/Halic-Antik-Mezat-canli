@@ -1,10 +1,4 @@
-<<<<<<< HEAD
-flask
-flask-socketio
-gevent
-=======
-flask
-flask-socketio
-gevent
->>>>>>> b79f908ba801974fa211b0b05cb1b7a9dbbee02d
+Flask
+Flask-SocketIO
+eventlet
 gunicorn
