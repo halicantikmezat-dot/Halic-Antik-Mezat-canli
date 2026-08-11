@@ -1,0 +1,5 @@
+Flask
+Flask-SocketIO
+eventlet
+gunicorn
+gevent>=24.10.1
