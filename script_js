@@ -1,0 +1,24 @@
+// Sunucuya yeni bir teklif gönderen fonksiyon
+async function teklifVer(productId, userId, amount) {
+    try {
+        const response = await fetch('/api/teklif', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId, user_id: userId, bid_amount: amount })
+        });
+        const result = await response.json();
+        console.log("Teklif sonucu:", result.message);
+    } catch (error) {
+        console.error("Teklif verilirken hata oluştu:", error);
+    }
+}
+
+// Sahnedeki ürünü anlık güncelleyen fonksiyon
+async function sahneyiGuncelle() {
+    const response = await fetch('/api/aktif-urun');
+    const data = await response.json();
+    if (data.product_name) {
+        document.getElementById('urun-adi').innerText = data.product_name;
+        document.getElementById('fiyat').innerText = data.current_price + ' TL';
+    }
+}
