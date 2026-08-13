@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Haliç Antik Mezat - Canlı Mezat</title>
+    <!-- Socket.IO Entegrasyonu -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0d1b2a;
+            --card-bg: #1b263b;
+            --card-border: #415a77;
+            --accent-gold: #ffb703;
+            --text-light: #e2e8f0;
+            --btn-green: #10b981;
+            --btn-blue: #3b82f6;
+            --btn-red: #ef4444;
+            --btn-sky: #0ea5e9;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-light); display: flex; justify-content: center; }
+
+        /* Mobil İnce-Uzun Konteyner */
+        .mobile-container {
+            width: 100%;
+            max-width: 500px;
+            min-height: 100vh;
+            background: var(--card-bg);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--card-border);
+            border-right: 1px solid var(--card-border);
+            position: relative;
+            padding-bottom: 20px;
+        }
+
+        /* Üst Header */
+        .header {
+            background: #0d1b2a;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent-gold);
+        }
+        .logo-box { display: flex; align-items: center; gap: 8px; }
+        .logo-box h2 { font-size: 16px; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.5px; }
+        .live-badge { background: var(--btn-red); color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+
+        /* Kullanıcı Bilgi Barı */
+        .user-bar {
+            background: #111b2b;
+            padding: 10px 15px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .btn-sm { background: var(--accent-gold); color: #000; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
+
+        .kilitli { opacity: 0.4; pointer-events: none; }
+        .box { background: #111b2b; padding: 12px; border-radius: 6px; margin: 10px 12px; border: 1px solid var(--card-border); text-align: left; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 6px 0; box-sizing: border-box; background: #0d1b2a; border: 1px solid var(--card-border); color: #fff; border-radius: 4px; font-size: 14px; }
+
+        /* Sahne / Medya Alanı */
+        .stage-box { position: relative; width: 100%; height: 280px; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; border-bottom: 1px solid var(--card-border); }
+        .stage-box img, .stage-box video { width: 100%; height: 100%; object-fit: contain; }
+        .audio-toggle {
+            position: absolute; bottom: 10px; right: 10px;
+            background: rgba(0,0,0,0.75); color: white; border: 1px solid var(--card-border);
+            padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; z-index: 10;
+        }
+
+        /* Satıldı Bandı */
+        .sold-banner {
+            display: none; background: var(--btn-red); color: white;
+            text-align: center; padding: 10px; font-weight: bold; font-size: 15px; letter-spacing: 0.5px;
+        }
+
+        /* Ürün Detay & Hikaye */
+        .product-info { padding: 12px 15px; background: #1b263b; border-bottom: 1px solid var(--card-border); }
+        .product-title { font-size: 16px; color: var(--accent-gold); margin-bottom: 6px; font-weight: bold; }
+        .price-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; background: #0d1b2a; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--card-border); }
+        .tanitim-kutusu { background: #0d1b2a; padding: 10px; border-radius: 6px; font-size: 13px; color: #e2e8f0; margin-top: 10px; border-left: 4px solid var(--btn-sky); line-height: 1.4; }
+        .btn-sesli-oku { background: var(--accent-gold); color: #000; border: none; padding: 10px; font-size: 13px; font-weight: bold; width: 100%; border-radius: 6px; margin-top: 8px; cursor: pointer; }
+
+        /* Anlık Fiyat & Dairesel Sayaç */
+        .auction-status {
+            background: #0d1b2a; padding: 12px; text-align: center;
+            margin: 10px 12px; border-radius: 8px; border: 1px solid var(--accent-gold);
+        }
+        .current-price { font-size: 32px; font-weight: bold; color: #48cae4; margin: 4px 0; }
+        
+        .sayac-kapsayici { display: flex; align-items: center; justify-content: center; gap: 12px; background: #1b263b; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px; margin-top: 8px; }
+        .mini-timer-ring { position: relative; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; }
+        .mini-timer-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        .mini-timer-ring circle { fill: none; stroke-width: 4; stroke-linecap: round; }
+        .timer-bg { stroke: #0d1b2a; }
+        .timer-progress { stroke: var(--accent-gold); stroke-dasharray: 125; stroke-dashoffset: 0; transition: stroke-dashoffset 0.5s linear, stroke 0.3s; }
+        .mini-timer-text { position: absolute; font-size: 14px; font-weight: bold; color: var(--accent-gold); }
+
+        /* Pey Butonları Kapsayıcısı */
+        .pey-butonlari-konteyner { padding: 0 12px 12px 12px; }
+        .d-flex { display: flex; }
+        .gap-2 { gap: 8px; }
+        .mb-2 { margin-bottom: 8px; }
+        .w-50 { width: 50%; }
+        .w-100 { width: 100%; }
+        
+        .btn-bid { border: none; padding: 12px 6px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; text-align: center; }
+        .btn-green { background: var(--btn-green); color: white; }
+        .btn-sky { background: var(--btn-sky); color: white; }
+        .btn-secondary { background: #415a77; color: white; }
+        .btn-buy-now { background: var(--accent-gold); color: #000; font-size: 16px; padding: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+        /* Canlı Pey Akışı */
+        .feed-box { padding: 10px; max-height: 120px; overflow-y: auto; background: #0d1b2a; margin: 0 12px 10px 12px; border-radius: 6px; font-size: 12px; border: 1px solid var(--card-border); }
+        .feed-item { padding: 4px 0; border-bottom: 1px solid #1b263b; display: flex; justify-content: space-between; }
+
+        /* Alt İletişim & Footer */
+        .footer { padding: 15px 12px; text-align: center; font-size: 11px; color: #778da9; margin-top: auto; background: #0d1b2a; border-top: 1px solid var(--card-border); }
+        .footer-btns { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+        .btn-pos { background: var(--btn-green); color: white; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-weight: bold; cursor: pointer; border: none; }
+
+        /* Modallar */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: var(--card-bg); padding: 20px; border-radius: 10px; width: 85%; max-width: 380px; text-align: center; border: 1px solid var(--accent-gold); }
+        .badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; display: inline-block; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div class="mobile-container">
+    <!-- Üst Header -->
+    <div class="header">
+        <div class="logo-box">
+            <span>🏛️</span>
+            <h2>HALİÇ ANTİK MEZAT</h2>
+        </div>
+        <div class="live-badge">🟢 <span id="onlineCount">1</span> Canlı</div>
+    </div>
+
+    <!-- Kullanıcı Profil / Kayıt Barı -->
+    <div class="user-bar">
+        <span>👤 <b id="aktifKullaniciGosterge">Giriş Yapılmadı</b> | Puan: <b id="bonusGosterge" style="color:var(--accent-gold);">100</b></span>
+        <button class="btn-sm" onclick="openRegisterModal()">Profil / Kayıt</button>
+    </div>
+
+    <!-- Kayıt / Katılım Formu (Kilit Açma) -->
+    <div class="box" id="kayitEkrani">
+        <h3 style="margin-top:0; color:var(--accent-gold); font-size:15px;">📝 Mezata Katılım Formu</h3>
+        <label style="font-size:12px;">Ad Soyad:</label> <input type="text" id="k_ad" placeholder="Adınızı ve Soyadınızı girin">
+        <label style="font-size:12px;">Telefon:</label> <input type="text" id="k_tel" placeholder="05XX XXX XX XX">
+        <label style="font-size:12px;">E-posta:</label> <input type="email" id="k_mail" placeholder="ornek@mail.com">
+        <label style="font-size:12px;">Kargo Adresi:</label> <textarea id="k_adres" rows="2" placeholder="Teslimat adresiniz..."></textarea>
+        <button onclick="kayitOl()" style="background:var(--btn-green); color:#fff; border:none; padding:12px; width:100%; font-weight:bold; border-radius:6px; cursor:pointer; margin-top:8px;">💾 Kaydol & Mezat Salonuna Gir</button>
+    </div>
+
+    <!-- Mezat Ana Alanı -->
+    <div id="mezatAlani" class="kilitli">
+
+        <!-- 10.000 Ürünlük Arşiv & Ön Teklif Kutusu -->
+        <div class="box" style="border: 1px solid var(--btn-sky);">
+            <h3 style="margin-top:0; color:var(--btn-sky); font-size:14px;">🔍 10.000 Ürün Arşivi & Önden Teklif Ver</h3>
+            
+            <label style="font-size:11px;">Kategori Filtrele:</label>
+            <select id="kategoriFiltre" onchange="veriCekIzleyici()">
+                <option value="">Tüm Kategoriler (10.000 Ürün)</option>
+                <option value="Mobilya ve ahşap ürünler">Mobilya ve ahşap ürünler</option>
+                <option value="Halı Kilim bez ve örtüler">Halı Kilim bez ve örtüler</option>
+                <option value="Obje ve Aksesuarlar">Obje ve Aksesuarlar</option>
+                <option value="Porselen ve Seramik">Porselen ve Seramik</option>
+                <option value="Tablolar ve Resim">Tablolar ve Resim</option>
+                <option value="Aydınlatma ve aksesuarları">Aydınlatma ve aksesuarları</option>
+                <option value="Kitap dergi resim ve efemera">Kitap dergi resim ve efemera</option>
+                <option value="Takı ve bijuteri">Takı ve bijuteri</option>
+            </select>
+            
+            <label style="margin-top:6px; display:block; font-size:11px;">Arşivden Ürün Seç:</label>
+            <select id="urunListesiSecim" onchange="urunSecimDegisti()">
+                <option value="">İncelemek için ürün seçiniz...</option>
+            </select>
+
+            <!-- Seçilen Ürün Önizlemesi -->
+            <div id="secilenUrunOnizleme" style="font-size: 12px; color: #cbd5e1; margin-top: 8px; background: #0d1b2a; padding: 10px; border-radius: 6px; border: 1px solid var(--btn-sky); display: none;">
+                <b>Ürün Adı:</b> <span id="secilenUrunBaslik" style="color:var(--accent-gold); font-weight:bold;">-</span><br>
+                <b>Kategori:</b> <span id="secilenUrunKategori">-</span><br>
+                <b>Açılış Fiyatı:</b> <span id="secilenUrunFiyat" style="color:var(--btn-sky); font-weight:bold;">-</span>
+                <div class="tanitim-kutusu" style="margin-top: 6px;">
+                    <b>Ürün Seceresi / Hikayesi:</b><br><span id="secilenUrunSecere">-</span>
+                </div>
+            </div>
+
+            <!-- Geçmiş Ön Teklifler -->
+            <div id="urunOnTekliflerKutusu" style="margin-top: 8px; background: #080e1a; border: 1px dashed var(--btn-sky); padding: 8px; border-radius: 4px; display: none;">
+                <p style="margin: 0 0 4px 0; font-size: 11px; color: var(--btn-sky); font-weight: bold;">📊 Verilen Önceki Teklifler:</p>
+                <div id="urunOnTekliflerListeIci" style="font-size: 11px; color: #94a3b8; max-height: 80px; overflow-y: auto;">
+                    Teklif yok
+                </div>
+            </div>
+
+            <label style="margin-top:8px; display:block; font-size:11px;">Ön Teklif Tutarınız (TL):</label>
+            <input type="number" id="onTeklifMiktari" placeholder="Örn: 1500">
+            <button onclick="onTeklifGonder()" style="background:var(--btn-sky); color:#fff; border:none; padding:10px; width:100%; font-weight:bold; border-radius:6px; margin-top:4px; cursor:pointer; font-size:13px;">🚀 Bu Ürüne Önden Teklif Ver</button>
+        </div>
+
+        <!-- Canlı Yayın Sahnesi -->
+        <div class="stage-box" id="medyaKapsayici">
+            <p style="color: #64748b; font-size: 13px;">📺 Canlı Sahne Bekleniyor...</p>
+        </div>
+
+        <!-- Satıldı Bildirim Bandı -->
+        <div id="soldBanner" class="sold-banner">
+            🎉 SATILDI: <span id="soldWinnerName">-</span> (<span id="soldPrice">0</span> TL)
+        </div>
+
+        <!-- Aktif Ürün Bilgileri -->
+        <div class="product-info">
+            <div class="product-title" id="aktif_baslik">Lot #1 - Osmanlı Gümüş Şamdan</div>
+            <div class="price-row">
+                <span>Açılış: <b id="aktif_acilis_fiyat" style="color:var(--btn-sky);">100 TL</b></span>
+                <span>Hemen Al: <b id="aktif_hemen_al_fiyat" style="color:var(--accent-gold);">5.000 TL</b></span>
+            </div>
+
+            <div class="tanitim-kutusu" id="aktif_tanitim">
+                <b>Ürün Hikayesi & Secere:</b><br><span id="tanitimMetni">Antikanın dönemi, orijinal kondisyonu yüksek nadir eser...</span>
+            </div>
+            <button onclick="sesliDinle()" class="btn-sesli-oku">🔊 Tanıtımı Sesli Dinle / Oku</button>
+        </div>
+
+        <!-- Anlık Mezat Durumu & Sayaç -->
+        <div class="auction-status">
+            <div style="font-size: 11px; color: #778da9;">GÜNCEL PEY</div>
+            <div class="current-price" id="aktif_fiyat"><span id="currentBid">100</span> TL</div>
+            <div style="font-size: 12px; margin-bottom: 6px;">Son Pey Veren: <b id="aktif_kazanan" style="color:var(--accent-gold);">Henüz Yok</b></div>
+
+            <div class="sayac-kapsayici">
+                <div class="mini-timer-ring">
+                    <svg viewBox="0 0 50 50">
+                        <circle class="timer-bg" cx="25" cy="25" r="20"></circle>
+                        <circle id="timerProgressCircle" class="timer-progress" cx="25" cy="25" r="20"></circle>
+                    </svg>
+                    <div class="mini-timer-text" id="miniTimerNum">--</div>
+                </div>
+                <div>
+                    <div style="font-size: 15px; color: var(--accent-gold); font-weight: bold;" id="aktif_sayac">Mezat Bekleniyor</div>
+                    <div style="font-size: 10px; color: #94a3b8;">Geri Sayım & Süre</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PEY VERME BUTONLARI ALANI -->
+        <div class="pey-butonlari-konteyner">
+            <div class="d-flex gap-2 mb-2">
+                <button id="btnYuzdeOn" class="btn-bid btn-green w-50" onclick="yuzdeOnPeyVer()">⚡ %10 Artır</button>
+                <button id="btnSerbestPey" class="btn-bid btn-secondary w-50" onclick="serbestPeyVer()">✍️ Serbest Pey Yaz</button>
+            </div>
+            
+            <button id="btnHemenAl" class="btn-buy-now w-100" onclick="hemenAl()">
+                ⚡ HEMEN AL (Satın Al)
+            </button>
+        </div>
+
+        <!-- Canlı Pey Akışı (Son Teklifler) -->
+        <div class="feed-box" id="bidFeed">
+            <div style="color: #778da9; font-style: italic;">Canlı pey geçmişi bekleniyor...</div>
+        </div>
+
+        <!-- Arka Plan Müzik / Radyo -->
+        <div class="box" style="background: #1e1b4b; border: 1px solid #818cf8; margin-top:0;">
+            <p style="margin:0 0 6px 0; font-size:12px; color:#c7d2fe; font-weight:bold;">🎵 Arka Plan Müzik Keyfi (Radyo)</p>
+            <audio id="arkaplanMuzik" controls loop style="width:100%; height:30px;"></audio>
+        </div>
+    </div>
+
+    <!-- Footer & Kurumsal Bilgi -->
+    <div class="footer">
+        <div class="footer-btns">
+            <button class="btn-pos" onclick="openPosModal()">💳 Kartla Öde (POS)</button>
+            <a href="https://wa.me/905000000000" target="_blank" style="color: var(--btn-sky); text-decoration: none; font-weight: bold; padding: 8px 12px;">💬 WhatsApp Destek</a>
+        </div>
+        <p>📍 Haliç, İstanbul | 📞 0212 000 00 00</p>
+        <p style="margin-top: 8px; font-size: 10px;">
+            <a href="javascript:void(0)" style="color: #778da9;" onclick="openLegalModal()">KVKK ve Gizlilik Sözleşmesi</a>
+        </p>
+    </div>
+</div>
+
+<!-- TAM PROFİL & HESAP YÖNETİM MODALI -->
+<div id="profileModal" class="modal">
+    <div class="modal-content" style="text-align: left;">
+        <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 12px;">👤 Profil ve Hesap Yönetimi</h3>
+        
+        <div style="background: #0d1b2a; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; border: 1px solid var(--card-border); font-size: 12px;">
+            <b>Hesap Durumu:</b> <span id="p_durum_rozet" class="badge" style="background: var(--btn-sky); color: white;">Yükleniyor...</span>
+        </div>
+
+        <label style="font-size:11px;">Ad Soyad:</label>
+        <input type="text" id="p_ad" placeholder="Ad Soyad">
+
+        <label style="font-size:11px;">Telefon:</label>
+        <input type="text" id="p_tel" placeholder="05XX XXX XX XX">
+
+        <label style="font-size:11px;">E-posta:</label>
+        <input type="email" id="p_mail" placeholder="E-posta">
+
+        <label style="font-size:11px;">Kargo Adresi:</label>
+        <textarea id="p_adres" rows="2" placeholder="Kargo Adresi"></textarea>
+
+        <button class="btn-sm" style="width: 100%; background: var(--btn-green); color:white; padding: 10px; margin-top: 10px; font-size: 13px;" onclick="profilGuncelle()">💾 Bilgileri Güncelle</button>
+        <button class="btn-sm" style="width: 100%; background: var(--btn-red); color:white; padding: 10px; margin-top: 6px; font-size: 13px;" onclick="hesabiTamamenSil()">🗑️ Hesabımı Sil & Sıfırla</button>
+        <button class="btn-sm" style="width: 100%; background: #475569; color:white; margin-top: 6px; font-size: 12px;" onclick="closeModal('profileModal')">Kapat</button>
+    </div>
+</div>
+
+<!-- KREDİ KARTI / POS ÖDEME MODALI -->
+<div id="posModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: var(--accent-gold); margin-bottom: 12px;">💳 Güvenli Ödeme (3D Secure POS)</h3>
+        <input type="text" placeholder="Kart Üzerindeki İsim" style="width: 100%; margin-bottom: 8px;">
+        <input type="text" placeholder="Kart Numarası (16 Hane)" style="width: 100%; margin-bottom: 8px;">
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" placeholder="AA/YY" style="width: 50%;">
+            <input type="text" placeholder="CVC" style="width: 50%;">
+        </div>
+        <button class="btn-sm" style="width: 100%; background: var(--btn-green); color:white; padding: 10px;" onclick="processPayment()">Ödemeyi Tamamla</button>
+        <button class="btn-sm" style="width: 100%; background: #475569; color:white; margin-top: 5px;" onclick="closeModal('posModal')">İptal</button>
+    </div>
+</div>
+
+<!-- KVKK & YASAL SÖZLEŞME MODALI -->
+<div id="legalModal" class="modal">
+    <div class="modal-content" style="max-height: 80vh; overflow-y: auto; text-align: left; font-size: 12px;">
+        <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 10px;">📜 Hukuki Şartlar ve KVKK</h3>
+        <p><b>1. KVKK Güvencesi:</b> Kişisel verileriniz (İsim, Telefon, Adres) 6698 sayılı KVKK dahilinde firmamızın güvencesindedir. Veriler üçüncü taraflarla paylaşılmaz.</p>
+        <br>
+        <p><b>2. Mezat Kuralları:</b> Verilen peyler hukuki olarak bağlayıcıdır. Kazandığınız ürünü 24 saat içerisinde ödeme yükümlülüğünüz bulunmaktadır.</p>
+        <br>
+        <p><b>3. Hakemlik:</b> Uyuşmazlık durumunda Haliç Antik Mezat yönetiminin kayıtları esas alınır.</p>
+        <button class="btn-sm" style="width: 100%; margin-top: 15px; padding: 10px; color:white;" onclick="closeModal('legalModal')">Anladım & Kabul Ediyorum</button>
+    </div>
+</div>
+
+<!-- Kazanan Tebrik Modalı -->
+<div id="congratsModal" class="modal">
+    <div class="modal-content">
+        <h2 style="color: var(--accent-gold); margin-bottom: 10px;">🏆 TEBRİKLER!</h2>
+        <p id="congratsText">Güzel bir eser kazandınız. İyi günlerde sergileyin.</p>
+        <button class="btn-sm" style="margin-top: 15px; width: 100%; padding: 10px; color:white;" onclick="closeModal('congratsModal')">Tamam / Sepetim</button>
+    </div>
+</div>
+
+<script>
+    // WebSocket Bağlantısı ve Değişkenler
+    const socket = io({
+        transports: ['websocket'],
+        upgrade: false
+    });
+
+    let kullaniciAdi = "", secilenUrunId = null;
+    let tumUrunlerArsivi = [];
+    let muzikListesiGuncel = [];
+    let sonGlobalOnTeklifler = []; 
+    let sonYuklenenMedyaUrl = null; 
+
+    // Sayfa Yüklendiğinde Kullanıcıyı Hatırla
+    window.onload = function() {
+        let ad = localStorage.getItem('halic_antik_ad');
+        if(ad && ad !== "null" && ad !== "undefined") {
+            kullaniciAdi = ad;
+            document.getElementById('aktifKullaniciGosterge').innerText = ad;
+            document.getElementById('kayitEkrani').style.display = 'none';
+            document.getElementById('mezatAlani').classList.remove('kilitli');
+        }
+    };
+
+    // Socket.IO Canlı Olay Dinleyicileri
+    socket.on('izleyici_sayisi_guncelle', function(data) {
+        if(data && data.sayi) document.getElementById('onlineCount').innerText = data.sayi;
+    });
+
+    socket.on('pey_guncellendi', function(data) {
+        document.getElementById('currentBid').innerText = data.guncel_fiyat;
+        document.getElementById('aktif_kazanan').innerText = data.kazanan_ad;
+        
+        const feed = document.getElementById('bidFeed');
+        const item = document.createElement('div');
+        item.className = 'feed-item';
+        item.innerHTML = `<span><b>${data.kazanan_ad}</b></span> <span style="color:var(--btn-green); font-weight:bold;">${data.guncel_fiyat} TL</span>`;
+        feed.prepend(item);
+    });
+
+    socket.on('veri_guncellendi', function() {
+        veriCekIzleyici();
+    });
+
+    // Kayıt Fonksiyonu
+    function kayitOl() {
+        let ad = document.getElementById('k_ad').value.trim();
+        let tel = document.getElementById('k_tel').value.trim();
+        let mail = document.getElementById('k_mail').value.trim();
+        let adres = document.getElementById('k_adres').value.trim();
+        
+        if(!ad) { alert("Lütfen Ad Soyad alanını doldurun!"); return; }
+
+        fetch('/kayit-ol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ad, tel, mail, adres })
+        }).then(res => res.json()).then(d => {
+            alert(d.mesaj || "Kayıt talebiniz alındı.");
+            kullaniciAdi = ad;
+            localStorage.setItem('halic_antik_ad', ad);
+            document.getElementById('aktifKullaniciGosterge').innerText = ad;
+            document.getElementById('kayitEkrani').style.display = 'none';
+            document.getElementById('mezatAlani').classList.remove('kilitli');
+        }).catch(e => {
+            kullaniciAdi = ad;
+            localStorage.setItem('halic_antik_ad', ad);
+            document.getElementById('aktifKullaniciGosterge').innerText = ad;
+            document.getElementById('kayitEkrani').style.display = 'none';
+            document.getElementById('mezatAlani').classList.remove('kilitli');
+        });
+    }
+
+    // TAM PROFİL VE HESAP YÖNETİMİ FONKSİYONLARI
+    function openRegisterModal() {
+        if (!kullaniciAdi) {
+            alert("Henüz kayıtlı bir hesabınız bulunmuyor. Lütfen önce kayıt formunu doldurun.");
+            return;
+        }
+
+        fetch('/durum-getir', { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.musteriler) {
+                let m = data.musteriler.find(x => x.ad === kullaniciAdi);
+                if (m) {
+                    document.getElementById('p_ad').value = m.ad || "";
+                    document.getElementById('p_tel').value = m.tel !== "-" ? m.tel : "";
+                    document.getElementById('p_mail').value = m.mail !== "-" ? m.mail : "";
+                    document.getElementById('p_adres').value = m.adres !== "-" ? m.adres : "";
+                    
+                    let rozet = document.getElementById('p_durum_rozet');
+                    if (m.durum === 'onayli') {
+                        rozet.innerText = "✅ Onaylı Üye";
+                        rozet.style.background = "var(--btn-green)";
+                    } else if (m.durum === 'engelli') {
+                        rozet.innerText = "🚫 Hesabınız Engellendi";
+                        rozet.style.background = "var(--btn-red)";
+                    } else {
+                        rozet.innerText = "⏳ Yönetici Onayı Bekliyor";
+                        rozet.style.background = "var(--accent-gold)";
+                        rozet.style.color = "#000";
+                    }
+                }
+            }
+            document.getElementById('profileModal').style.display = 'flex';
+        });
+    }
+
+    function profilGuncelle() {
+        let yeniAd = document.getElementById('p_ad').value.trim();
+        let tel = document.getElementById('p_tel').value.trim();
+        let mail = document.getElementById('p_mail').value.trim();
+        let adres = document.getElementById('p_adres').value.trim();
+
+        if (!yeniAd) { alert("Ad Soyad alanı boş bırakılamaz!"); return; }
+
+        fetch('/kayit-ol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ad: yeniAd, tel, mail, adres })
+        })
+        .then(res => res.json())
+        .then(d => {
+            alert("✅ Profil bilgileriniz başarıyla güncellendi!");
+            kullaniciAdi = yeniAd;
+            localStorage.setItem('halic_antik_ad', yeniAd);
+            document.getElementById('aktifKullaniciGosterge').innerText = yeniAd;
+            closeModal('profileModal');
+            veriCekIzleyici();
+        });
+    }
+
+    function hesabiTamamenSil() {
+        if (!confirm("Hesabınızı ve cihazınızdaki tüm kayıtları silmek istediğinize emin misiniz? Yeniden kayıt olmanız gerekecektir.")) {
+            return;
+        }
+
+        localStorage.removeItem('halic_antik_ad');
+        kullaniciAdi = "";
+        
+        document.getElementById('aktifKullaniciGosterge').innerText = "Giriş Yapılmadı";
+        document.getElementById('kayitEkrani').style.display = 'block';
+        document.getElementById('mezatAlani').classList.add('kilitli');
+        closeModal('profileModal');
+        
+        alert("🗑️ Hesabınız sıfırlandı. Yeni kayıt oluşturabilirsiniz.");
+    }
+
+    // Durum Verisi Çekme
+    function veriCekIzleyici() {
+        fetch('/durum-getir', { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => {
+            if(data.on_teklifler) {
+                sonGlobalOnTeklifler = data.on_teklifler;
+                if(secilenUrunId) urunSecimGuncellemeEkrani(secilenUrunId);
+            }
+
+            if(data.muzik_listesi && JSON.stringify(data.muzik_listesi) !== JSON.stringify(muzikListesiGuncel)) {
+                muzikListesiGuncel = data.muzik_listesi;
+                let audioEl = document.getElementById('arkaplanMuzik');
+                if(audioEl && muzikListesiGuncel.length > 0 && !audioEl.src) {
+                    audioEl.src = muzikListesiGuncel[muzikListesiGuncel.length - 1];
+                }
+            }
+
+            if(data.urunler) {
+                tumUrunlerArsivi = data.urunler;
+                let select = document.getElementById('urunListesiSecim');
+                let filtre = document.getElementById('kategoriFiltre').value;
+                let mevcutSecimDegeri = select.value;
+
+                select.innerHTML = '<option value="">İncelemek için ürün seçiniz...</option>';
+                tumUrunlerArsivi.forEach(u => {
+                    if(u.durum === 'Satıldı') return;
+                    if(filtre && u.kategori !== filtre) return;
+                    let opt = document.createElement('option');
+                    opt.value = u.id;
+                    opt.innerText = `Lot #${u.lot} - ${u.ad} (Başlangıç: ${u.fiyat} TL)`;
+                    select.appendChild(opt);
+                });
+                if(mevcutSecimDegeri) select.value = mevcutSecimDegeri;
+            }
+
+            let aktif = data.aktif_urun;
+            let medyaDiv = document.getElementById('medyaKapsayici');
+            
+            if (!secilenUrunId) {
+                if (!aktif || aktif.durum === 'Satıldı' || data.durum === "Satıldı") {
+                    document.getElementById('aktif_baslik').innerText = "Lot # - Sahnede aktif ürün yok";
+                    document.getElementById('currentBid').innerText = "0";
+                    document.getElementById('aktif_acilis_fiyat').innerText = "0 TL";
+                    document.getElementById('aktif_hemen_al_fiyat').innerText = "0 TL";
+                    document.getElementById('tanitimMetni').innerText = "Şu an sahnede ürün bulunmamaktadır.";
+                    document.getElementById('aktif_kazanan').innerText = "Yok";
+                    
+                    if(data.durum === "Satıldı") {
+                        document.getElementById('soldBanner').style.display = 'block';
+                        document.getElementById('soldWinnerName').innerText = data.kazanan || "Bilinmiyor";
+                        document.getElementById('soldPrice').innerText = data.pey || "0";
+                    } else {
+                        document.getElementById('soldBanner').style.display = 'none';
+                        medyaDiv.innerHTML = '<p style="color: #64748b; font-size: 13px;">📺 Canlı Sahne Bekleniyor...</p>';
+                        sonYuklenenMedyaUrl = null;
+                    }
+                } else {
+                    document.getElementById('soldBanner').style.display = 'none';
+                    document.getElementById('aktif_baslik').innerText = `Lot #${aktif.lot} - ${aktif.ad}`;
+                    let guncelPey = data.pey || aktif.fiyat;
+                    document.getElementById('currentBid').innerText = guncelPey;
+                    document.getElementById('aktif_acilis_fiyat').innerText = aktif.fiyat + " TL";
+                    document.getElementById('aktif_hemen_al_fiyat').innerText = (aktif.hemen_al_fiyat || 0) + " TL";
+                    document.getElementById('tanitimMetni').innerText = aktif.tanitim_yazisi || aktif.secere || "Hikaye girilmemiş.";
+                    document.getElementById('aktif_kazanan').innerText = data.kazanan || "Henüz Yok";
+
+                    let aktifVideo = aktif.video || aktif.vid;
+                    let aktifFoto = (aktif.fotograflar && aktif.fotograflar[0]) || aktif.foto || aktif.resim || aktif.gorsel;
+                    let hedefUrl = aktifVideo || aktifFoto;
+
+                    if (hedefUrl && hedefUrl !== sonYuklenenMedyaUrl) {
+                        sonYuklenenMedyaUrl = hedefUrl;
+                        medyaDiv.innerHTML = "";
+                        if(aktifVideo) {
+                            let v = document.createElement('video');
+                            v.id = "stageVideo";
+                            v.src = aktifVideo;
+                            v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+                            medyaDiv.appendChild(v);
+                        } else if(aktifFoto) {
+                            let img = document.createElement('img');
+                            img.src = aktifFoto;
+                            medyaDiv.appendChild(img);
+                        }
+                        medyaDiv.innerHTML += '<button class="audio-toggle" onclick="toggleAudio()">🔊 Sesi Aç / Kapat</button>';
+                    }
+                }
+            }
+
+            let sayacEl = document.getElementById('aktif_sayac');
+            let timerNum = document.getElementById('miniTimerNum');
+            let progressCircle = document.getElementById('timerProgressCircle');
+            let audioEl = document.getElementById('arkaplanMuzik');
+
+            if(data.durum === "Sayim") {
+                let kalan = Math.max(0, Math.ceil(data.sure_bitis - (Date.now() / 1000)));
+                sayacEl.innerText = kalan + " saniye kaldı";
+                timerNum.innerText = kalan;
+                let yuzde = kalan / 30;
+                let offset = 125 - (125 * yuzde);
+                progressCircle.style.strokeDashoffset = offset;
+                progressCircle.style.stroke = kalan <= 10 ? "var(--btn-red)" : "var(--accent-gold)";
+
+                if (kalan > 10) {
+                    if (audioEl.paused && muzikListesiGuncel.length > 0) audioEl.play().catch(e=>{});
+                } else {
+                    if (!audioEl.paused) audioEl.pause();
+                }
+            } else {
+                sayacEl.innerText = data.durum === "Satıldı" ? "ÜRÜN SATILDI!" : "Mezat Bekleniyor";
+                timerNum.innerText = "--";
+                progressCircle.style.strokeDashoffset = 125;
+                if(!audioEl.paused) audioEl.pause();
+            }
+
+            if(data.musteriler && kullaniciAdi) {
+                let m = data.musteriler.find(x => x.ad === kullaniciAdi);
+                if(m) document.getElementById('bonusGosterge').innerText = m.puan !== undefined ? m.puan : (m.bonus || 100);
+            }
+        }).catch(e=>{});
+    }
+
+    function urunSecimDegisti() {
+        let select = document.getElementById('urunListesiSecim');
+        secilenUrunId = select.value || null;
+        let anaKutu = document.getElementById('secilenUrunOnizleme');
+        let tekliflerKutusu = document.getElementById('urunOnTekliflerKutusu');
+        let medyaDiv = document.getElementById('medyaKapsayici');
+
+        if (!secilenUrunId) {
+            anaKutu.style.display = 'none';
+            tekliflerKutusu.style.display = 'none';
+            sonYuklenenMedyaUrl = null;
+            veriCekIzleyici();
+            return;
+        }
+
+        let secilenUrun = tumUrunlerArsivi.find(u => String(u.id) === String(secilenUrunId));
+        if (secilenUrun) {
+            anaKutu.style.display = 'block';
+            document.getElementById('secilenUrunBaslik').innerText = `Lot #${secilenUrun.lot} - ${secilenUrun.ad}`;
+            document.getElementById('secilenUrunKategori').innerText = secilenUrun.kategori || "Belirtilmemiş";
+            document.getElementById('secilenUrunFiyat').innerText = secilenUrun.fiyat + " TL";
+            document.getElementById('secilenUrunSecere').innerText = secilenUrun.tanitim_yazisi || secilenUrun.secere || "Hikaye girilmemiş.";
+            
+            let foto = (secilenUrun.fotograflar && secilenUrun.fotograflar[0]) || secilenUrun.foto || secilenUrun.resim;
+            let vid = secilenUrun.video || secilenUrun.vid;
+            
+            medyaDiv.innerHTML = "";
+            if(vid) {
+                medyaDiv.innerHTML = `<video src="${vid}" autoplay loop muted playsinline style="width:100%; height:100%; object-fit:contain;"></video>`;
+            } else if(foto) {
+                medyaDiv.innerHTML = `<img src="${foto}" style="width:100%; height:100%; object-fit:contain;" alt="${secilenUrun.ad}">`;
+            } else {
+                medyaDiv.innerHTML = `<p style="color: #64748b; font-size: 13px;">Görsel Bulunmuyor</p>`;
+            }
+
+            urunSecimGuncellemeEkrani(secilenUrunId);
+        }
+    }
+
+    function urunSecimGuncellemeEkrani(uId) {
+        let buUruneTeklifler = sonGlobalOnTeklifler.filter(t => String(t.urun_id) === String(uId));
+        let tekliflerKutusu = document.getElementById('urunOnTekliflerKutusu');
+        let tekliflerListeIci = document.getElementById('urunOnTekliflerListeIci');
+        tekliflerKutusu.style.display = 'block';
+        
+        if(buUruneTeklifler.length > 0) {
+            let html = '<ul style="margin:0; padding-left:15px;">';
+            buUruneTeklifler.forEach(t => {
+                html += `<li><b>${t.musteri_adi}</b>: <span style="color:var(--btn-green); font-weight:bold;">${t.teklif} TL</span></li>`;
+            });
+            html += '</ul>';
+            tekliflerListeIci.innerHTML = html;
+        } else {
+            tekliflerListeIci.innerHTML = '<span style="color:#64748b;">Bu ürün için henüz teklif yok. İlk teklifi verin!</span>';
+        }
+    }
+
+    function onTeklifGonder() {
+        let select = document.getElementById('urunListesiSecim');
+        let urunId = select.value;
+        let teklifMiktari = parseFloat(document.getElementById('onTeklifMiktari').value);
+
+        if(!urunId) { alert("Lütfen arşivden bir ürün seçin!"); return; }
+        if(isNaN(teklifMiktari) || teklifMiktari <= 0) { alert("Geçerli bir teklif tutarı girin!"); return; }
+
+        let secilenUrun = tumUrunlerArsivi.find(u => String(u.id) === String(urunId));
+        if (secilenUrun && teklifMiktari < secilenUrun.fiyat) {
+            alert(`⚠️ Ön teklif açılış fiyatından (${secilenUrun.fiyat} TL) düşük olamaz!`);
+            return;
+        }
+
+        fetch('/on-teklif-ver', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ urun_id: urunId, musteri_adi: kullaniciAdi, teklif: teklifMiktari })
+        }).then(res => res.json()).then(d => {
+            if(d.success) {
+                alert("✅ Ön teklifiniz iletildi!");
+                document.getElementById('onTeklifMiktari').value = "";
+                veriCekIzleyici();
+            } else {
+                alert(d.mesaj || "Teklif gönderilemedi.");
+            }
+        });
+    }
+
+    function yuzdeOnPeyVer() {
+        let current = parseFloat(document.getElementById('currentBid').innerText) || 0;
+        if(current <= 0) { alert("Geçerli bir ürün fiyatı yok!"); return; }
+        peyGonder(Math.round(current * 1.10));
+    }
+
+    function serbestPeyVer() {
+        let current = parseFloat(document.getElementById('currentBid').innerText) || 0;
+        let miktar = prompt(`Mevcut Fiyat: ${current} TL\nVermek istediğiniz teklifi (TL) girin:`);
+        if(!miktar) return;
+        
+        let tutar = parseFloat(miktar);
+        if(isNaN(tutar) || tutar <= current) {
+            alert(`⚠️ Teklifiniz mevcut fiyatın (${current} TL) üzerinde olmalıdır!`);
+            return;
+        }
+        peyGonder(tutar);
+    }
+
+    function peyGonder(miktar) {
+        if(!kullaniciAdi) { alert("Lütfen önce kaydolun!"); return; }
+        
+        fetch('/pey-ver', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_adi: kullaniciAdi, miktar: miktar, islem: 'pey' })
+        }).then(res => res.json()).then(d => {
+            if(!d.success) alert("⚠️ " + (d.mesaj || "Pey verilemedi!"));
+            else veriCekIzleyici();
+        });
+    }
+
+    function hemenAl() {
+        if(!confirm("Bu ürünü hemen al fiyatıyla satın almak istiyor musunuz?")) return;
+        fetch('/pey-ver', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_adi: kullaniciAdi, islem: 'hemen_al' })
+        }).then(res => res.json()).then(d => {
+            if(d.success) {
+                document.getElementById('congratsModal').style.display = 'flex';
+                veriCekIzleyici();
+            } else {
+                alert(d.mesaj || "İşlem gerçekleştirilemedi.");
+            }
+        });
+    }
+
+    function openPosModal() {
+        document.getElementById('posModal').style.display = 'flex';
+    }
+
+    function openLegalModal() {
+        document.getElementById('legalModal').style.display = 'flex';
+    }
+
+    function processPayment() {
+        alert("3D Secure yönlendiriliyor... Ödeme başarıyla onaylandı!");
+        closeModal('posModal');
+    }
+
+    function toggleAudio() {
+        const video = document.getElementById('stageVideo');
+        if(video) video.muted = !video.muted;
+    }
+
+    function sesliDinle() {
+        let metin = document.getElementById('tanitimMetni').innerText;
+        if(!metin || metin === "-") return;
+        if('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            let u = new SpeechSynthesisUtterance(metin);
+            u.lang = 'tr-TR';
+            window.speechSynthesis.speak(u);
+        }
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    // Otomatik Yenileme Döngüsü (1 Saniye)
+    setInterval(veriCekIzleyici, 1000);
+    veriCekIzleyici();
+</script>
+</body>
+</html>
