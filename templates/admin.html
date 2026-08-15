@@ -1,0 +1,367 @@
+<script>
+    // 1. SAF WEBSOCKET ZORLAMASI (400/429 HATASINI BİTİRİR)
+    const socket = io({
+        transports: ['websocket'],
+        upgrade: false
+    });
+    
+    let aktifSeciliUrunId = null;
+    let aktifHikayeMetni = "";
+    let sonTeklifSayisi = 0;
+    let audioCtx = null;
+
+    function sesKilidiAc() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function canSesiCal() {
+        sesKilidiAc();
+        try {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(987.77, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.6);
+        } catch(e) {}
+    }
+
+    socket.on('izleyici_sayisi_guncelle', function(data) {
+        if(data && data.sayi) {
+            document.getElementById('adminOnlineCount').innerText = data.sayi;
+        }
+    });
+
+    socket.on('sayac_guncelle', function(data) {
+        document.getElementById('s_sayac').innerText = data.kalan;
+    });
+
+    socket.on('sayac_bitti', function(data) {
+        document.getElementById('s_sayac').innerText = "Bitti";
+        canSesiCal();
+    });
+
+    socket.on('pey_guncellendi', function(data) {
+        document.getElementById('s_aktif_pey').innerText = data.guncel_fiyat + " TL";
+        document.getElementById('s_aktif_kazanan').innerText = data.kazanan_ad;
+        canSesiCal();
+    });
+
+    // 2. HTTP FETCH YERİNE DOĞRUDAN SOKETTEN GELEN MERKEZİ VERİ
+    socket.on('tam_durum_guncelle', function(data) {
+        let aktif = data.aktif_urun;
+        if(aktif && data.durum !== "Satıldı") {
+            aktifSeciliUrunId = aktif.id;
+            aktifHikayeMetni = aktif.tanitim_yazisi || "";
+            document.getElementById('s_aktif_ad').innerText = `#${aktif.lot} - ${aktif.ad}`;
+            document.getElementById('s_aktif_pey').innerText = (data.pey || aktif.fiyat) + " TL";
+            document.getElementById('s_aktif_kazanan').innerText = data.kazanan || "Yok";
+            document.getElementById('s_durum').innerText = data.durum;
+            
+            if(data.durum === "Sayim") {
+                let kalan = Math.max(0, Math.ceil(data.sure_bitis - (Date.now() / 1000)));
+                document.getElementById('s_sayac').innerText = kalan;
+            } else {
+                document.getElementById('s_sayac').innerText = "-";
+            }
+        } else {
+            document.getElementById('s_aktif_ad').innerText = "Sahnede ürün yok";
+            document.getElementById('s_aktif_pey').innerText = "0 TL";
+            document.getElementById('s_aktif_kazanan').innerText = "Yok";
+            document.getElementById('s_durum').innerText = "Bekliyor";
+            document.getElementById('s_sayac').innerText = "-";
+        }
+
+        // Ön Teklifler
+        let onTeklifDiv = document.getElementById('yoneticiOnTekliflerListesi');
+        if(data.on_teklifler && data.on_teklifler.length > 0) {
+            if(data.on_teklifler.length > sonTeklifSayisi && sonTeklifSayisi !== 0) {
+                canSesiCal();
+            }
+            sonTeklifSayisi = data.on_teklifler.length;
+
+            let html = '<table><thead><tr><th>Saat</th><th>Müşteri</th><th>Ürün</th><th>Teklif</th><th>İşlem</th></tr></thead><tbody>';
+            data.on_teklifler.forEach((t, index) => {
+                html += `<tr>
+                    <td style="font-size:11px;">${t.zaman}</td>
+                    <td style="font-weight:bold; color:#38bdf8;">${t.musteri_adi}</td>
+                    <td>Lot #${t.lot} - ${t.urun_adi}</td>
+                    <td style="color:var(--btn-green); font-weight:bold;">${t.teklif} TL</td>
+                    <td>
+                        <button onclick="sahneyeSur('${t.urun_id}')" class="btn btn-green" style="padding:2px 6px; font-size:10px;">Sahneye Al</button>
+                        <button onclick="onTeklifSil(${index})" class="btn btn-red" style="padding:2px 6px; font-size:10px;">Sil</button>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            onTeklifDiv.innerHTML = html;
+        } else {
+            sonTeklifSayisi = 0;
+            onTeklifDiv.innerHTML = '<p style="color: var(--text-muted); padding: 8px;">Henüz gelen ön teklif yok...</p>';
+        }
+
+        // Ürün Listesi
+        let listeDiv = document.getElementById('yoneticiUrunListesi');
+        listeDiv.innerHTML = "";
+        if(data.urunler && data.urunler.length > 0) {
+            let aktifUrunVarMi = false;
+            data.urunler.forEach(u => {
+                if(u.durum === 'Satıldı') return; 
+                aktifUrunVarMi = true;
+                let div = document.createElement('div');
+                div.className = "urun-kart";
+                div.innerHTML = `
+                    <div><b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <span style="color:var(--text-muted);">[${u.durum}]</span></div>
+                    <div style="display:flex; gap:4px;">
+                        <button onclick="sahneyeSur('${u.id}')" class="btn btn-blue" style="padding:3px 6px; font-size:10px;">Sahneye Sür</button>
+                        <button onclick="urunSil('${u.id}')" class="btn btn-red" style="padding:3px 6px; font-size:10px;">Sil</button>
+                    </div>
+                `;
+                listeDiv.appendChild(div);
+            });
+
+            if(!aktifUrunVarMi) {
+                listeDiv.innerHTML = '<div style="padding: 6px; color:var(--text-muted);">Listede bekleyen ürün yok.</div>';
+            }
+        } else {
+            listeDiv.innerHTML = '<div style="padding: 6px; color:var(--text-muted);">Listede bekleyen ürün yok.</div>';
+        }
+
+        // Ciro & Müşteri Dosyaları
+        let tabloBody = document.getElementById('musteriOzetTablo');
+        let genelCiro = 0;
+        if(data.gruplanmis_dosyalar && data.gruplanmis_dosyalar.length > 0) {
+            tabloBody.innerHTML = "";
+            data.gruplanmis_dosyalar.forEach((grup) => {
+                genelCiro += grup.toplam_tutar;
+                let urunListeMetni = grup.urunler.map(u => `• Lot #${u.lot} - ${u.urun_adi} (${u.fiyat} TL)`).join("<br>");
+                let waMesaj = encodeURIComponent(`Sayın ${grup.musteri_adi},\n\nHâliç Antik Mezatı'ndan kazandığınız ürünler:\n` + 
+                    grup.urunler.map(u => `- Lot #${u.lot} ${u.urun_adi}: ${u.fiyat} TL`).join("\n") + 
+                    `\n\nToplam Borcunuz: ${grup.toplam_tutar} TL\nTeşekkür ederiz!`);
+
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight:bold; color:#38bdf8;">${grup.musteri_adi}</td>
+                    <td style="font-size:11px;">${urunListeMetni}</td>
+                    <td style="color:var(--btn-green); font-weight:bold;">${grup.toplam_tutar} TL</td>
+                    <td>
+                        <a href="https://api.whatsapp.com/send?text=${waMesaj}" target="_blank" class="btn btn-green" style="padding:3px 6px; font-size:10px; text-decoration:none;">💬 WhatsApp</a>
+                        <button onclick="excelAktarTekil('${grup.musteri_adi}', ${grup.toplam_tutar})" class="btn btn-blue" style="padding:3px 6px; font-size:10px;">📊 Excel</button>
+                        <button onclick="musteriDosyaSilAd('${grup.musteri_adi}')" class="btn btn-red" style="padding:3px 6px; font-size:10px;">🗑️ Sil</button>
+                    </td>
+                `;
+                tabloBody.appendChild(tr);
+            });
+            document.getElementById('toplamCiroYazisi').innerText = genelCiro + " TL";
+        } else {
+            tabloBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center;">Henüz satılan ürün yok.</td></tr>';
+            document.getElementById('toplamCiroYazisi').innerText = "0 TL";
+        }
+
+        // Müşteri Yönetimi
+        let mBody = document.getElementById('musterilerTableBody');
+        let onayBekleyenBody = document.getElementById('onayBekleyenMusterilerBody');
+        
+        if(data.musteriler && data.musteriler.length > 0) {
+            mBody.innerHTML = "";
+            onayBekleyenBody.innerHTML = "";
+            let bekleyenSayisi = 0;
+
+            data.musteriler.forEach(m => {
+                let mDurum = m.durum || (m.onayli_mi ? 'onayli' : 'bekliyor');
+
+                if(mDurum === 'bekliyor') {
+                    bekleyenSayisi++;
+                    let trBekleyen = document.createElement('tr');
+                    trBekleyen.innerHTML = `
+                        <td><b>${m.ad}</b></td>
+                        <td>${m.tel || '-'}</td>
+                        <td>
+                            <button class="btn btn-green" style="padding: 3px 6px; font-size: 10px;" onclick="musteriDurumDegistir(${m.id}, 'onayli')">✓ Onayla</button>
+                            <button class="btn btn-orange" style="padding: 3px 6px; font-size: 10px;" onclick="musteriDurumDegistir(${m.id}, 'engelli')">🚫 Engelle</button>
+                            <button class="btn btn-red" style="padding: 3px 6px; font-size: 10px;" onclick="musteriSil(${m.id})">🗑️ Sil</button>
+                        </td>
+                    `;
+                    onayBekleyenBody.appendChild(trBekleyen);
+                }
+
+                let puanDegeri = m.puan !== undefined ? m.puan : (m.bonus || 100);
+                let skorMetni = "";
+                let durumRozeti = "";
+
+                if(mDurum === 'engelli') {
+                    skorMetni = `<b style="color: var(--btn-red);">%${puanDegeri} (Engelli)</b>`;
+                    durumRozeti = `<span class="badge badge-red">Engellenmiş</span>`;
+                } else if(puanDegeri >= 70) {
+                    skorMetni = `<b style="color: var(--btn-green);">%${puanDegeri} (Güvenilir)</b>`;
+                    durumRozeti = `<span class="badge badge-green">Onaylı</span>`;
+                } else {
+                    skorMetni = `<b style="color: var(--accent-gold);">%${puanDegeri} (Orta/Risk)</b>`;
+                    durumRozeti = `<span class="badge badge-yellow">Kısıtlı</span>`;
+                }
+
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${m.ad}</b></td>
+                    <td>${m.tel || '-'}</td>
+                    <td>${skorMetni}</td>
+                    <td>
+                        ${durumRozeti}
+                        <button class="btn btn-red" style="padding:2px 4px; font-size:9px; margin-left:4px;" onclick="musteriSil(${m.id})">Sil</button>
+                    </td>
+                `;
+                mBody.appendChild(tr);
+            });
+
+            document.getElementById('bekleyenSayisi').innerText = `${bekleyenSayisi} Bekleyen`;
+            if(bekleyenSayisi === 0) {
+                onayBekleyenBody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted); text-align:center;">Onay bekleyen müşteri yok.</td></tr>';
+            }
+        } else {
+            mBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted); text-align:center;">Kayıtlı müşteri yok.</td></tr>';
+            onayBekleyenBody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted); text-align:center;">Onay bekleyen müşteri yok.</td></tr>';
+            document.getElementById('bekleyenSayisi').innerText = `0 Bekleyen`;
+        }
+    });
+
+    function dosyaSecildiBilgi(input) {
+        let sayi = input.files.length;
+        document.getElementById('secilenDosyaBilgi').innerText = sayi > 0 ? `${sayi} dosya seçildi.` : "Seçilen dosya yok.";
+    }
+
+    function urunEkle() {
+        let formData = new FormData();
+        formData.append('lot', document.getElementById('y_lot').value);
+        formData.append('ad', document.getElementById('y_ad').value);
+        formData.append('kategori', document.getElementById('y_kategori').value);
+        formData.append('fiyat', document.getElementById('y_fiyat').value);
+        formData.append('hemen_al_fiyat', document.getElementById('y_hemen_al').value);
+        formData.append('tanitim_yazisi', document.getElementById('y_tanitim').value);
+
+        let dosyalar = document.getElementById('y_dosyalar').files;
+        for (let i = 0; i < dosyalar.length; i++) {
+            formData.append('dosyalar', dosyalar[i]);
+        }
+
+        fetch('/urun-ekle', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(d => { 
+            if(d.success) { 
+                alert("✅ Ürün ve medya veritabanına eklendi!"); 
+                document.getElementById('addProductForm').reset();
+                document.getElementById('secilenDosyaBilgi').innerText = "Seçilen dosya yok.";
+            } 
+        });
+    }
+
+    function muzikYukle() {
+        let dosya = document.getElementById('muzikDosya').files[0];
+        if(!dosya) { alert("Lütfen bir müzik dosyası seçin!"); return; }
+        let formData = new FormData();
+        formData.append('muzik_dosyasi', dosya);
+        fetch('/muzik-ekle', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(d => { if(d.success) alert("🎵 Müzik yüklendi ve yayına alındı!"); });
+    }
+
+    function sahneyeSur(id) {
+        fetch('/sahneye-al', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ urun_id: id })
+        }).then(() => canSesiCal());
+    }
+
+    function mezatBaslat(sure) {
+        if(!aktifSeciliUrunId) { alert("Önce sahneye bir ürün seçin veya sürün!"); return; }
+        fetch('/mezat-baslat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ urun_id: aktifSeciliUrunId, sure: sure })
+        }).then(() => canSesiCal());
+    }
+
+    function cancelLastBid() {
+        if(confirm("Son verilen peyi iptal etmek istediğinize emin misiniz?")) {
+            fetch('/son-peyi-iptal-et', { method: 'POST' });
+        }
+    }
+
+    function satisBitir() {
+        fetch('/satis-bitir', { method: 'POST' }).then(() => canSesiCal());
+    }
+
+    function musteriDurumDegistir(kullaniciId, yeniDurum) {
+        fetch('/musteri-durum-guncelle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kullanici_id: kullaniciId, durum: yeniDurum })
+        });
+    }
+
+    function musteriSil(kullaniciId) {
+        if (!confirm("Bu müşteriyi sistemden tamamen silmek istediğinize emin misiniz?")) return;
+        fetch('/musteri-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kullanici_id: kullaniciId })
+        });
+    }
+
+    function urunSil(id) {
+        if(!confirm("Bu ürünü arşivden tamamen silmek istediğinize emin misiniz?")) return;
+        fetch('/urun-sil', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: id })
+        });
+    }
+
+    function onTeklifSil(index) {
+        if(!confirm("Bu ön teklifi silmek istediğinize emin misiniz?")) return;
+        fetch('/on-teklif-sil', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ index: index })
+        });
+    }
+
+    function musteriDosyaSilAd(musteriAdi) {
+        if(!confirm(`${musteriAdi} adlı müşterinin tüm borç dosyasını silmek istiyor musunuz?`)) return;
+        fetch('/musteri-dosya-sil', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_adi: musteriAdi })
+        });
+    }
+
+    function excelAktarTekil(musteriAdi, toplamTutar) {
+        let csv = "\uFEFFMusteri Adi;Toplam Tutar (TL)\n" + musteriAdi + ";" + toplamTutar;
+        let blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${musteriAdi}_hesap_ozeti.csv`;
+        link.click();
+    }
+
+    function yoneticiSesliOku() {
+        let metin = document.getElementById('y_tanitim').value.trim() || aktifHikayeMetni;
+        if(!metin) { alert("Okunacak tanıtım metni bulunamadı!"); return; }
+        if('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            let u = new SpeechSynthesisUtterance(metin);
+            u.lang = 'tr-TR';
+            window.speechSynthesis.speak(u);
+        }
+    }
+</script>
