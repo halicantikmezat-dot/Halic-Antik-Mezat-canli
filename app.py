@@ -4,6 +4,8 @@ monkey.patch_all()
 import os
 import time
 import hashlib
+import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -13,12 +15,12 @@ import pandas as pd
 
 app = Flask(__name__)
 
-db_url = os.environ.get('DATABASE_URL')
-if db_url and db_url.startswith("postgres://"):
+db_url = os.environ.get('DATABASE_URL', 'sqlite:///halic_mezat.db')
+if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'halic_hamid_antik_mezat_gizli_anahtar_1453')
-app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///halic_mezat.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 if os.path.exists('/var/data'):
@@ -68,7 +70,7 @@ class Urun(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     lot_no = db.Column(db.Integer, nullable=False)
     urun_adi = db.Column(db.String(200), nullable=False)
-    kategori = db.Column(db.String(100), default="Mobilya ve ahşap ürünler")
+    kategori = db.Column(db.String(100), default="Hediyelik eşya")
     acilis_fiyati = db.Column(db.Float, nullable=False, default=0.0)
     guncel_fiyat = db.Column(db.Float, nullable=False, default=0.0)
     hemen_al_fiyati = db.Column(db.Float, nullable=True, default=0.0)
@@ -142,9 +144,6 @@ mezat_durumu = {
     "kazanan": "Yok"
 }
 
-# ==========================================
-# POSTGRESQL OTOMATİK SÜTUN ONARICI (MİGRATİON)
-# ==========================================
 def veritabani_tablolari_onar():
     with app.app_context():
         db.create_all()
@@ -204,12 +203,206 @@ def geri_sayim_gorevi(saniye):
 def izleyici_index():
     return render_template('index.html')
 
+@app.route('/vitrin')
+def vitrin():
+    return render_template('vitrin.html')
+
+@app.route('/kategoriler-listesi', methods=['GET'])
+def kategoriler_listesi():
+    try:
+        kategoriler = db.session.query(Urun.kategori).distinct().all()
+        kat_listesi = sorted([k[0] for k in kategoriler if k[0] and k[0].strip()])
+        return jsonify({"kategoriler": kat_listesi})
+    except Exception:
+        return jsonify({"kategoriler": []})
+
+@app.route('/vitrin-urunler', methods=['GET'])
+def vitrin_urunler():
+    sayfa = int(request.args.get('sayfa', 1))
+    limit = int(request.args.get('limit', 24))
+    kategori = (request.args.get('kategori') or '').strip()
+    arama = (request.args.get('arama') or '').strip()
+
+    sorgu = Urun.query
+    if kategori and kategori not in ['Tümü', 'Tüm Kategoriler', '']:
+        sorgu = sorgu.filter(Urun.kategori == kategori)
+    if arama:
+        sorgu = sorgu.filter(Urun.urun_adi.ilike(f"%{arama}%"))
+
+    toplam = sorgu.count()
+    urunler = sorgu.order_by(Urun.lot_no.asc()).offset((sayfa - 1) * limit).limit(limit).all()
+
+    return jsonify({
+        "toplam": toplam,
+        "sayfa": sayfa,
+        "toplam_sayfa": (toplam + limit - 1) // limit,
+        "urunler": [u.to_dict() for u in urunler]
+    })
+
 @app.route('/admin', methods=['GET'])
 def admin_panel():
     sifre = request.args.get('sifre')
     if sifre != '1453':
         return "<h3 style='color:red; text-align:center;'>Yetkisiz erişim! Yönetici şifresi gerekli. (?sifre=1453)</h3>", 403
     return render_template('admin.html')
+
+# ==========================================
+# MEVCUT TÜM ÜRÜNLERİN FİYATINI %30 ARTIR
+# ==========================================
+@app.route('/fiyatlari-yuzde-artir', methods=['POST'])
+def fiyatlari_yuzde_artir():
+    sifre = request.args.get('sifre') or request.form.get('sifre')
+    if sifre != '1453':
+        return jsonify({"success": False, "mesaj": "Yetkisiz erişim!"}), 403
+
+    veri = request.json or {}
+    oran = float(veri.get('oran', 30))  # Varsayılan %30
+
+    try:
+        urunler = Urun.query.all()
+        guncellenen_sayisi = 0
+        carpan = 1.0 + (oran / 100.0)
+
+        for u in urunler:
+            u.acilis_fiyati = round(u.acilis_fiyati * carpan, 2)
+            u.guncel_fiyat = u.acilis_fiyati
+            u.hemen_al_fiyati = round(u.acilis_fiyati * 1.5, 2)
+            guncellenen_sayisi += 1
+
+        db.session.commit()
+        socketio.emit('veri_guncellendi')
+        return jsonify({"success": True, "mesaj": f"Tebrikler! {guncellenen_sayisi} adet ürünün açılış fiyatına %{oran} (KDV + Kâr) başarıyla uygulandı."})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(e)}), 500
+
+# ==========================================
+# TOPLU ÜRÜN YÜKLEME (OTOMATİK %30 EKLENİR)
+# ==========================================
+@app.route('/toplu-urun-yukle', methods=['POST'])
+def toplu_urun_yukle():
+    sifre = request.args.get('sifre') or request.form.get('sifre')
+    if sifre != '1453':
+        return jsonify({"success": False, "mesaj": "Yetkisiz erişim!"}), 403
+
+    xml_url = request.form.get('xml_url')
+    dosya = request.files.get('dosya')
+
+    if not dosya and not xml_url:
+        return jsonify({"success": False, "mesaj": "Lütfen bir dosya seçin veya XML bağlantı linki girin!"}), 400
+
+    eklenen_sayisi = 0
+
+    try:
+        xml_icerik = None
+
+        if xml_url and xml_url.strip().startswith('http'):
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            resp = requests.get(xml_url.strip(), headers=headers, timeout=90)
+            resp.encoding = 'utf-8'
+            xml_icerik = resp.content
+
+        elif dosya and dosya.filename:
+            filename = dosya.filename.lower()
+
+            if filename.endswith(('.xlsx', '.xls', '.csv')):
+                if filename.endswith('.csv'):
+                    df = pd.read_csv(dosya)
+                else:
+                    df = pd.read_excel(dosya)
+
+                mevcut_en_buyuk_lot = db.session.query(db.func.max(Urun.lot_no)).scalar() or 0
+
+                for _, row in df.iterrows():
+                    mevcut_en_buyuk_lot += 1
+                    lot_no = int(row.get('Lot No', mevcut_en_buyuk_lot)) if pd.notna(row.get('Lot No')) else mevcut_en_buyuk_lot
+                    urun_adi = str(row.get('Ürün Adı', 'İsimsiz Ürün')).strip()
+                    kategori = str(row.get('Kategori', 'Hediyelik eşya')).strip()
+                    ham_fiyat = float(row.get('Açılış Fiyatı', 0)) if pd.notna(row.get('Açılış Fiyatı')) else 0.0
+                    acilis_fiyati = round(ham_fiyat * 1.30, 2)
+                    hemen_al = float(row.get('Hemen Al Fiyatı', 0)) if pd.notna(row.get('Hemen Al Fiyatı')) else (acilis_fiyati * 1.5)
+                    tanitim = str(row.get('Açıklama', '')).strip() if pd.notna(row.get('Açıklama')) else ''
+                    
+                    fotolar_raw = str(row.get('Görseller', '')).strip() if pd.notna(row.get('Görseller')) else ''
+                    fotograflar = [f.strip() for f in fotolar_raw.split(',') if f.strip()]
+
+                    yeni_urun = Urun(
+                        lot_no=lot_no,
+                        urun_adi=urun_adi,
+                        kategori=kategori,
+                        acilis_fiyati=acilis_fiyati,
+                        guncel_fiyat=acilis_fiyati,
+                        hemen_al_fiyati=hemen_al,
+                        tanitim_yazisi=tanitim,
+                        fotograflar=fotograflar,
+                        durum="Katalog"
+                    )
+                    db.session.add(yeni_urun)
+                    eklenen_sayisi += 1
+
+                db.session.commit()
+                socketio.emit('veri_guncellendi')
+                return jsonify({"success": True, "mesaj": f"Tebrikler! Toplam {eklenen_sayisi} adet ürün başarıyla aktarıldı."})
+
+            elif filename.endswith('.xml'):
+                xml_icerik = dosya.read()
+
+        if xml_icerik:
+            root = ET.fromstring(xml_icerik)
+            mevcut_en_buyuk_lot = db.session.query(db.func.max(Urun.lot_no)).scalar() or 0
+            urun_listesi = root.findall('.//Urun') or root.findall('.//urun') or root.findall('.//item') or root.findall('.//product')
+
+            for item in urun_listesi:
+                mevcut_en_buyuk_lot += 1
+                ad = item.findtext('Baslik') or item.findtext('urun_adi') or item.findtext('title') or item.findtext('name') or 'İsimsiz Ürün'
+                
+                kat = item.findtext('Kategori') or item.findtext('kategori') or 'Hediyelik eşya'
+                if '>' in kat:
+                    kat = kat.split('>')[-1].strip()
+
+                # Geliş fiyatını oku ve %30 (KDV + Kâr) ekle
+                fiyat_raw = item.findtext('Fiyat1_TL') or item.findtext('Fiyat1') or item.findtext('acilis_fiyati') or item.findtext('price') or '0'
+                try:
+                    ham_fiyat = float(str(fiyat_raw).replace('.', '').replace(',', '.').strip())
+                    fiyat = round(ham_fiyat * 1.30, 2)
+                except:
+                    fiyat = 0.0
+
+                aciklama = item.findtext('Detay') or item.findtext('Aciklama') or item.findtext('description') or ''
+                
+                resimler = []
+                resim_kutusu = item.find('Resimler')
+                if resim_kutusu is not None:
+                    for child in resim_kutusu:
+                        if child.text and child.text.strip():
+                            resimler.append(child.text.strip())
+                
+                if not resimler:
+                    tek_resim = item.findtext('Resim') or item.findtext('resim') or item.findtext('image')
+                    if tek_resim:
+                        resimler = [tek_resim.strip()]
+
+                yeni_urun = Urun(
+                    lot_no=mevcut_en_buyuk_lot,
+                    urun_adi=ad.strip(),
+                    kategori=kat.strip() or "Hediyelik eşya",
+                    acilis_fiyati=fiyat,
+                    guncel_fiyat=fiyat,
+                    hemen_al_fiyati=round(fiyat * 1.5, 2),
+                    tanitim_yazisi=aciklama.strip(),
+                    fotograflar=resimler,
+                    durum="Katalog"
+                )
+                db.session.add(yeni_urun)
+                eklenen_sayisi += 1
+
+            db.session.commit()
+            socketio.emit('veri_guncellendi')
+            return jsonify({"success": True, "mesaj": f"Tebrikler! XML üzerinden {eklenen_sayisi} adet ürün %30 KDV+Kâr eklenerek aktarıldı."})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Hata oluştu: {str(e)}"}), 500
 
 @app.route('/durum-getir', methods=['GET'])
 def durum_getir():
@@ -588,6 +781,7 @@ def sahneye_al():
     aktif_urun_id = urun.id
     mezat_durumu['durum'] = 'Bekliyor'
     mezat_durumu['sure_bitis'] = 0
+    urun.durum = 'Aktif'
     
     en_yuksek_ot = OnTeklif.query.filter_by(urun_id=urun_id).order_by(OnTeklif.teklif.desc()).first()
     if en_yuksek_ot:
@@ -786,7 +980,7 @@ def urun_ekle():
         yeni_urun = Urun(
             lot_no=lot_no,
             urun_adi=request.form.get('ad', 'İsimsiz Ürün'),
-            kategori=request.form.get('kategori', 'Mobilya ve ahşap ürünler'),
+            kategori=request.form.get('kategori', 'Hediyelik eşya'),
             acilis_fiyati=float(request.form.get('fiyat') or 0),
             guncel_fiyat=float(request.form.get('fiyat') or 0),
             hemen_al_fiyati=float(request.form.get('hemen_al_fiyat') or 0),
@@ -914,7 +1108,6 @@ def handle_disconnect():
         aktif_izleyici_sayisi -= 1
     socketio.emit('izleyici_sayisi_guncelle', {'sayi': aktif_izleyici_sayisi})
 
-# Tabloları ve eksik sütunları otomatik onar
 veritabani_tablolari_onar()
 
 if __name__ == '__main__':
