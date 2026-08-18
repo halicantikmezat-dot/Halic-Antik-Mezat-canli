@@ -1,0 +1,142 @@
+// ==========================================
+// SOCKET.IO VE CANLI BAĞLANTI KURULUMU
+// ==========================================
+const socket = io();
+
+// Anlık izleyici sayısı
+socket.on('izleyici_sayisi_guncelle', function(data) {
+    const izleyiciEl = document.getElementById('izleyici-sayisi');
+    if (izleyiciEl) izleyiciEl.innerText = data.sayi;
+});
+
+// Yeni pey/teklif geldiğinde anında ekrana bas
+socket.on('pey_guncellendi', function(data) {
+    guncellePeyVeKazanan(data.guncel_fiyat, data.kazanan_ad);
+    sahneyiGuncelle();
+});
+
+// Sunucuda herhangi bir veri değiştiğinde anında sahneyi tazele
+socket.on('veri_guncellendi', function() {
+    sahneyiGuncelle();
+});
+
+// Sayaç anlık geri sayım güncellemesi
+socket.on('sayac_guncelle', function(data) {
+    const sayacEl = document.getElementById('sayac') || document.querySelector('.sayac-deger');
+    if (sayacEl) sayacEl.innerText = data.kalan + " sn";
+});
+
+// Süre uzatıldığında bildirim
+socket.on('sayac_uzatildi', function(data) {
+    const sayacEl = document.getElementById('sayac');
+    if (sayacEl) sayacEl.innerText = data.kalan + " sn";
+});
+
+// ==========================================
+// YARDIMCI GÜNCELLEME İŞLEVLERİ
+// ==========================================
+
+function guncellePeyVeKazanan(fiyat, kazanan) {
+    if (fiyat !== undefined && fiyat !== null) {
+        const fiyatHedefleri = ['fiyat', 'guncel-pey', 'guncel-fiyat', 'mevcut-pey', 'canli-fiyat'];
+        fiyatHedefleri.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = fiyat + ' TL';
+        });
+    }
+
+    if (kazanan) {
+        const kazananHedefleri = ['kazanan-adi', 'kazanan-kisi', 'son-teklif-veren', 'kazanan'];
+        kazananHedefleri.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerText = kazanan;
+        });
+    }
+}
+
+// ==========================================
+// TEKLİF VE SAHNE İŞLEVLERİ
+// ==========================================
+
+// Sunucuya yeni bir pey/teklif gönderen fonksiyon
+async function teklifVer(urunId, musteriAdi, miktar) {
+    try {
+        const response = await fetch('/pey-ver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                urun_id: urunId, 
+                musteri_adi: musteriAdi, 
+                miktar: miktar,
+                islem: 'pey'
+            })
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            // Başarılı olduğu an beklemeden yerel ekranı hemen tazele
+            await sahneyiGuncelle();
+        } else {
+            alert(result.mesaj || "Pey verilemedi!");
+        }
+    } catch (error) {
+        console.error("Teklif verilirken hata oluştu:", error);
+    }
+}
+
+// %10 Artır butonu için pratik tetikleyici (Eğer sayfada kullanılıyorsa)
+async function yuzdeOnArtir(urunId, musteriAdi) {
+    try {
+        const response = await fetch('/pey-ver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                urun_id: urunId, 
+                musteri_adi: musteriAdi, 
+                artis: 0,
+                islem: 'pey'
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            await sahneyiGuncelle();
+        } else {
+            alert(result.mesaj || "Pey verilemedi!");
+        }
+    } catch (error) {
+        console.error("Artış yapılırken hata:", error);
+    }
+}
+
+// Sahnedeki ürünü ve genel durumu anlık güncelleyen fonksiyon
+async function sahneyiGuncelle() {
+    try {
+        const response = await fetch('/canli-durum');
+        const data = await response.json();
+        
+        // Fiyat ve Kazanan Güncelle
+        guncellePeyVeKazanan(data.pey, data.kazanan);
+
+        // Durum Metni (Bekliyor / Sayım / Satıldı)
+        const durumEl = document.getElementById('mezat-durumu') || document.getElementById('durum');
+        if (durumEl && data.durum) {
+            durumEl.innerText = data.durum;
+        }
+
+        // Aktif Ürün Sahnesi
+        if (data.aktif_urun) {
+            const urunAdiEl = document.getElementById('urun-adi') || document.getElementById('sahne-urun-adi');
+            if (urunAdiEl) urunAdiEl.innerText = data.aktif_urun.ad;
+            
+            const lotEl = document.getElementById('lot-no') || document.getElementById('sahne-lot');
+            if (lotEl) lotEl.innerText = 'LOT #' + data.aktif_urun.lot;
+        }
+    } catch (error) {
+        console.error("Sahne güncellenirken hata oluştu:", error);
+    }
+}
+
+// Sayfa ilk açıldığında sahneyi hemen doldur
+document.addEventListener('DOMContentLoaded', () => {
+    sahneyiGuncelle();
+});
