@@ -317,7 +317,6 @@ def durum_getir():
             "ip": m.ip_adresi or "-"
         } for m in tum_kullanicilar]
 
-        # Satılan ürünleri doğrudan veritabanından süz ve müşteriye mühürle
         satilan_urunler = Urun.query.filter(or_(Urun.durum == "Satıldı", Urun.durum == "satildi")).all()
         gruplanmis_dosyalar = {}
 
@@ -326,7 +325,6 @@ def durum_getir():
             if not m_adi or m_adi.lower() in ["yok", "none", "-", ""]:
                 continue
 
-            # Müşteriyi normalize edilmiş anahtarla grupla (harf duyarsız)
             norm_key = m_adi.lower()
             if norm_key not in gruplanmis_dosyalar:
                 gruplanmis_dosyalar[norm_key] = {
@@ -386,7 +384,7 @@ def durum_getir():
         return jsonify({"error": str(e), "urunler": []}), 200
 
 # ==========================================
-# PEY VERME VE HEMEN AL SATIŞI (15 SN DAHİL)
+# PEY VERME VE HEMEN AL SATIŞI
 # ==========================================
 @app.route('/pey-ver', methods=['POST'])
 def pey_ver():
@@ -403,7 +401,6 @@ def pey_ver():
     if kullanici.durum == 'engellendi':
         return jsonify({"success": False, "mesaj": "Hesabınız engellendiği için teklif veremezsiniz."})
 
-    # Kesin kullanıcı adını formatla
     musteri_adi = kullanici.ad_soyad
 
     raw_uid = veri.get('urun_id') or aktif_urun_id
@@ -418,17 +415,14 @@ def pey_ver():
 
     islem = veri.get('islem', 'pey')
 
-    # HEMEN AL İŞLEMİ
     if islem == 'hemen_al':
         hemen_al_fiyat = float(urun.hemen_al_fiyati if (urun.hemen_al_fiyati and urun.hemen_al_fiyati > 0) else (urun.guncel_fiyat or urun.acilis_fiyati))
         sayac_aktif = False
         
-        # 1. Ürünü mühürle
         urun.durum = 'Satıldı'
         urun.guncel_fiyat = hemen_al_fiyat
         urun.kazanan_adi = musteri_adi
         
-        # 2. Mezat durumunu güncelle
         mezat_durumu['durum'] = 'Satıldı'
         mezat_durumu['kazanan'] = musteri_adi
         mezat_durumu['pey'] = hemen_al_fiyat
@@ -439,7 +433,6 @@ def pey_ver():
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
         db.session.commit()
         
-        # Önbelleği sıfırla
         _son_durum_verisi = None
         _son_durum_zamani = 0
         _son_canli_verisi = None
@@ -451,7 +444,6 @@ def pey_ver():
         
         return jsonify({"success": True, "guncel_fiyat": hemen_al_fiyat, "kazanan": musteri_adi})
 
-    # NORMAL PEY İŞLEMİ
     if islem == 'pey':
         mevcut_fiyat = float(mezat_durumu['pey'] if mezat_durumu['pey'] > 0 else (urun.acilis_fiyati or 0))
         artis = float(veri.get('artis', 0))
@@ -475,7 +467,6 @@ def pey_ver():
         db.session.add(urun)
         db.session.commit()
 
-        # Son 10 saniyede veya altında teklif gelince sayacı 15 sn'ye geri sar
         if sayac_aktif and sayac_kalan <= 10:
             sayac_kalan = 15
             socketio.emit('sayac_uzatildi', {'kalan': 15, 'mesaj': 'Son saniye teklifi nedeniyle süre 15 sn uzatıldı!'})
@@ -489,6 +480,40 @@ def pey_ver():
         socketio.emit('pey_guncellendi', {'urun_id': urun.id, 'guncel_fiyat': miktar, 'kazanan_ad': musteri_adi})
         socketio.emit('veri_guncellendi')
         return jsonify({"success": True, "guncel_fiyat": miktar, "kazanan": musteri_adi})
+
+@app.route('/son-peyi-iptal-et', methods=['POST'])
+def son_peyi_iptal_et():
+    global mezat_durumu, aktif_urun_id, _son_durum_verisi, _son_canli_verisi, _son_durum_zamani, _son_canli_zamani
+    if not aktif_urun_id:
+        return jsonify({"success": False, "mesaj": "Sahnede aktif ürün yok!"})
+    
+    son_teklif = Teklif.query.filter_by(urun_id=aktif_urun_id).order_by(Teklif.id.desc()).first()
+    if son_teklif:
+        db.session.delete(son_teklif)
+        db.session.commit()
+    
+    bir_onceki = Teklif.query.filter_by(urun_id=aktif_urun_id).order_by(Teklif.id.desc()).first()
+    urun = Urun.query.get(aktif_urun_id)
+    if bir_onceki:
+        mezat_durumu['pey'] = float(bir_onceki.tutar)
+        mezat_durumu['kazanan'] = bir_onceki.musteri_adi
+        if urun: urun.guncel_fiyat = float(bir_onceki.tutar)
+    else:
+        mezat_durumu['pey'] = float(urun.acilis_fiyati or 0) if urun else 0
+        mezat_durumu['kazanan'] = "Yok"
+        if urun: urun.guncel_fiyat = float(urun.acilis_fiyati or 0)
+        
+    if urun:
+        db.session.add(urun)
+        db.session.commit()
+
+    _son_durum_verisi = None
+    _son_durum_zamani = 0
+    _son_canli_verisi = None
+    _son_canli_zamani = 0
+    socketio.emit('pey_guncellendi', {'urun_id': aktif_urun_id, 'guncel_fiyat': mezat_durumu['pey'], 'kazanan_ad': mezat_durumu['kazanan']})
+    socketio.emit('veri_guncellendi')
+    return jsonify({"success": True})
 
 @app.route('/sahneye-al', methods=['POST'])
 def sahneye_al():
@@ -554,7 +579,7 @@ def mezat_baslat():
         _son_durum_zamani = 0
         _son_canli_verisi = None
         _son_canli_zamani = 0
-        socketio.emit('mezat_basladi_muzik')  # Müzik çaları başlat
+        socketio.emit('mezat_basladi_muzik')
         socketio.emit('veri_guncellendi')
         return jsonify({"success": True})
         
@@ -679,6 +704,25 @@ def on_teklif_ver():
     socketio.emit('veri_guncellendi')
     return jsonify({"success": True, "mesaj": "✅ Ön teklifiniz başarıyla kaydedildi."})
 
+@app.route('/on-teklif-guncelle', methods=['POST'])
+def on_teklif_guncelle():
+    global _son_durum_verisi, _son_canli_verisi, _son_durum_zamani, _son_canli_zamani
+    veri = request.json or {}
+    ot_id = veri.get('id')
+    yeni_musteri = (veri.get('musteri_adi') or '').strip()
+    yeni_teklif = float(veri.get('teklif', 0))
+
+    ot = OnTeklif.query.get(ot_id)
+    if ot:
+        ot.musteri_adi = yeni_musteri
+        ot.teklif = yeni_teklif
+        db.session.commit()
+        _son_durum_verisi = None
+        _son_durum_zamani = 0
+        socketio.emit('veri_guncellendi')
+        return jsonify({"success": True})
+    return jsonify({"success": False, "mesaj": "Ön teklif bulunamadı."})
+
 @app.route('/on-teklif-sil', methods=['POST'])
 def on_teklif_sil():
     global _son_durum_verisi, _son_canli_verisi, _son_durum_zamani, _son_canli_zamani
@@ -799,6 +843,61 @@ def urun_ekle():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "mesaj": str(e)}), 500
+
+@app.route('/toplu-urun-yukle', methods=['POST'])
+def toplu_urun_yukle():
+    global _son_durum_verisi, _son_canli_verisi, _son_durum_zamani, _son_canli_zamani
+    try:
+        dosya = request.files.get('dosya')
+        xml_url = request.form.get('xml_url', '').strip()
+        eklenen_sayisi = 0
+
+        if dosya and dosya.filename:
+            ext = dosya.filename.lower()
+            if ext.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(dosya)
+                for _, row in df.iterrows():
+                    mevcut_lot = Urun.query.count() + 1
+                    u = Urun(
+                        lot_no=int(row.get('lot', mevcut_lot)),
+                        urun_adi=str(row.get('ad', 'İsimsiz Ürün')),
+                        kategori=str(row.get('kategori', 'Hediyelik eşya')),
+                        acilis_fiyati=float(row.get('fiyat', 0)),
+                        guncel_fiyat=float(row.get('fiyat', 0)),
+                        hemen_al_fiyati=float(row.get('hemen_al_fiyat', 0)),
+                        tanitim_yazisi=str(row.get('tanitim_yazisi', '')),
+                        durum="Aktif"
+                    )
+                    db.session.add(u)
+                    eklenen_sayisi += 1
+            db.session.commit()
+            _son_durum_verisi = None
+            socketio.emit('veri_guncellendi')
+            return jsonify({"success": True, "mesaj": f"✅ {eklenen_sayisi} adet ürün başarıyla yüklendi."})
+
+        return jsonify({"success": False, "mesaj": "Dosya yüklenemedi!"})
+    except Exception as e:
+        return jsonify({"success": False, "mesaj": str(e)})
+
+@app.route('/fiyatlari-yuzde-artir', methods=['POST'])
+def fiyatlari_yuzde_artir():
+    global _son_durum_verisi, _son_canli_verisi, _son_durum_zamani, _son_canli_zamani
+    veri = request.json or {}
+    oran = float(veri.get('oran', 30)) / 100.0
+    try:
+        urunler = Urun.query.filter(Urun.durum != "Satıldı").all()
+        for u in urunler:
+            u.acilis_fiyati = round(u.acilis_fiyati * (1.0 + oran), 2)
+            u.guncel_fiyat = u.acilis_fiyati
+            if u.hemen_al_fiyati:
+                u.hemen_al_fiyati = round(u.hemen_al_fiyati * (1.0 + oran), 2)
+            db.session.add(u)
+        db.session.commit()
+        _son_durum_verisi = None
+        socketio.emit('veri_guncellendi')
+        return jsonify({"success": True, "mesaj": f"Tüm ürünlerin fiyatı %{int(oran*100)} artırıldı."})
+    except Exception as e:
+        return jsonify({"success": False, "mesaj": str(e)})
 
 @app.route('/urun-guncelle', methods=['POST'])
 def urun_guncelle():
