@@ -1,1 +1,0 @@
-web: gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1 --threads 4 --worker-connections 1000 app:app
