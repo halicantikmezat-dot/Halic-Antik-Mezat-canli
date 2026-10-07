@@ -7,14 +7,16 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
-            --bg-dark: #0b132b;
-            --card-bg: #1c2541;
-            --card-border: #334155;
-            --accent-gold: #ffb703;
+            --bg-dark: #0f141c;
+            --card-bg: #18202c;
+            --card-border: #283548;
+            --accent-gold: #d4af37;
+            --accent-gold-hover: #b8972e;
             --accent-blue: #38bdf8;
-            --btn-green: #10b981;
-            --btn-red: #ef4444;
-            --text-light: #f8fafc;
+            --btn-green: #1b4d3e;
+            --btn-green-hover: #226350;
+            --btn-red: #991b1b;
+            --text-light: #ededed;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -23,15 +25,17 @@
         .container { max-width: 1300px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
         
         .header {
-            background: #070d1e;
+            background: #141b24;
             padding: 15px 20px;
             border-radius: 8px;
             border-bottom: 2px solid var(--accent-gold);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .header h2 { color: var(--accent-gold); font-size: 18px; text-transform: uppercase; }
+        .header h2 { color: var(--accent-gold); font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
 
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         @media(max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
@@ -48,14 +52,14 @@
             width: 100%;
             padding: 9px 12px;
             margin-bottom: 8px;
-            background: #070d1e;
+            background: #0f141c;
             border: 1px solid var(--card-border);
             border-radius: 6px;
             color: #fff;
             font-size: 13px;
             outline: none;
         }
-        input:focus, select:focus, textarea:focus { border-color: var(--accent-blue); }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent-gold); }
 
         .btn {
             border: none;
@@ -68,17 +72,19 @@
             align-items: center;
             justify-content: center;
             gap: 4px;
+            transition: opacity 0.2s;
         }
-        .btn-green { background: #059669; color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .btn-green { background: var(--btn-green); color: #fff; }
         .btn-red { background: var(--btn-red); color: #fff; }
-        .btn-yellow { background: #eab308; color: #000; }
-        .btn-blue { background: #0284c7; color: #fff; }
-        .btn-purple { background: #7c3aed; color: #fff; }
-        .btn-sm { padding: 4px 7px; font-size: 11px; border-radius: 4px; }
+        .btn-yellow { background: var(--accent-gold); color: #111; }
+        .btn-blue { background: #1e3a8a; color: #fff; }
+        .btn-purple { background: #4c1d95; color: #fff; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
 
         .item-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
         .item-row {
-            background: #070d1e;
+            background: #121822;
             border: 1px solid var(--card-border);
             padding: 8px 12px;
             border-radius: 6px;
@@ -90,8 +96,41 @@
         .actions { display: flex; gap: 4px; }
 
         table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 5px; }
-        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--card-border); }
-        th { background: #070d1e; color: var(--accent-gold); }
+        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
+        th { background: #121822; color: var(--accent-gold); }
+
+        /* MÜŞTERİ DOSYASI TEKİL ÜRÜN KUTUCUKLARI */
+        .urun-chip-container {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+        .urun-chip {
+            background: #0d121a;
+            border: 1px solid #233044;
+            padding: 5px 8px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }
+        .urun-chip:hover { border-color: var(--accent-gold); }
+        .btn-chip-sil {
+            background: #7f1d1d;
+            color: #fecaca;
+            border: 1px solid #991b1b;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-chip-sil:hover { background: #dc2626; color: #fff; }
 
         .modal {
             display: none;
@@ -108,7 +147,9 @@
             padding: 20px;
             border-radius: 8px;
             width: 90%;
-            max-width: 450px;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -117,10 +158,14 @@
 <div class="container">
     <div class="header">
         <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 13px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
-            <a href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrini Gör</a>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 13px; margin-right: 5px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
+            <a href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
+            <a href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
             <a href="/excel-indir?sifre=1453" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
+            <button onclick="copKutusunuAc()" class="btn btn-red btn-sm">🗑️ Çöp Kutusu (<span id="copSayisi">0</span>)</button>
+            <button onclick="sifreDegistirModalAc()" class="btn btn-yellow btn-sm">🔑 Şifre Değiştir</button>
+            <button onclick="adminCikisYap()" class="btn btn-sm" style="background:#334155; color:#fff;">Çıkış</button>
         </div>
     </div>
 
@@ -176,14 +221,13 @@
 
         <div class="card">
             <div class="card-title">🎬 Canlı Sahne Kontrolü</div>
-            <div style="background: #070d1e; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
-                <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">-</span></p>
+            <div style="background: #121822; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
+                <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">Sahnede aktif ürün yok</span></p>
                 <p style="margin-top: 4px;"><b>Anlık Fiyat:</b> <span id="aktifFiyat" style="color: #34d399; font-weight: bold;">0 TL</span></p>
                 <p style="margin-top: 4px;"><b>Son Pey Veren:</b> <span id="aktifKazanan" style="color: var(--accent-gold); font-weight: bold;">Yok</span></p>
                 <p style="margin-top: 4px;"><b>Durum:</b> <span id="aktifDurum">Bekliyor</span></p>
             </div>
 
-            <!-- MEZAT SÜRE VE BİTİRME BUTONLARI -->
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <button class="btn btn-yellow" onclick="mezatBaslat(30)">⏱️ 30 Sn</button>
                 <button class="btn btn-yellow" onclick="mezatBaslat(60)">⏱️ 60 Sn</button>
@@ -194,6 +238,17 @@
                 <button class="btn btn-green" onclick="satisBitir()">🔨 Satışı Bitir (Satıldı)</button>
             </div>
         </div>
+    </div>
+
+    <!-- SOSYAL MEDYA MEZAT KONTROL KARTI -->
+    <div class="card" style="border-color: var(--accent-gold);">
+        <div class="card-title" style="color: var(--accent-gold);">📱 TikTok Canlı Chat Bağlantısı</div>
+        <div style="display:flex; gap:10px; align-items:center;">
+            <input type="text" id="tiktokUser" placeholder="TikTok Kullanıcı Adı" value="halicantikmezat34" style="flex:1; margin:0;">
+            <button onclick="tiktokBaglan()" class="btn btn-green" style="padding:9px 15px;">Yayına Bağlan</button>
+            <button onclick="tiktokDurdur()" class="btn btn-red" style="padding:9px 15px;">Durdur</button>
+        </div>
+        <div id="tiktokDurum" style="font-size:12px; margin-top:8px; color:#aaa;">Durum: Bağlantı Yok</div>
     </div>
 
     <!-- GELEN ÖN TEKLİFLER VE ONAY BEKLEYEN MÜŞTERİLER -->
@@ -216,7 +271,7 @@
         </div>
     </div>
 
-    <!-- MÜŞTERİ DOSYALARI (GÜN SONU CİRO) -->
+    <!-- MÜŞTERİ DOSYALARI (GÜN SONU CİRO) - AYRI AYRI ÜRÜN İPTAL BUTONLU -->
     <div class="card">
         <div class="card-title">
             📦 Müşteri Dosyaları (Gün Sonu Ekstre & Ciro)
@@ -226,10 +281,10 @@
             <table>
                 <thead>
                     <tr>
-                        <th>Müşteri Adı</th>
-                        <th>Aldığı Ürünler (Lot & Ürün Adı & Tutar)</th>
-                        <th>Toplam Borç</th>
-                        <th>Dosya İşlemleri</th>
+                        <th style="width: 18%;">Müşteri Adı</th>
+                        <th style="width: 50%;">Aldığı Ürünler (Tek Tek İptal Edilebilir)</th>
+                        <th style="width: 14%;">Toplam Borç</th>
+                        <th style="width: 18%;">Dosya İşlemleri</th>
                     </tr>
                 </thead>
                 <tbody id="musteriDosyalariTablo">
@@ -239,7 +294,7 @@
         </div>
     </div>
 
-    <!-- MÜŞTERİ CARİ & TÜM ÜRÜN HAVUZU (CANLI ARAMA MOTORLU) -->
+    <!-- MÜŞTERİ CARİ & TÜM ÜRÜN HAVUZU -->
     <div class="grid-2">
         <div class="card">
             <div class="card-title">👥 Müşteri Puan & Cari Takip & Güvenlik</div>
@@ -258,7 +313,6 @@
             </div>
         </div>
 
-        <!-- ÜRÜN HAVUZU VE GELİŞMİŞ ARAMA MOTORU -->
         <div class="card">
             <div class="card-title">
                 <span>📖 Ürün Havuzu (Katalog & Mezat Arşivi)</span>
@@ -298,10 +352,45 @@
     </div>
 </div>
 
+<!-- ÇÖP KUTUSU MODAL -->
+<div id="modalCopKutusu" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0;">🗑️ Geri Dönüşüm Kutusu (Kurtarma Alanı)</h3>
+            <button onclick="copKutusunuKapat()" class="btn btn-red btn-sm">✕</button>
+        </div>
+
+        <h4 style="color:#e0e0e0; margin-top:15px; margin-bottom:8px;">Silinen Ürünler</h4>
+        <div id="copUrunlerListesi" style="font-size:13px; max-height:200px; overflow-y:auto;">Yükleniyor...</div>
+
+        <h4 style="color:#e0e0e0; margin-top:20px; margin-bottom:8px;">Silinen Müşteriler</h4>
+        <div id="copMusterilerListesi" style="font-size:13px; max-height:200px; overflow-y:auto;">Yükleniyor...</div>
+    </div>
+</div>
+
+<!-- ŞİFRE DEĞİŞTİRME MODAL -->
+<div id="modalSifreDegistir" class="modal">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0;">🔑 Yönetici Şifresi Güncelle</h3>
+            <button onclick="sifreDegistirModalKapat()" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div style="margin-top:15px;">
+            <label style="display:block; font-size:12px; color:#ccc; margin-bottom:4px;">Mevcut Şifre</label>
+            <input type="password" id="txtEskiSifre" placeholder="Eski şifreniz">
+            
+            <label style="display:block; font-size:12px; color:#ccc; margin-bottom:4px;">Yeni Şifre</label>
+            <input type="password" id="txtYeniSifre" placeholder="Yeni şifreniz (En az 4 karakter)">
+            
+            <button onclick="sifreKaydet()" class="btn btn-yellow" style="width:100%; margin-top:5px;">Şifreyi Güncelle</button>
+        </div>
+    </div>
+</div>
+
 <!-- ÖN TEKLİF DÜZENLEME MODAL -->
 <div id="onTeklifDuzenleModal" class="modal">
     <div class="modal-content">
-        <h3 style="color: var(--accent-gold); margin-bottom: 12px; font-size: 15px;">✏️ Ön Teklifi Düzenle</h3>
+        <h3 style="color: var(--accent-gold); margin-bottom: 12px; font-size: 15px;">✏ Ön Teklifi Düzenle</h3>
         <input type="hidden" id="edit_ot_id">
         <label style="font-size:12px; font-weight:bold;">Müşteri Adı:</label>
         <input type="text" id="edit_ot_musteri">
@@ -343,7 +432,7 @@
         transports: ['websocket', 'polling']
     });
 
-    const ADMIN_PASS = '1453';
+    let ADMIN_PASS = '1453';
     let tumUrunler = [];
     let tumOnTeklifler = [];
     let audioCtx = null;
@@ -363,6 +452,166 @@
             osc.start();
             osc.stop(audioCtx.currentTime + 0.08);
         } catch(e) {}
+    }
+
+    // ÇÖP KUTUSU FONKSİYONLARI
+    function copKutusunuAc() {
+        playClickSound();
+        document.getElementById('modalCopKutusu').style.display = 'flex';
+        copVerileriniGetir();
+    }
+
+    function copKutusunuKapat() {
+        playClickSound();
+        document.getElementById('modalCopKutusu').style.display = 'none';
+    }
+
+    function copVerileriniGetir() {
+        fetch('/cop-kutusu-listele')
+            .then(r => r.json())
+            .then(res => {
+                if (!res.success) return;
+
+                const urunDiv = document.getElementById('copUrunlerListesi');
+                if (res.urunler.length === 0) {
+                    urunDiv.innerHTML = '<p style="color:#888; padding:8px 0;">Çöp kutusunda ürün yok.</p>';
+                } else {
+                    let h = '<table><thead><tr><th>Lot</th><th>Ürün Adı</th><th>Fiyat</th><th>Silinme Tarihi</th><th>İşlem</th></tr></thead><tbody>';
+                    res.urunler.forEach(u => {
+                        h += `<tr>
+                            <td>#${u.lot}</td>
+                            <td>${u.ad}</td>
+                            <td>${u.fiyat} TL</td>
+                            <td>${u.silinme_tarihi}</td>
+                            <td>
+                                <button onclick="coptenGeriYukle('urun', ${u.id})" class="btn btn-green btn-sm">Geri Yükle</button>
+                                <button onclick="coptenKaliciSil('urun', ${u.id})" class="btn btn-red btn-sm" style="margin-left:4px;">Kalıcı Sil</button>
+                            </td>
+                        </tr>`;
+                    });
+                    h += '</tbody></table>';
+                    urunDiv.innerHTML = h;
+                }
+
+                const musDiv = document.getElementById('copMusterilerListesi');
+                if (res.musteriler.length === 0) {
+                    musDiv.innerHTML = '<p style="color:#888; padding:8px 0;">Çöp kutusunda müşteri yok.</p>';
+                } else {
+                    let mh = '<table><thead><tr><th>Ad Soyad</th><th>Telefon</th><th>Silinme Tarihi</th><th>İşlem</th></tr></thead><tbody>';
+                    res.musteriler.forEach(m => {
+                        mh += `<tr>
+                            <td>${m.ad}</td>
+                            <td>${m.tel}</td>
+                            <td>${m.silinme_tarihi}</td>
+                            <td>
+                                <button onclick="coptenGeriYukle('musteri', ${m.id})" class="btn btn-green btn-sm">Geri Yükle</button>
+                                <button onclick="coptenKaliciSil('musteri', ${m.id})" class="btn btn-red btn-sm" style="margin-left:4px;">Kalıcı Sil</button>
+                            </td>
+                        </tr>`;
+                    });
+                    mh += '</tbody></table>';
+                    musDiv.innerHTML = mh;
+                }
+
+                document.getElementById('copSayisi').innerText = (res.urunler.length + res.musteriler.length);
+            });
+    }
+
+    function coptenGeriYukle(tur, id) {
+        playClickSound();
+        if (!confirm('Bu kaydı geri yüklemek istediğinize emin misiniz?')) return;
+        fetch('/cop-kutusundan-geri-yukle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tur: tur, id: id })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            copVerileriniGetir();
+            veriCekAdmin();
+        });
+    }
+
+    function coptenKaliciSil(tur, id) {
+        playClickSound();
+        if (!confirm('DİKKAT: Bu kayıt veritabanından tamamen silinecek! Onaylıyor musunuz?')) return;
+        fetch('/cop-kutusundan-kalici-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tur: tur, id: id })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            copVerileriniGetir();
+        });
+    }
+
+    // ŞİFRE VE OTURUM FONKSİYONLARI
+    function sifreDegistirModalAc() {
+        playClickSound();
+        document.getElementById('modalSifreDegistir').style.display = 'flex';
+    }
+
+    function sifreDegistirModalKapat() {
+        playClickSound();
+        document.getElementById('modalSifreDegistir').style.display = 'none';
+    }
+
+    function sifreKaydet() {
+        playClickSound();
+        const eski = document.getElementById('txtEskiSifre').value;
+        const yeni = document.getElementById('txtYeniSifre').value;
+        if (!eski || !yeni) return alert('Lütfen tüm alanları doldurun.');
+
+        fetch('/admin-sifre-degistir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eski_sifre: eski, yeni_sifre: yeni })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            if (res.success) {
+                ADMIN_PASS = yeni;
+                sifreDegistirModalKapat();
+            }
+        });
+    }
+
+    function adminCikisYap() {
+        playClickSound();
+        fetch('/admin-cikis-yap').then(() => {
+            window.location.href = '/';
+        });
+    }
+
+    // TIKTOK BAĞLANTI FONKSİYONLARI 
+    function tiktokBaglan() {
+        playClickSound();
+        const user = document.getElementById('tiktokUser').value.trim();
+        if(!user) return alert('Lütfen TikTok kullanıcı adı girin!');
+        document.getElementById('tiktokDurum').innerText = "Bağlanıyor...";
+        
+        fetch('/api/social/tiktok/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: user})
+        })
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('tiktokDurum').innerText = d.mesaj || "Bağlandı.";
+            document.getElementById('tiktokDurum').style.color = "#34d399";
+        })
+        .catch(e => {
+            document.getElementById('tiktokDurum').innerText = "Hata oluştu!";
+            document.getElementById('tiktokDurum').style.color = "#ef4444";
+        });
+    }
+
+    function tiktokDurdur() {
+        playClickSound();
+        fetch('/api/social/tiktok/stop', {method: 'POST'})
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('tiktokDurum').innerText = "Bağlantı kesildi.";
+            document.getElementById('tiktokDurum').style.color = "#aaa";
+        });
     }
 
     function topluFiyatArtir(oran = 30) {
@@ -393,7 +642,7 @@
         fetch('/kategoriler-listesi')
         .then(res => res.json())
         .then(data => {
-            if (!data.kategoriler || data.kategoriler.length === 0) return;
+            if (!data || data.length === 0) return;
 
             const filtreSelect = document.getElementById('kategoriFiltre');
             const dataList = document.getElementById('kategoriDatalist');
@@ -401,10 +650,10 @@
             let seciliFiltre = filtreSelect ? filtreSelect.value : '';
             if (filtreSelect) {
                 filtreSelect.innerHTML = '<option value="">Tüm Kategoriler</option>';
-                data.kategoriler.forEach(k => {
+                data.forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k;
-                    opt.innerText = k;
+                    opt.innerText = k.replace(/^kategorilerimiz\s*[»>]\s*/i, '').trim();
                     filtreSelect.appendChild(opt);
                 });
                 if (seciliFiltre) filtreSelect.value = seciliFiltre;
@@ -412,9 +661,10 @@
 
             if (dataList) {
                 dataList.innerHTML = '';
-                data.kategoriler.forEach(k => {
+                data.forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k;
+                    opt.innerText = k;
                     dataList.appendChild(opt);
                 });
             }
@@ -425,12 +675,14 @@
         kategorileriDoldurAdmin();
         veriCekAdmin();
         sikayetleriGetir();
+        copVerileriniGetir();
     };
 
     socket.on('veri_guncellendi', function() {
         kategorileriDoldurAdmin();
         veriCekAdmin();
         sikayetleriGetir();
+        copVerileriniGetir();
     });
 
     socket.on('sayac_bitti', function(data) {
@@ -472,9 +724,10 @@
             let div = document.createElement('div');
             div.className = 'item-row';
             let durumBadge = u.durum === 'Katalog' ? '<span style="color:#a855f7; font-size:10px; font-weight:bold; margin-right:4px;">[VİTRİN]</span>' : '';
-            
+            let sadeKategori = (u.kategori || '').replace(/^kategorilerimiz\s*[»>]\s*/i, '').trim();
+
             div.innerHTML = `
-                <span>${durumBadge}<b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${u.kategori}]</small></span>
+                <span>${durumBadge}<b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${sadeKategori || 'Genel'}]</small></span>
                 <div class="actions">
                     <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${u.id})">🎬 Sahneye Al</button>
                     <button class="btn btn-yellow btn-sm" onclick="duzenleModalAc(${u.id})">✏️ Düzenle</button>
@@ -490,12 +743,12 @@
         .then(res => res.json())
         .then(data => {
             if(data.aktif_urun) {
-                document.getElementById('aktifUrunAdi').innerText = `#${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
-                document.getElementById('aktifFiyat').innerText = `${data.pey || data.aktif_urun.fiyat} TL`;
+                document.getElementById('aktifUrunAdi').innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
+                document.getElementById('aktifFiyat').innerText = `${data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat} TL`;
                 document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
                 document.getElementById('aktifDurum').innerText = data.durum;
             } else {
-                document.getElementById('aktifUrunAdi').innerText = "Sahnede ürün yok";
+                document.getElementById('aktifUrunAdi').innerText = "Sahnede aktif ürün yok";
                 document.getElementById('aktifFiyat').innerText = "0 TL";
                 document.getElementById('aktifKazanan').innerText = "Yok";
                 document.getElementById('aktifDurum').innerText = "Bekliyor";
@@ -554,7 +807,7 @@
                     }
 
                     let tr = document.createElement('tr');
-                    let durumRozet = m.durum === 'onayli' ? '<span style="color:#10b981; font-weight:bold;">Onaylı</span>' : (m.durum === 'engellendi' ? '<span style="color:#ef4444; font-weight:bold;">Engelli</span>' : '<span style="color:#f59e0b; font-weight:bold;">Bekliyor</span>');
+                    let durumRozet = m.durum === 'onayli' ? '<span style="color:#34d399; font-weight:bold;">Onaylı</span>' : (m.durum === 'engellendi' ? '<span style="color:#ef4444; font-weight:bold;">Engelli</span>' : '<span style="color:#d4af37; font-weight:bold;">Bekliyor</span>');
                     tr.innerHTML = `
                         <td><b>${m.ad}</b></td>
                         <td>${m.tel} <br><small style="color:#94a3b8;">${m.ip}</small></td>
@@ -574,6 +827,7 @@
                 }
             }
 
+            // MÜŞTERİ DOSYALARI TABLOSU (TEKİL ÜRÜN İPTAL KUTULARIYLA)
             if(data.gruplanmis_dosyalar) {
                 let tablo = document.getElementById('musteriDosyalariTablo');
                 tablo.innerHTML = "";
@@ -584,7 +838,20 @@
                 } else {
                     data.gruplanmis_dosyalar.forEach(dosya => {
                         genelCiro += parseFloat(dosya.toplam_tutar || 0);
-                        let urunlerMetni = dosya.urunler.map(u => `Lot #${u.lot} (${u.urun_adi} - ${u.fiyat} TL)`).join(', ');
+
+                        // Her bir ürünü bağımsız silme butonuyla kutucuk haline getiriyoruz
+                        let urunlerHtml = '<div class="urun-chip-container">';
+                        dosya.urunler.forEach(u => {
+                            urunlerHtml += `
+                                <div class="urun-chip">
+                                    <span><b>Lot #${u.lot}</b> - ${u.urun_adi} <span style="color:#34d399; font-weight:bold;">(${u.fiyat} TL)</span></span>
+                                    <button class="btn-chip-sil" onclick="tekilUrunuIptalEt(${u.urun_id}, '${dosya.musteri_adi}', '${escape(u.urun_adi)}')">✕ İptal Et</button>
+                                </div>
+                            `;
+                        });
+                        urunlerHtml += '</div>';
+
+                        let urunlerMetniDüz = dosya.urunler.map(u => `Lot #${u.lot} (${u.urun_adi} - ${u.fiyat} TL)`).join(', ');
                         let telTemiz = (dosya.telefon && dosya.telefon !== "-") ? String(dosya.telefon).replace(/\D/g, '') : '';
                         if (telTemiz.startsWith('0')) telTemiz = '90' + telTemiz.substring(1);
                         else if (telTemiz.length === 10) telTemiz = '90' + telTemiz;
@@ -593,22 +860,76 @@
                         
                         let tr = document.createElement('tr');
                         tr.innerHTML = `
-                            <td><b>${dosya.musteri_adi}</b></td>
-                            <td>${urunlerMetni}</td>
-                            <td style="color:#34d399; font-weight:bold;">${dosya.toplam_tutar} TL</td>
+                            <td><b>${dosya.musteri_adi}</b><br><small style="color:#94a3b8;">${dosya.telefon || '-'}</small></td>
+                            <td>${urunlerHtml}</td>
+                            <td style="color:#34d399; font-weight:bold; font-size:14px;">${Number(dosya.toplam_tutar).toLocaleString('tr-TR')} TL</td>
                             <td>
-                                <button class="btn btn-red btn-sm" onclick="musteriDosyasiSil('${dosya.musteri_adi}')">🗑️ Sil/İptal</button>
-                                <a href="https://wa.me/${telTemiz}?text=${waMesaj}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none;" onclick="playClickSound()">💬 WhatsApp</a>
-                                <button class="btn btn-blue btn-sm" onclick="smsGonderDetayli('${dosya.musteri_adi}', '${dosya.toplam_tutar}', '${encodeURIComponent(urunlerMetni)}')">📱 SMS</button>
-                                <a href="/excel-indir?sifre=1453" class="btn btn-yellow btn-sm" style="text-decoration:none;" onclick="playClickSound()">📊 Excel</a>
+                                <button class="btn btn-red btn-sm" onclick="musteriDosyasiSil('${dosya.musteri_adi}')" style="margin-bottom:4px; width:100%;">🗑️ Tüm Dosyayı Sil</button>
+                                <div style="display:flex; gap:3px;">
+                                    <a href="https://wa.me/${telTemiz}?text=${waMesaj}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none; flex:1;" onclick="playClickSound()">💬 WP</a>
+                                    <button class="btn btn-blue btn-sm" style="flex:1;" onclick="smsGonderDetayli('${dosya.musteri_adi}', '${dosya.toplam_tutar}', '${encodeURIComponent(urunlerMetniDüz)}')">📱 SMS</button>
+                                </div>
                             </td>
                         `;
                         tablo.appendChild(tr);
                     });
                 }
-                document.getElementById('toplamCiro').innerText = `${genelCiro} TL`;
+                document.getElementById('toplamCiro').innerText = `${Number(genelCiro).toLocaleString('tr-TR')} TL`;
             }
         });
+    }
+
+    // TEK BİR ÜRÜNÜ MÜŞTERİNİN DOSYASINDAN SİLİP HAVUZA DÖNDÜRME
+    function tekilUrunuIptalEt(urunId, musteriAdi, urunAdiEscaped) {
+        playClickSound();
+        let urunAdi = unescape(urunAdiEscaped);
+        if(!confirm(`Sayın ${musteriAdi} dosyasından "${urunAdi}" ürününü çıkarmak ve tekrar satış havuzuna almak istediğinize emin misiniz?`)) {
+            return;
+        }
+
+        fetch('/tek-urun-iptal-et', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Password': ADMIN_PASS
+            },
+            body: JSON.stringify({ urun_id: urunId, sifre: ADMIN_PASS })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.success) {
+                alert(res.mesaj || "Ürün başarıyla iptal edildi.");
+                veriCekAdmin();
+            } else {
+                alert(res.mesaj || "İptal işlemi başarısız!");
+            }
+        })
+        .catch(err => alert("Bağlantı hatası: " + err));
+    }
+
+    // MÜŞTERİNİN TÜM DOSYASINI İPTAL ETME (GARANTİLİ TEMİZLEME)
+    function musteriDosyasiSil(musteriAdi) {
+        playClickSound();
+        if(!confirm(`${musteriAdi} isimli müşterinin kazandığı TÜM ürünleri iptal edip satış havuzuna geri almak ve ciroyu sıfırlamak istiyor musunuz?`)) return;
+        
+        fetch('/musteri-dosya-sil', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Admin-Password': ADMIN_PASS
+            },
+            body: JSON.stringify({ musteri_adi: musteriAdi, sifre: ADMIN_PASS })
+        })
+        .then(res => res.json())
+        .then(d => {
+            if(d.success) {
+                alert(d.mesaj || "Müşteri dosyası sıfırlandı.");
+                veriCekAdmin();
+            } else {
+                alert(d.error || d.mesaj || "Silme başarısız!");
+            }
+        })
+        .catch(err => alert("Bağlantı hatası: " + err));
     }
 
     function topluUrunYukle(e) {
@@ -721,19 +1042,19 @@
         .then(data => {
             let tablo = document.getElementById('sikayetOneriTablo');
             tablo.innerHTML = "";
-            if(!data.kayitlar || data.kayitlar.length === 0) {
+            if(!data || data.length === 0) {
                 tablo.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Kayıtlı bildirim bulunmuyor.</td></tr>';
                 return;
             }
-            data.kayitlar.forEach(k => {
+            data.forEach(k => {
                 let tr = document.createElement('tr');
-                let badge = k.durum === 'Yeni' ? '<span style="color:#f59e0b; font-weight:bold;">Yeni</span>' : (k.durum === 'Düzeltildi' ? '<span style="color:#34d399; font-weight:bold;">Düzeltildi</span>' : '<span style="color:#38bdf8;">İncelendi</span>');
+                let badge = k.durum === 'Yeni' ? '<span style="color:#d4af37; font-weight:bold;">Yeni</span>' : (k.durum === 'Düzeltildi' ? '<span style="color:#34d399; font-weight:bold;">Düzeltildi</span>' : '<span style="color:#38bdf8;">İncelendi</span>');
                 tr.innerHTML = `
                     <td>${k.tarih}</td>
                     <td><b>${k.musteri_adi}</b></td>
                     <td><span style="color:#38bdf8;">${k.tur}</span></td>
                     <td><b>${k.konu}:</b> ${k.mesaj}</td>
-                    <td><small>${k.ip}</small></td>
+                    <td><small>${k.ip || '-'}</small></td>
                     <td>
                         ${badge}
                         <button class="btn btn-green btn-sm" style="margin-left:4px;" onclick="itirazDuzeltBildir(${k.id})">✅ Düzelt & Bildir</button>
@@ -883,7 +1204,7 @@
 
     function urunSil(id) {
         playClickSound();
-        if(!confirm("Bu ürünü silmek istediğinize emin misiniz?")) return;
+        if(!confirm("Bu ürünü silip çöp kutusuna taşımak istediğinize emin misiniz?")) return;
         fetch('/urun-sil', {
             method: 'POST',
             headers: {
@@ -895,6 +1216,7 @@
             if(d.success) {
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
+                copVerileriniGetir();
             }
         });
     }
@@ -915,7 +1237,7 @@
 
     function musteriSil(id) {
         playClickSound();
-        if(!confirm("Bu kullanıcıyı silmek istediğinize emin misiniz?")) return;
+        if(!confirm("Bu kullanıcıyı silip çöp kutusuna taşımak istediğinize emin misiniz?")) return;
         fetch('/musteri-sil', {
             method: 'POST',
             headers: {
@@ -924,22 +1246,10 @@
             },
             body: JSON.stringify({ kullanici_id: id, sifre: ADMIN_PASS })
         }).then(res => res.json()).then(d => {
-            if(d.success) veriCekAdmin();
-        });
-    }
-
-    function musteriDosyasiSil(musteriAdi) {
-        playClickSound();
-        if(!confirm(`${musteriAdi} isimli müşterinin dosyasını silmek ve ciroyu sıfırlamak istiyor musunuz?`)) return;
-        fetch('/musteri-dosya-sil', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Admin-Password': ADMIN_PASS
-            },
-            body: JSON.stringify({ musteri_adi: musteriAdi, sifre: ADMIN_PASS })
-        }).then(res => res.json()).then(d => {
-            if(d.success) veriCekAdmin();
+            if(d.success) {
+                veriCekAdmin();
+                copVerileriniGetir();
+            }
         });
     }
 
@@ -957,16 +1267,18 @@
 
     function sonPeyiIptalEt() {
         playClickSound();
+        if (!confirm("Son verilen pey teklifini iptal etmek istiyor musunuz?")) return;
         fetch('/son-peyi-iptal-et', { 
-            method: 'POST',
+            method: 'POST', 
             headers: { 'X-Admin-Password': ADMIN_PASS }
         });
     }
 
     function satisBitir() {
         playClickSound();
+        if (!confirm("Bu ürünün satışını onaylayıp mezatı bitirmek istiyor musunuz?")) return;
         fetch('/satis-bitir', { 
-            method: 'POST',
+            method: 'POST', 
             headers: { 'X-Admin-Password': ADMIN_PASS }
         });
     }

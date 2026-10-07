@@ -7,17 +7,18 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
-            --bg-color: #060c1a;
-            --card-bg: #0f172a;
-            --card-inner: #0b1120;
-            --card-border: #334155;
-            --accent-gold: #ffb703;
-            --text-light: #ffffff;
-            --btn-green: #10b981;
-            --btn-blue: #0284c7;
-            --btn-purple: #7c3aed;
-            --btn-red: #ef4444;
-            --neon-cyan: #00f0ff;
+            --bg-color: #0b0f17;
+            --card-bg: #141b24;
+            --card-inner: #0f151d;
+            --card-border: #222d3d;
+            --accent-gold: #d4af37;
+            --accent-gold-dark: #aa8622;
+            --text-light: #f1f5f9;
+            --text-muted: #94a3b8;
+            --btn-green: #1b4d3e;
+            --btn-blue: #1e3a8a;
+            --btn-purple: #4c1d95;
+            --btn-red: #881337;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -37,7 +38,7 @@
         }
 
         .header {
-            background: #040814;
+            background: #080c13;
             padding: 10px 12px;
             display: flex;
             justify-content: space-between;
@@ -46,34 +47,67 @@
         }
         .logo-box { display: flex; align-items: center; gap: 6px; }
         .logo-box h2 { font-size: 15px; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800; }
+        
+        .header-actions { display: flex; align-items: center; gap: 6px; }
+        .currency-select {
+            background: #0f151d;
+            color: var(--accent-gold);
+            border: 1px solid var(--accent-gold);
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            outline: none;
+            cursor: pointer;
+        }
         .live-badge { background: var(--btn-red); color: white; padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; }
 
         .user-bar-compact {
-            background: #09101f;
+            background: #0d121a;
             padding: 6px 10px;
             font-size: 11px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
+            gap: 4px;
+            flex-wrap: wrap;
         }
-        .btn-catalog-toggle { background: #0284c7; color: #fff; border: none; padding: 5px 8px; border-radius: 4px; font-weight: 800; font-size: 11px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
-        .user-name-display { font-weight: bold; color: var(--accent-gold); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .btn-profile-toggle { background: var(--accent-gold); color: #000; border: none; padding: 5px 8px; border-radius: 4px; font-weight: 800; font-size: 11px; cursor: pointer; }
+        .btn-top-nav { background: #1b2636; color: #fff; border: 1px solid var(--card-border); padding: 4px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+        .user-name-display { font-weight: bold; color: var(--accent-gold); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        #liveToast {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #182230;
+            color: #fff;
+            border: 1px solid var(--accent-gold);
+            border-radius: 8px;
+            padding: 10px 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            z-index: 10000;
+            font-size: 11px;
+            max-width: 90%;
+            text-align: center;
+        }
 
         .box { background: var(--card-inner); padding: 10px; border-radius: 6px; margin: 6px 8px; border: 1px solid var(--card-border); }
-        input, textarea, select { width: 100%; padding: 8px; margin: 4px 0; background: #040814; border: 1.5px solid var(--card-border); color: #fff; border-radius: 5px; font-size: 13px; outline: none; }
+        input, textarea, select { width: 100%; padding: 8px; margin: 4px 0; background: #080c13; border: 1px solid var(--card-border); color: #fff; border-radius: 5px; font-size: 13px; outline: none; }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent-gold); }
 
         .stage-wrapper {
             position: relative;
             width: 100%;
-            height: 240px;
+            height: 250px;
             background: #000;
             overflow: hidden;
             border-bottom: 1px solid var(--card-border);
         }
         .stage-wrapper.fullscreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99999; }
-        .stage-media-box { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .stage-media-box { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
         .stage-media-box img, .stage-media-box video { width: 100%; height: 100%; object-fit: contain; }
 
         .stage-thumbnails {
@@ -81,7 +115,7 @@
             gap: 6px;
             overflow-x: auto;
             padding: 6px 8px;
-            background: #040814;
+            background: #080c13;
             border-bottom: 1px solid var(--card-border);
         }
         .thumb-item {
@@ -92,8 +126,9 @@
             object-fit: cover;
             cursor: pointer;
             flex-shrink: 0;
+            background: #1e293b;
         }
-        .thumb-item.active { border-color: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+        .thumb-item.active { border-color: var(--accent-gold); box-shadow: 0 0 6px var(--accent-gold); }
 
         .stage-overlay {
             position: absolute;
@@ -106,114 +141,122 @@
         }
         .stage-overlay > * { pointer-events: auto; }
         .corner-card {
-            background: rgba(4, 8, 20, 0.88);
+            background: rgba(8, 12, 19, 0.90);
             padding: 3px 6px;
             border-radius: 4px;
-            border: 1px solid rgba(255, 183, 3, 0.6);
+            border: 1px solid rgba(212, 175, 55, 0.5);
             font-size: 10px;
             backdrop-filter: blur(4px);
         }
         .corner-top-left { justify-self: start; align-self: start; }
-        .corner-top-right { justify-self: end; align-self: start; text-align: right; border-color: rgba(239, 68, 68, 0.8); }
-        .corner-bottom-left { justify-self: start; align-self: end; border-color: rgba(0, 240, 255, 0.8); }
+        .corner-top-right { justify-self: end; align-self: start; text-align: right; border-color: rgba(225, 29, 72, 0.7); }
+        .corner-bottom-left { justify-self: start; align-self: end; border-color: rgba(212, 175, 55, 0.8); }
         .corner-bottom-right { justify-self: end; align-self: end; font-family: monospace; font-weight: bold; }
-        .corner-val { font-size: 12px; font-weight: 900; }
+        .corner-val { font-size: 12px; font-weight: 800; }
 
-        .fullscreen-btn { position: absolute; top: 35px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; border: 1px solid #fff; border-radius: 4px; padding: 3px 5px; font-size: 10px; cursor: pointer; z-index: 60; }
+        .fullscreen-btn { position: absolute; top: 35px; right: 8px; background: rgba(0,0,0,0.65); color: #fff; border: 1px solid #777; border-radius: 4px; padding: 3px 5px; font-size: 10px; cursor: pointer; z-index: 60; }
         .audio-toggle { position: absolute; bottom: 35px; right: 8px; background: rgba(0, 0, 0, 0.85); color: #fff; border: 1px solid var(--accent-gold); padding: 3px 6px; border-radius: 12px; font-size: 10px; cursor: pointer; z-index: 60; }
+        .btn-track-stage { position: absolute; bottom: 35px; left: 8px; background: rgba(0, 0, 0, 0.85); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 3px 7px; border-radius: 12px; font-size: 10px; font-weight: bold; cursor: pointer; z-index: 60; }
 
         .sold-banner {
             display: none;
-            background: linear-gradient(90deg, #b91c1c, #ef4444, #b91c1c);
+            background: linear-gradient(90deg, #881337, #9f1239, #881337);
             color: white;
             text-align: center;
             padding: 8px;
-            font-weight: 900;
+            font-weight: 800;
             font-size: 12px;
-            border-bottom: 1px solid #ff4d4d;
+            border-bottom: 1px solid var(--accent-gold);
         }
 
-        .story-container { background: #070d1e; padding: 6px 8px; border-radius: 5px; margin-top: 4px; border-left: 3px solid var(--neon-cyan); display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-        .story-text { font-size: 11px; line-height: 1.2; color: #e2e8f0; flex: 1; }
-        .btn-mini-audio { background: var(--accent-gold); color: #000; border: none; border-radius: 3px; padding: 4px 6px; font-size: 10px; font-weight: bold; cursor: pointer; }
+        .story-container { background: #080c13; padding: 6px 8px; border-radius: 5px; margin-top: 4px; border-left: 3px solid var(--accent-gold); display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+        .story-text { font-size: 11px; line-height: 1.3; color: #cbd5e1; flex: 1; }
+        .btn-mini-audio { background: var(--accent-gold); color: #111; border: none; border-radius: 3px; padding: 4px 6px; font-size: 10px; font-weight: bold; cursor: pointer; }
 
         .catalog-drawer-inline {
             display: none;
-            background: #09101f;
-            border: 1.5px solid var(--neon-cyan);
+            background: #0d121a;
+            border: 1px solid var(--accent-gold);
             border-radius: 8px;
             padding: 10px;
             margin: 6px 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
         }
-        .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; color: var(--neon-cyan); }
-        .btn-close-drawer { background: var(--btn-red); color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+        .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-weight: bold; color: var(--accent-gold); }
+        .btn-close-drawer { background: #475569; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-weight: bold; }
 
         .auction-status-compact {
-            background: radial-gradient(circle at center, #09172e 0%, #030814 100%);
-            padding: 6px 10px;
+            background: #0f151e;
+            padding: 6px 12px;
             margin: 4px 8px;
             border-radius: 8px;
-            border: 1.5px solid #00f0ff;
+            border: 1.5px solid var(--accent-gold);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
             transition: all 0.3s ease;
         }
         .auction-status-compact.urgent {
-            border-color: #ff2a2a;
-            background: radial-gradient(circle at center, #350808 0%, #120202 100%);
-            box-shadow: 0 0 15px rgba(255, 42, 42, 0.6);
+            border-color: #e11d48;
+            background: #1c0b10;
+            box-shadow: 0 0 15px rgba(225, 29, 72, 0.5);
             animation: pulseUrgent 0.5s infinite alternate;
         }
         @keyframes pulseUrgent { from { transform: scale(1); } to { transform: scale(1.01); } }
 
         .price-compact-box { text-align: left; }
-        .price-label { font-size: 9px; color: #94a3b8; font-weight: bold; }
-        .price-val { font-size: 20px; font-weight: 900; color: #00f0ff; line-height: 1.1; }
-        .urgent .price-val { color: #ff3333; }
-        .bidder-val { font-size: 10px; color: var(--accent-gold); white-space: nowrap; }
+        .price-label { font-size: 9px; color: var(--text-muted); font-weight: bold; }
+        .price-val { font-size: 20px; font-weight: 800; color: var(--accent-gold); line-height: 1.1; }
+        .urgent .price-val { color: #f43f5e; }
+        .bidder-val { font-size: 10px; color: #cbd5e1; white-space: nowrap; }
 
         .timer-compact-row { display: flex; align-items: center; gap: 8px; }
-        .timer-mini-cockpit { position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; }
+        .timer-mini-cockpit { position: relative; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; }
         .timer-mini-cockpit svg { position: absolute; width: 100%; height: 100%; transform: rotate(-90deg); }
-        .dial-bg { fill: none; stroke: rgba(0, 240, 255, 0.15); stroke-width: 6; stroke-dasharray: 3 2; }
-        .dial-active { fill: none; stroke: #ff2a2a; stroke-width: 7; stroke-dasharray: 4 2; stroke-linecap: butt; stroke-dashoffset: 0; transition: stroke-dashoffset 0.8s linear, stroke 0.3s; }
-        .urgent .dial-active { stroke: #ff0000; }
+        .dial-bg { fill: none; stroke: rgba(255, 255, 255, 0.1); stroke-width: 6; }
+        .dial-active { fill: none; stroke: var(--accent-gold); stroke-width: 6; stroke-linecap: round; stroke-dashoffset: 0; transition: stroke-dashoffset 0.8s linear, stroke 0.3s; }
+        .urgent .dial-active { stroke: #e11d48; }
 
-        .timer-digits-mini { position: relative; font-size: 18px; font-weight: 900; color: #ffffff; line-height: 1; text-shadow: 0 0 6px rgba(255,255,255,0.8); }
-        .urgent .timer-digits-mini { color: #ff3b3b; }
-        .timer-status-text { font-size: 10px; font-weight: 900; color: #00f0ff; text-align: right; max-width: 95px; line-height: 1.1; }
-        .urgent .timer-status-text { color: #ff3b3b; }
+        .timer-digits-mini { position: relative; font-size: 18px; font-weight: 800; color: #ffffff; line-height: 1; }
+        .urgent .timer-digits-mini { color: #f43f5e; }
+        .timer-status-text { font-size: 10px; font-weight: 800; color: var(--accent-gold); text-align: right; max-width: 95px; line-height: 1.1; }
+        .urgent .timer-status-text { color: #f43f5e; }
 
-        .pey-butonlari-konteyner { padding: 2px 8px 4px 8px; }
+        .pey-butonlari-konteyner { padding: 4px 8px; }
         .btn-bid { border: none; padding: 10px 4px; border-radius: 5px; font-weight: 800; font-size: 13px; cursor: pointer; text-align: center; transition: all 0.2s; }
-        .btn-green { background: #059669; color: #ffffff !important; border: 1px solid #34d399; }
-        .btn-secondary { background: #2563eb; color: #ffffff !important; border: 1px solid #60a5fa; }
-        .btn-buy-now { background: #ffb703; color: #000000; font-size: 14px; padding: 10px; border: none; border-radius: 5px; font-weight: 900; cursor: pointer; transition: all 0.2s; }
+        .btn-action-green { background: var(--btn-green); color: #ffffff !important; border: 1px solid #226350; }
+        .btn-action-blue { background: #1e3a8a; color: #ffffff !important; border: 1px solid #2563eb; }
+        .btn-buy-now { background: var(--accent-gold); color: #111111; font-size: 14px; padding: 10px; border: none; border-radius: 5px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
+        .btn-buy-now:hover { background: var(--accent-gold-dark); color: #fff; }
 
         .btn-disabled-sold {
-            background: #334155 !important;
-            color: #94a3b8 !important;
-            border-color: #475569 !important;
+            background: #1e293b !important;
+            color: #64748b !important;
+            border-color: #334155 !important;
             cursor: not-allowed !important;
-            opacity: 0.5;
+            opacity: 0.6;
             pointer-events: none !important;
         }
 
-        .feed-box { padding: 4px 6px; max-height: 65px; overflow-y: auto; background: #040814; margin: 0 8px 4px 8px; border-radius: 4px; font-size: 10px; border: 1px solid var(--card-border); }
-        .feed-item { padding: 2px 0; border-bottom: 1px solid #1c2541; display: flex; justify-content: space-between; }
+        .feed-box { padding: 4px 6px; max-height: 65px; overflow-y: auto; background: #080c13; margin: 0 8px 4px 8px; border-radius: 4px; font-size: 10px; border: 1px solid var(--card-border); }
+        .feed-item { padding: 2px 0; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; }
 
-        .footer { padding: 8px; text-align: center; font-size: 10px; color: #94a3b8; margin-top: auto; background: #040814; border-top: 1px solid var(--card-border); }
-        .footer-btns { display: flex; justify-content: center; gap: 4px; margin-bottom: 4px; }
-        .btn-footer { background: #1e293b; color: #fff; border: 1px solid var(--card-border); padding: 4px 8px; border-radius: 3px; font-size: 10px; cursor: pointer; text-decoration: none; }
+        .footer { padding: 10px 8px; text-align: center; font-size: 10px; color: var(--text-muted); margin-top: auto; background: #080c13; border-top: 1px solid var(--card-border); }
+        .footer-btns { display: flex; justify-content: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+        .btn-footer { background: #141b24; color: #fff; border: 1px solid var(--card-border); padding: 5px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; text-decoration: none; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 2000; }
-        .modal-content { background: var(--card-bg); padding: 14px; border-radius: 8px; width: 85%; max-width: 360px; text-align: center; border: 1.5px solid var(--accent-gold); }
+        .modal-content { background: var(--card-bg); padding: 16px; border-radius: 8px; width: 88%; max-width: 400px; text-align: center; border: 1.5px solid var(--accent-gold); max-height: 85vh; overflow-y: auto; }
+        
+        .table-custom { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
+        .table-custom th, .table-custom td { padding: 6px; text-align: left; border-bottom: 1px solid var(--card-border); }
+        .table-custom th { color: var(--accent-gold); }
     </style>
 </head>
 <body onclick="sesKilidiAc()">
+
+<div id="liveToast"></div>
 
 <div class="mobile-container">
     <div class="header">
@@ -221,23 +264,34 @@
             <span>🏛️</span>
             <h2>HALİÇ ANTİK MEZAT</h2>
         </div>
-        <div class="live-badge">🟢 <span id="onlineCount">1</span> Canlı</div>
+        <div class="header-actions">
+            <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
+                <option value="TRY">₺ TL</option>
+                <option value="USD">$ USD</option>
+                <option value="EUR">€ EUR</option>
+            </select>
+            <div class="live-badge">🟢 <span id="onlineCount">1</span> Canlı</div>
+        </div>
     </div>
 
     <div class="user-bar-compact">
         <div style="display: flex; gap: 4px;">
-            <button class="btn-catalog-toggle" onclick="toggleCatalogDrawer()">📦 Seç & Ara</button>
-            <a href="/vitrin" class="btn-catalog-toggle" style="background:var(--btn-purple);">🛍️ Vitrin</a>
+            <button class="btn-top-nav" onclick="toggleCatalogDrawer()">📦 Seç & Ara</button>
+            <a href="/vitrin" class="btn-top-nav" style="background:#2e1065;">🛍️ Vitrin</a>
+            <button class="btn-top-nav" onclick="openSepetModal()">🛒 Sepet (<span id="sepetAdet">0</span>)</button>
+            <button class="btn-top-nav" onclick="openGecmisModal()">📜 Geçmişim</button>
         </div>
-        <span class="user-name-display" id="aktifKullaniciGosterge">Ziyaretçi (Gözlemci)</span>
-        <button class="btn-profile-toggle" onclick="openRegisterModal()">Profil / Giriş</button>
+        <div style="display: flex; align-items: center; gap: 4px;">
+            <span class="user-name-display" id="aktifKullaniciGosterge">Misafir</span>
+            <button class="btn-top-nav" style="background:var(--accent-gold); color:#111; font-weight:bold;" onclick="openRegisterModal()">Profil</button>
+        </div>
     </div>
 
     <!-- MEZAT ALANI -->
     <div id="mezatAlani">
         <div class="stage-wrapper" id="stageWrapper" ondblclick="toggleFullscreen()">
             <div class="stage-media-box" id="medyaKapsayici">
-                <p style="color: #94a3b8; font-size: 12px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
+                <p style="color: var(--text-muted); font-size: 12px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
             </div>
             
             <div class="stage-overlay">
@@ -260,9 +314,9 @@
 
             <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Tam Ekran</button>
             <button id="mainAudioBtn" class="audio-toggle" onclick="toggleAudio()">🔊 Ses</button>
+            <button id="btnStageTrack" class="btn-track-stage" onclick="sahnedekiUrunuTakipEt()">⭐ Takip Et</button>
         </div>
 
-        <!-- 10+ MEDYA KÜÇÜK ÖNİZLEME GALERİSİ -->
         <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
 
         <div id="soldBanner" class="sold-banner">
@@ -279,7 +333,7 @@
 
             <div style="display: flex; gap: 4px; margin-bottom: 6px;">
                 <input type="text" id="katalogAramaInput" placeholder="🔍 Lot No veya Ürün Adı Yazın..." style="margin: 0; flex: 1;" oninput="katalogAramaYap()" onkeyup="if(event.key==='Enter') katalogAramaYap()">
-                <button type="button" class="btn-bid btn-blue" style="width: auto; padding: 0 12px; font-size: 11px;" onclick="katalogAramaYap()">🔍 Ara</button>
+                <button type="button" class="btn-bid btn-action-blue" style="width: auto; padding: 0 12px; font-size: 11px;" onclick="katalogAramaYap()">🔍 Ara</button>
             </div>
             
             <div style="display:flex; gap:4px; margin-bottom:6px;">
@@ -288,36 +342,41 @@
                 </select>
             </div>
 
-            <div id="katalogSonucListesi" style="max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: #040814; padding: 4px; border-radius: 4px; border: 1px solid var(--card-border); margin-bottom: 6px;">
-                <div style="color: #94a3b8; font-size: 11px; text-align: center; padding: 6px;">Ürünler listeleniyor...</div>
+            <div id="katalogSonucListesi" style="max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: #080c13; padding: 4px; border-radius: 4px; border: 1px solid var(--card-border); margin-bottom: 6px;">
+                <div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 6px;">Ürünler listeleniyor...</div>
             </div>
 
-            <div id="secilenUrunOnizleme" style="font-size: 11px; background:#040814; padding:8px; border-radius:6px; border:1px solid var(--neon-cyan); display:none;">
+            <div id="secilenUrunOnizleme" style="font-size: 11px; background:#080c13; padding:8px; border-radius:6px; border:1px solid var(--accent-gold); display:none;">
                 <b id="secilenUrunBaslik" style="color:var(--accent-gold); font-size:12px;">-</b><br>
-                <span id="secilenUrunKategori" style="color:#94a3b8;">-</span>
+                <span id="secilenUrunKategori" style="color:var(--text-muted);">-</span>
                 
-                <div style="display:flex; justify-content:space-between; margin:4px 0; background:#0f172a; padding:4px 6px; border-radius:4px;">
+                <div style="display:flex; justify-content:space-between; margin:4px 0; background:#141b24; padding:4px 6px; border-radius:4px;">
                     <span>Açılış: <b id="secilenUrunAcilis" style="color:#34d399;">0 TL</b></span>
-                    <span>Canlı/Güncel: <b id="secilenUrunGuncelPey" style="color:#00f0ff;">0 TL</b></span>
-                    <span>Hemen Al: <b id="secilenUrunHemenAl" style="color:var(--accent-gold);">0 TL</b></span>
+                    <span>Canlı/Güncel: <b id="secilenUrunGuncelPey" style="color:var(--accent-gold);">0 TL</b></span>
+                    <span>Hemen Al: <b id="secilenUrunHemenAl" style="color:#f87171;">0 TL</b></span>
                 </div>
 
                 <div style="margin:4px 0; color:#e2e8f0; font-size:11px; line-height:1.2;">
-                    <b>Secere / Hikaye:</b> <span id="secilenUrunSecere">-</span>
+                    <b>Hikaye / Açıklama:</b> <span id="secilenUrunSecere">-</span>
                 </div>
 
                 <div id="urunOnTekliflerKutusu" style="margin:4px 0; background:#0b1120; padding:4px; border-radius:4px;">
-                    <b style="color:var(--neon-cyan); font-size:10px;">Verilen Ön Teklifler:</b>
+                    <b style="color:var(--accent-gold); font-size:10px;">Verilen Ön Teklifler:</b>
                     <div id="urunOnTekliflerListeIci" style="font-size:10px; color:#cbd5e1; max-height:40px; overflow-y:auto;">Teklif yok</div>
                 </div>
 
-                <label style="font-size:10px; font-weight:bold;">Ön Teklif Tutarı (TL):</label>
+                <div style="display:flex; gap:6px; margin-top:6px;">
+                    <button onclick="katalogUrununuSepeteEkle()" style="background:#059669; color:#fff; border:none; padding:7px; width:50%; font-weight:800; border-radius:4px; cursor:pointer;">🛒 Sepete Ekle</button>
+                    <button onclick="katalogUrununuTakipEt()" style="background:#1e3a8a; color:#fff; border:none; padding:7px; width:50%; font-weight:800; border-radius:4px; cursor:pointer;">⭐ Takip Et</button>
+                </div>
+
+                <label style="font-size:10px; font-weight:bold; margin-top:6px; display:block;">Ön Teklif Tutarı (TL):</label>
                 <input type="number" id="onTeklifMiktari" placeholder="Rakam yazınız">
-                <button onclick="onTeklifGonder()" style="background:#0284c7; color:#fff; border:none; padding:7px; width:100%; font-weight:800; border-radius:4px; margin-top:3px; cursor:pointer;">🚀 Ön Teklifi Kaydet</button>
+                <button onclick="onTeklifGonder()" style="background:#d4af37; color:#111; border:none; padding:7px; width:100%; font-weight:800; border-radius:4px; margin-top:3px; cursor:pointer;">🚀 Ön Teklifi Kaydet</button>
             </div>
         </div>
 
-        <div style="padding: 6px 10px; background: #0c1527; border-bottom: 1px solid var(--card-border);">
+        <div style="padding: 6px 10px; background: #0e141d; border-bottom: 1px solid var(--card-border);">
             <div style="font-size: 13px; color: var(--accent-gold); font-weight: 800;" id="aktif_baslik">Sahnede aktif ürün yok</div>
             <div class="story-container">
                 <span class="story-text" id="tanitimMetni">Şu an sahnede ürün bulunmamaktadır.</span>
@@ -347,29 +406,90 @@
         <!-- PEY VE SATIN ALMA BUTONLARI -->
         <div class="pey-butonlari-konteyner">
             <div style="display:flex; gap:6px; margin-bottom:5px;">
-                <button id="btnYuzdeOn" class="btn-bid btn-green" style="width: 50%;" onclick="yuzdeOnPeyVer()">⚡ %10 ARTIR</button>
-                <button id="btnSerbestPey" class="btn-bid btn-secondary" style="width: 50%;" onclick="serbestPeyVer()">✍️ Serbest Teklif</button>
+                <button id="btnYuzdeOn" class="btn-bid btn-action-green" style="width: 50%;" onclick="yuzdeOnPeyVer()">⚡ %10 ARTIR</button>
+                <button id="btnSerbestPey" class="btn-bid btn-action-blue" style="width: 50%;" onclick="serbestPeyVer()">✍️ Serbest Teklif</button>
             </div>
             <button id="btnHemenAl" class="btn-buy-now" style="width: 100%;" onclick="hemenAl()">⚡ HEMEN AL (Satın Al)</button>
         </div>
 
         <div class="feed-box" id="bidFeed">
-            <div style="color: #94a3b8; font-style: italic;">Canlı pey geçmişi bekleniyor...</div>
+            <div style="color: var(--text-muted); font-style: italic;">Canlı pey geçmişi bekleniyor...</div>
         </div>
 
-        <div class="box" style="background: #09101f; border: 1px solid #3b82f6; margin-top:0; padding:4px 8px;">
-            <p style="margin:0 0 2px 0; font-size:10px; color:#93c5fd; font-weight:bold;">🎵 Arka Plan Müzik (Mezatla Otomatik Başlar)</p>
+        <div class="box" style="background: #080c13; margin-top:0; padding:4px 8px;">
+            <p style="margin:0 0 2px 0; font-size:10px; color:var(--accent-gold); font-weight:bold;">🎵 Arka Plan Müzik (Mezatla Otomatik Başlar)</p>
             <audio id="arkaplanMuzik" controls loop style="width:100%; height:22px;"></audio>
         </div>
     </div>
 
+    <!-- ALT BÖLÜM VE LİNKLER -->
     <div class="footer">
         <div class="footer-btns">
+            <button class="btn-footer" onclick="openAboutModal()">ℹ️ Hakkımızda & Kurallar</button>
             <button class="btn-footer" onclick="openFeedbackModal()">📩 Şikayet / Görüş İlet</button>
             <button class="btn-footer" onclick="openPosModal()">💳 POS</button>
-            <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:var(--neon-cyan);">💬 WhatsApp</a>
+            <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:#34d399;">💬 WhatsApp</a>
         </div>
-        <p>🏛️ Haliç Antik Mezat Sistemi</p>
+        <p>© 2026 🏛️ Haliç Antik Mezat Sistemi - Tüm Hakları Saklıdır.</p>
+    </div>
+</div>
+
+<!-- 1. MÜŞTERİ SEPET MODALI (SİL BUTONSUZ - TAM GÜVENLİ) -->
+<div id="sepetModal" class="modal">
+    <div class="modal-content" style="text-align: left;">
+        <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">🛒 Alışveriş Sepetim</h3>
+        <div id="sepetUrunlerListesi" style="max-height: 180px; overflow-y:auto; margin-bottom: 8px;">Yükleniyor...</div>
+        
+        <div style="background:#080c13; padding:8px; border-radius:6px; font-size:11px; margin-bottom:10px; border:1px solid var(--card-border);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span>Ara Toplam:</span> <b id="sepetAraToplam">0 TL</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span>KDV (%20):</span> <b id="sepetKdv">0 TL</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                <span>Kargo Bedeli:</span> <b id="sepetKargo">0 TL</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:13px; color:var(--accent-gold); border-top:1px dashed #334; padding-top:4px;">
+                <span>Genel Toplam:</span> <b id="sepetGenelToplam">0 TL</b>
+            </div>
+        </div>
+        
+        <button class="btn-bid btn-action-green" style="width:100%;" onclick="openPosModal(); closeModal('sepetModal');">💳 Ödemeye Geç</button>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;" onclick="closeModal('sepetModal')">Kapat</button>
+    </div>
+</div>
+
+<!-- 2. SATIN ALMA GEÇMİŞİ HAVUZU -->
+<div id="gecmisModal" class="modal">
+    <div class="modal-content" style="text-align: left; max-width:440px;">
+        <h3 style="color: var(--accent-gold); margin-bottom: 6px; font-size:14px; font-weight:800;">📜 Satın Alma & Mezat Geçmişim</h3>
+        <p style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">Bugüne kadar kazandığınız ürünler:</p>
+        <div id="gecmisUrunlerListesi" style="max-height: 220px; overflow-y:auto; margin-bottom: 8px;">Yükleniyor...</div>
+        
+        <div style="background:#080c13; padding:8px; border-radius:6px; font-size:12px; display:flex; justify-content:space-between; color:#34d399; font-weight:bold; border:1px solid var(--card-border);">
+            <span>Toplam Mezat Harcamanız:</span>
+            <span id="gecmisToplamHarcama">0 TL</span>
+        </div>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:8px;" onclick="closeModal('gecmisModal')">Kapat</button>
+    </div>
+</div>
+
+<!-- 3. HAKKIMIZDA & MEZAT KURALLARI MODALI -->
+<div id="aboutModal" class="modal">
+    <div class="modal-content" style="text-align: left;">
+        <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">🏛️ Haliç Antik Mezat Hakkında</h3>
+        <div style="font-size:11px; color:#cbd5e1; line-height:1.5; max-height:220px; overflow-y:auto;">
+            <p><b>Kurumsal Bilgi:</b> Haliç Antik Mezat, tarihi ve sanatsal değere sahip seçkin antika ve koleksiyon ürünlerini güvenli canlı mezat deneyimiyle koleksiyonerlerle buluşturmaktadır.</p>
+            <br>
+            <p><b>Mezat Kuralları:</b></p>
+            <ul style="padding-left:16px;">
+                <li>Teklif veren üyeler tekliflerini geri çekemez.</li>
+                <li>Son saniye tekliflerinde mezat süresi adil rekabet için otomatik 15 saniye uzatılır.</li>
+                <li>Kazanılan ürünler 3 iş günü içerisinde sepet veya online POS üzerinden ödenmelidir.</li>
+            </ul>
+        </div>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:10px;" onclick="closeModal('aboutModal')">Anladım</button>
     </div>
 </div>
 
@@ -377,7 +497,7 @@
 <div id="authRegisterModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 6px; font-size:13px; font-weight:800;">📝 Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
-        <p style="font-size:10px; color:#94a3b8; margin-bottom:6px;">Mezatımızda yasal ve güvenli teklif verebilmek için yönetici onaylı üyelik gerekmektedir.</p>
+        <p style="font-size:10px; color:#94a3b8; margin-bottom:6px;">Mezatımızda yasal ve güvenli teklif verebilmek için bilgilerinizi eksiksiz kaydediniz.</p>
         
         <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız" required>
         <input type="text" id="k_tel" placeholder="05XX XXX XX XX" required>
@@ -391,8 +511,8 @@
             </label>
         </div>
 
-        <button onclick="kayitOlModal()" style="background:#059669; color:#fff; border:none; padding:9px; width:100%; font-weight:900; border-radius:5px; cursor:pointer; margin-top:5px;">💾 Onayla & Kaydol</button>
-        <button onclick="closeModal('authRegisterModal')" style="background:#475569; color:#fff; border:none; padding:7px; width:100%; font-weight:bold; border-radius:5px; cursor:pointer; margin-top:4px;">Kapat</button>
+        <button onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%; margin-top:5px;">💾 Onayla & Kaydol</button>
+        <button onclick="closeModal('authRegisterModal')" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;">Kapat</button>
     </div>
 </div>
 
@@ -410,7 +530,7 @@
         <input type="text" id="fb_konu" placeholder="Konu başlığı">
         <label style="font-size:10px; font-weight:bold;">Mesajınız:</label>
         <textarea id="fb_mesaj" rows="3" placeholder="Görüş veya şikayetinizi yazın..."></textarea>
-        <button class="btn-bid btn-green" style="width:100%; margin-top:5px;" onclick="sikayetGonder()">Gönder</button>
+        <button class="btn-bid btn-action-green" style="width:100%; margin-top:5px;" onclick="sikayetGonder()">Gönder</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;" onclick="closeModal('feedbackModal')">İptal</button>
     </div>
 </div>
@@ -418,14 +538,14 @@
 <div id="profileModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 6px; font-size:13px; font-weight:800;">👤 Profil ve Hesap Yönetimi</h3>
-        <div style="background: #040814; padding: 5px 7px; border-radius: 4px; margin-bottom: 5px; font-size: 10px;">
-            <b>Hesap Durumu:</b> <span id="p_durum_rozet" style="color:var(--neon-cyan); font-weight:bold;">Yükleniyor...</span>
+        <div style="background: #080c13; padding: 5px 7px; border-radius: 4px; margin-bottom: 5px; font-size: 10px;">
+            <b>Hesap Durumu:</b> <span id="p_durum_rozet" style="color:var(--accent-gold); font-weight:bold;">Aktif Üye</span>
         </div>
         <input type="text" id="p_ad" placeholder="Ad Soyad">
         <input type="text" id="p_tel" placeholder="05XX XXX XX XX">
         <input type="email" id="p_mail" placeholder="E-posta">
         <textarea id="p_adres" rows="2" placeholder="Kargo Adresi"></textarea>
-        <button class="btn-bid btn-green" style="width:100%; margin-top:5px;" onclick="profilGuncelle()">💾 Bilgileri Güncelle</button>
+        <button class="btn-bid btn-action-green" style="width:100%; margin-top:5px;" onclick="profilGuncelle()">💾 Bilgileri Güncelle</button>
         <button class="btn-bid" style="width:100%; background:var(--btn-red); color:#fff; margin-top:3px;" onclick="hesabiTamamenSil()">🗑️ Hesabı Sıfırla</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;" onclick="closeModal('profileModal')">Kapat</button>
     </div>
@@ -434,8 +554,8 @@
 <div id="posModal" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">💳 Online Güvenli Ödeme / POS</h3>
-        <p style="font-size:11px; color:#cbd5e1; margin-bottom:12px;">Kazandığınız ürünlerin ödemesini kredi kartı veya havale ile gerçekleştirebilirsiniz.</p>
-        <button class="btn-bid btn-green" style="width:100%;" onclick="alert('Ödeme sayfasına yönlendiriliyorsunuz...'); closeModal('posModal');">🔒 3D Secure ile Öde</button>
+        <p style="font-size:11px; color:#cbd5e1; margin-bottom:12px;">Kazandığınız veya sepetinizdeki ürünlerin ödemesini kredi kartı ile 3D Secure güvencesiyle tamamlayabilirsiniz.</p>
+        <button class="btn-bid btn-action-green" style="width:100%;" onclick="alert('Ödeme sayfasına yönlendiriliyorsunuz...'); closeModal('posModal');">🔒 3D Secure ile Öde</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:5px;" onclick="closeModal('posModal')">Kapat</button>
     </div>
 </div>
@@ -443,15 +563,13 @@
 <div id="congratsModal" class="modal">
     <div class="modal-content">
         <h2 style="color: var(--accent-gold); margin-bottom: 6px; font-size:15px; font-weight:900;">🏆 TEBRİKLER!</h2>
-        <p id="congratsText" style="font-size:12px;">Ürünü başarıyla satın aldınız.</p>
-        <button class="btn-bid btn-green" style="margin-top: 8px; width: 100%;" onclick="closeModal('congratsModal')">Tamam</button>
+        <p id="congratsText" style="font-size:12px;">Ürünü başarıyla satın aldınız. Ürün sepetinize eklenmiştir.</p>
+        <button class="btn-bid btn-action-green" style="margin-top: 8px; width: 100%;" onclick="closeModal('congratsModal'); openSepetModal();">Sepeti Görüntüle</button>
     </div>
 </div>
 
 <script>
-    const socket = io({
-        transports: ['websocket', 'polling']
-    });
+    const socket = io({ transports: ['websocket', 'polling'] });
 
     let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "";
     let secilenArsivUrunId = null;
@@ -459,11 +577,26 @@
     let sahnedekiUrunSatildiMi = false;
     let tumUrunlerArsivi = [];
     let sonGlobalOnTeklifler = [];
-    let sonDurumData = null;
     let audioCtx = null;
     let sonYuklenenSahneMedyaUrl = null;
     let sonGorulenPey = 0;
     let aktifUrunMedyalari = [];
+
+    let aktifParaBirimi = "TRY";
+    const kurlar = { "TRY": 1.0, "USD": 34.20, "EUR": 37.50 };
+
+    function formatFiyat(tlTutari) {
+        let t = parseFloat(tlTutari) || 0;
+        if (aktifParaBirimi === "USD") return `$${(t / kurlar.USD).toFixed(2)}`;
+        if (aktifParaBirimi === "EUR") return `€${(t / kurlar.EUR).toFixed(2)}`;
+        return `${t.toLocaleString('tr-TR')} TL`;
+    }
+
+    function paraBirimiDegistir() {
+        aktifParaBirimi = document.getElementById('currencySelector').value;
+        canliDurumuGetirHafif();
+        if (document.getElementById('sepetModal').style.display === 'flex') sepetVerileriniGetir();
+    }
 
     function sesKilidiAc() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -494,6 +627,13 @@
     function tikTakSesiCal() { playTone(950, 0.035, 'square', 0.08); }
     function tokmakSesiCal() { playTone(180, 0.4, 'sawtooth', 0.5); setTimeout(() => playTone(110, 0.6, 'sine', 0.6), 140); }
 
+    function showToast(mesaj) {
+        const toast = document.getElementById('liveToast');
+        toast.innerText = mesaj;
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 4500);
+    }
+
     function toggleFullscreen() {
         playUserClickSound();
         const wrapper = document.getElementById('stageWrapper');
@@ -504,7 +644,6 @@
         playUserClickSound();
         const drawer = document.getElementById('catalogDrawer');
         const acikMi = (drawer.style.display === 'block');
-        
         if (acikMi) {
             drawer.style.display = 'none';
         } else {
@@ -517,19 +656,11 @@
         try {
             const res = await fetch('/durum-getir');
             const data = await res.json();
-            
-            if (data.urunler && data.urunler.length > 0) {
-                tumUrunlerArsivi = data.urunler;
-            }
-            if (data.on_teklifler) {
-                sonGlobalOnTeklifler = data.on_teklifler;
-            }
-            
+            if (data.urunler && data.urunler.length > 0) tumUrunlerArsivi = data.urunler;
+            if (data.on_teklifler) sonGlobalOnTeklifler = data.on_teklifler;
             kategorileriDoldurIzleyici();
             kategoriyeGoreUrunleriDoldur();
-        } catch (e) {
-            console.error("Katalog yüklenemedi:", e);
-        }
+        } catch (e) {}
     }
 
     function kategoriyeGoreUrunleriDoldur() {
@@ -551,32 +682,26 @@
         });
 
         if (filtrelenmis.length === 0) {
-            listeDiv.innerHTML = '<div style="color: #94a3b8; font-size: 11px; text-align: center; padding: 6px;">Aramanıza uygun ürün bulunamadı.</div>';
+            listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 6px;">Aramanıza uygun ürün bulunamadı.</div>';
             return;
         }
 
         filtrelenmis.forEach(u => {
             let div = document.createElement('div');
-            div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#070d1e; padding:6px 8px; border-radius:4px; border:1px solid #1c2541;";
+            div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#080c13; padding:6px 8px; border-radius:4px; border:1px solid #1c2541;";
             div.innerHTML = `
                 <div style="font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:6px;">
                     <b style="color:var(--accent-gold);">LOT #${u.lot}</b> - ${u.ad} 
-                    <span style="color:#34d399; font-weight:bold;">(${u.fiyat} TL)</span>
+                    <span style="color:#34d399; font-weight:bold;">(${formatFiyat(u.fiyat)})</span>
                 </div>
-                <button class="btn-bid btn-green" style="padding:4px 8px; font-size:10px; white-space:nowrap; width:auto;" onclick="urunSecManuel(${u.id})">İncele / Teklif</button>
+                <button class="btn-bid btn-action-green" style="padding:4px 8px; font-size:10px; white-space:nowrap; width:auto;" onclick="urunSecManuel(${u.id})">İncele / Teklif</button>
             `;
             listeDiv.appendChild(div);
         });
     }
 
-    function katalogAramaYap() {
-        kategoriyeGoreUrunleriDoldur();
-    }
-
-    function kategoriDegisti() {
-        playUserClickSound();
-        kategoriyeGoreUrunleriDoldur();
-    }
+    function katalogAramaYap() { kategoriyeGoreUrunleriDoldur(); }
+    function kategoriDegisti() { playUserClickSound(); kategoriyeGoreUrunleriDoldur(); }
 
     function urunSecManuel(urunId) {
         playUserClickSound();
@@ -588,27 +713,54 @@
             onizlemeKutusu.style.display = 'block';
             document.getElementById('secilenUrunBaslik').innerText = `LOT #${secilenUrun.lot} - ${secilenUrun.ad}`;
             document.getElementById('secilenUrunKategori').innerText = secilenUrun.kategori || "Genel";
-            document.getElementById('secilenUrunAcilis').innerText = `${secilenUrun.fiyat || 0} TL`;
+            document.getElementById('secilenUrunAcilis').innerText = formatFiyat(secilenUrun.fiyat || 0);
             
             let canliGuncelFiyat = secilenUrun.guncel_fiyat || secilenUrun.fiyat || 0;
-            document.getElementById('secilenUrunGuncelPey').innerText = `${canliGuncelFiyat} TL`;
+            document.getElementById('secilenUrunGuncelPey').innerText = formatFiyat(canliGuncelFiyat);
 
-            const hemenAlBedeli = (secilenUrun.hemen_al_fiyat !== undefined && secilenUrun.hemen_al_fiyat > 0) 
-                                  ? secilenUrun.hemen_al_fiyat 
-                                  : (secilenUrun.hemen_al_fiyati || 0);
-            document.getElementById('secilenUrunHemenAl').innerText = `${hemenAlBedeli} TL`;
-            document.getElementById('secilenUrunSecere').innerText = secilenUrun.tanitim_yazisi || "Secere / Açıklama girilmemiş.";
+            const hemenAlBedeli = (secilenUrun.hemen_al_fiyat !== undefined && secilenUrun.hemen_al_fiyat > 0) ? secilenUrun.hemen_al_fiyat : (secilenUrun.hemen_al_fiyati || 0);
+            document.getElementById('secilenUrunHemenAl').innerText = formatFiyat(hemenAlBedeli);
+            document.getElementById('secilenUrunSecere').innerText = secilenUrun.tanitim_yazisi || "Açıklama girilmemiş.";
 
             let teklifler = sonGlobalOnTeklifler.filter(t => String(t.urun_id) === String(secilenUrun.id));
             let listeIci = document.getElementById('urunOnTekliflerListeIci');
             if (teklifler.length > 0) {
-                listeIci.innerHTML = teklifler.map(t => `<div>• <b>${t.musteri_adi}</b>: ${t.teklif} TL</div>`).join('');
+                listeIci.innerHTML = teklifler.map(t => `<div>• <b>${t.musteri_adi}</b>: ${formatFiyat(t.teklif)}</div>`).join('');
             } else {
                 listeIci.innerHTML = "Bu ürüne henüz ön teklif verilmemiş.";
             }
 
             sahneyiGuncelle(secilenUrun, "İnceleme", canliGuncelFiyat, "Ön Teklif Modu");
         }
+    }
+
+    function katalogUrununuSepeteEkle() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+        if (!secilenArsivUrunId) return;
+
+        fetch('/sepete-ekle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: kullaniciId, urun_id: secilenArsivUrunId })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            sepetAdediGuncelle();
+        });
+    }
+
+    function katalogUrununuTakipEt() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+        if (!secilenArsivUrunId) return;
+
+        fetch('/urun-takip-et', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: kullaniciId, urun_id: secilenArsivUrunId })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+        });
     }
 
     function katalogKapat() {
@@ -629,19 +781,15 @@
     }
 
     function kategorileriDoldurIzleyici() {
-        fetch('/kategoriler-listesi')
-        .then(res => res.json())
-        .then(data => {
+        fetch('/kategoriler-listesi').then(res => res.json()).then(data => {
             const select = document.getElementById('kategoriFiltre');
             if (!select) return;
             let eskiSecim = select.value;
             select.innerHTML = '<option value="">Tüm Kategoriler</option>';
-            if (data.kategoriler && data.kategoriler.length > 0) {
-                data.kategoriler.forEach(kat => {
+            if (data && data.length > 0) {
+                data.forEach(kat => {
                     let opt = document.createElement('option');
-                    opt.value = kat;
-                    opt.innerText = kat;
-                    select.appendChild(opt);
+                    opt.value = kat; opt.innerText = kat; select.appendChild(opt);
                 });
             }
             if (eskiSecim) select.value = eskiSecim;
@@ -649,32 +797,31 @@
     }
 
     function canliDurumuGetirHafif() {
-        fetch('/canli-durum')
-        .then(res => res.json())
-        .then(data => {
+        fetch('/canli-durum').then(res => res.json()).then(data => {
             if (!data) return;
 
-            if (data.pey !== undefined && data.pey !== sonGorulenPey) {
-                if (sonGorulenPey > 0 && data.pey > sonGorulenPey) {
+            let gelenPey = parseFloat(data.pey || (data.aktif_urun ? data.aktif_urun.guncel_fiyat : 0));
+            if (gelenPey > 0 && gelenPey !== sonGorulenPey) {
+                if (sonGorulenPey > 0 && gelenPey > sonGorulenPey) {
                     gongSesiCal();
                     const feed = document.getElementById('bidFeed');
                     const item = document.createElement('div');
                     item.className = 'feed-item';
-                    item.innerHTML = `<span><b>${data.kazanan || 'Yeni Teklif'}</b></span> <span style="color:#34d399; font-weight:800;">${data.pey} TL</span>`;
+                    item.innerHTML = `<span><b>${data.kazanan || 'Yeni Teklif'}</b></span> <span style="color:#34d399; font-weight:800;">${formatFiyat(gelenPey)}</span>`;
                     feed.prepend(item);
                 }
-                sonGorulenPey = data.pey;
-                document.getElementById('currentBid').innerText = data.pey;
+                sonGorulenPey = gelenPey;
+                document.getElementById('currentBid').innerText = formatFiyat(gelenPey).replace(" TL", "").replace("$", "").replace("€", "");
                 document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
             }
 
             if (!secilenArsivUrunId) {
-                sahneyiGuncelle(data.aktif_urun, data.durum, data.pey, data.kazanan);
+                sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
             }
         }).catch(e=>{});
     }
 
-    setInterval(canliDurumuGetirHafif, 800);
+    setInterval(canliDurumuGetirHafif, 1000);
 
     window.onload = function() {
         let ad = localStorage.getItem('halic_antik_ad');
@@ -682,17 +829,17 @@
         let tel = localStorage.getItem('halic_antik_tel');
 
         if(ad && ad !== "null" && ad !== "undefined") {
-            kullaniciAdi = ad;
+            kullaniciAdi = ad.replace(/^\[.*?\]\s*/, '').trim();
             kullaniciId = id ? parseInt(id) : null;
             kullaniciTel = tel || "";
-            document.getElementById('aktifKullaniciGosterge').innerText = ad;
+            document.getElementById('aktifKullaniciGosterge').innerText = kullaniciAdi;
+            sepetAdediGuncelle();
         }
         
         canliDurumuGetirHafif();
         katalogUrunleriniGetir();
 
         fetch('/durum-getir').then(res => res.json()).then(data => {
-            sonDurumData = data;
             if(data.muzik_listesi && data.muzik_listesi.length > 0) {
                 let player = document.getElementById('arkaplanMuzik');
                 let sonMuzik = data.muzik_listesi[data.muzik_listesi.length - 1];
@@ -702,6 +849,16 @@
             }
         }).catch(e=>{});
     };
+
+    socket.on('veri_guncellendi', function() {
+        canliDurumuGetirHafif();
+        sepetAdediGuncelle();
+    });
+
+    socket.on('urun_takip_bildirimi', function(data) {
+        showToast(`🔔 ${data.mesaj}`);
+        playTone(600, 0.2, 'sine', 0.2);
+    });
 
     socket.on('izleyici_sayisi_guncelle', function(data) {
         if(data && data.sayi !== undefined) {
@@ -720,13 +877,24 @@
 
     socket.on('mezat_basladi_muzik', function() {
         let player = document.getElementById('arkaplanMuzik');
-        if (player && player.src) {
-            player.play().catch(e => {});
-        }
+        if (player && player.src) player.play().catch(e => {});
     });
 
     socket.on('pey_guncellendi', function(data) {
-        canliDurumuGetirHafif();
+        let fiyat = data.pey || data.guncel_fiyat || 0;
+        let kisi = data.kazanan || data.kazanan_ad || "Yok";
+        
+        if (fiyat > sonGorulenPey) {
+            gongSesiCal();
+            const feed = document.getElementById('bidFeed');
+            const item = document.createElement('div');
+            item.className = 'feed-item';
+            item.innerHTML = `<span><b>${kisi}</b></span> <span style="color:#34d399; font-weight:800;">${formatFiyat(fiyat)}</span>`;
+            feed.prepend(item);
+        }
+        sonGorulenPey = fiyat;
+        document.getElementById('currentBid').innerText = formatFiyat(fiyat).replace(" TL", "").replace("$", "").replace("€", "");
+        document.getElementById('aktif_kazanan').innerText = kisi;
     });
 
     socket.on('sayac_guncelle', function(data) {
@@ -737,13 +905,12 @@
         const statusTitle = document.getElementById('timerStatusTitle');
 
         if (digits) digits.innerText = String(kalan).padStart(2, '0');
-        
         let progressPercent = Math.max(0, Math.min(1, kalan / 30));
         if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
 
         if (kalan <= 10 && kalan > 0) {
             if (cockpit) cockpit.classList.add('urgent');
-            if (statusTitle) statusTitle.innerText = "⚠️ SON " + kalan + " SN!";
+            if (statusTitle) statusTitle.innerText = "⚠ SON " + kalan + " SN!";
             tikTakSesiCal();
         } else {
             if (cockpit) cockpit.classList.remove('urgent');
@@ -758,7 +925,6 @@
         const dial = document.getElementById('futuristicDial');
 
         sureUzatildiSesiCal();
-
         let yeniSure = data.kalan || 15;
         if (digits) digits.innerText = String(yeniSure).padStart(2, '0');
         if (statusTitle) statusTitle.innerText = "🔥 15 SN UZATILDI!";
@@ -777,10 +943,10 @@
         if (player) player.pause();
 
         canliDurumuGetirHafif();
+        sepetAdediGuncelle();
     });
 
     function sahneyiGuncelle(urunObj, durum, peyTutar, kazananKisi) {
-        let medyaDiv = document.getElementById('medyaKapsayici');
         let soldBanner = document.getElementById('soldBanner');
         let thumbsDiv = document.getElementById('stageThumbs');
         let btnYuzdeOn = document.getElementById('btnYuzdeOn');
@@ -792,8 +958,8 @@
             sahnedekiUrunSatildiMi = false;
             document.getElementById('aktif_baslik').innerText = "Sahnede aktif ürün yok";
             document.getElementById('currentBid').innerText = "0";
-            document.getElementById('cornerAcilisFiyat').innerText = "0 TL";
-            document.getElementById('cornerHemenAlFiyat').innerText = "0 TL";
+            document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(0);
+            document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(0);
             document.getElementById('cornerLotNo').innerText = "LOT #000";
             document.getElementById('tanitimMetni').innerText = "Şu an sahnede ürün bulunmamaktadır.";
             document.getElementById('timerStatusTitle').innerText = "MEZAT BEKLENİYOR";
@@ -803,18 +969,20 @@
             if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
             if (btnSerbest) btnSerbest.classList.add('btn-disabled-sold');
             if (btnHemenAl) btnHemenAl.classList.add('btn-disabled-sold');
+
+            let medyaDiv = document.getElementById('medyaKapsayici');
+            medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 12px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
+            sonYuklenenSahneMedyaUrl = null;
             return;
         }
 
         aktifSahneUrunId = urunObj.id;
-        const hemenAlBedeli = (urunObj.hemen_al_fiyat !== undefined && urunObj.hemen_al_fiyat !== null && urunObj.hemen_al_fiyat > 0) 
-                              ? urunObj.hemen_al_fiyat 
-                              : (urunObj.hemen_al_fiyati || 0);
+        const hemenAlBedeli = (urunObj.hemen_al_fiyat !== undefined && urunObj.hemen_al_fiyat !== null && urunObj.hemen_al_fiyat > 0) ? urunObj.hemen_al_fiyat : (urunObj.hemen_al_fiyati || 0);
 
         document.getElementById('aktif_baslik').innerText = `LOT #${urunObj.lot} - ${urunObj.ad}`;
-        document.getElementById('tanitimMetni').innerText = urunObj.tanitim_yazisi || "Hikaye girilmemiş.";
-        document.getElementById('cornerAcilisFiyat').innerText = (urunObj.fiyat || 0) + " TL";
-        document.getElementById('cornerHemenAlFiyat').innerText = hemenAlBedeli + " TL";
+        document.getElementById('tanitimMetni').innerText = urunObj.tanitim_yazisi || "Açıklama girilmemiş.";
+        document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(urunObj.fiyat || 0);
+        document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(hemenAlBedeli);
         document.getElementById('cornerLotNo').innerText = `LOT #${urunObj.lot}`;
 
         if (durum === "Satıldı" || urunObj.durum === "Satıldı") {
@@ -822,7 +990,7 @@
             soldBanner.style.display = 'block';
             document.getElementById('soldWinnerName').innerText = kazananKisi || "Bilinmiyor";
             let sonFiyat = peyTutar || urunObj.guncel_fiyat || urunObj.fiyat || 0;
-            document.getElementById('soldPrice').innerText = String(sonFiyat).replace(" TL", "") + " TL";
+            document.getElementById('soldPrice').innerText = formatFiyat(sonFiyat);
             document.getElementById('timerStatusTitle').innerText = "🔨 SATILDI";
 
             if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
@@ -834,7 +1002,7 @@
         } else {
             sahnedekiUrunSatildiMi = false;
             soldBanner.style.display = 'none';
-            document.getElementById('currentBid').innerText = peyTutar || urunObj.fiyat;
+            document.getElementById('currentBid').innerText = formatFiyat(peyTutar || urunObj.fiyat).replace(" TL", "").replace("$", "").replace("€", "");
             document.getElementById('aktif_kazanan').innerText = kazananKisi || "Henüz Yok";
 
             if (btnYuzdeOn) btnYuzdeOn.classList.remove('btn-disabled-sold');
@@ -848,18 +1016,13 @@
         aktifUrunMedyalari = [];
         if (urunObj.video) aktifUrunMedyalari.push({ tip: 'video', url: urunObj.video });
         if (urunObj.fotograflar && Array.isArray(urunObj.fotograflar)) {
-            urunObj.fotograflar.forEach(f => {
-                if (f && f.trim()) aktifUrunMedyalari.push({ tip: 'foto', url: f.trim() });
-            });
+            urunObj.fotograflar.forEach(f => { if (f && f.trim()) aktifUrunMedyalari.push({ tip: 'foto', url: f.trim() }); });
         }
 
         if (aktifUrunMedyalari.length > 1) {
             thumbsDiv.style.display = 'flex';
             thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => `
-                <img src="${m.tip === 'video' ? '/static/img/video-icon.png' : m.url}" 
-                     class="thumb-item ${idx === 0 ? 'active' : ''}" 
-                     onclick="medyaDegistir(${idx})" 
-                     title="Açı ${idx+1}">
+                <img src="${m.tip === 'video' ? '/static/img/video-icon.png' : m.url}" class="thumb-item ${idx === 0 ? 'active' : ''}" onclick="medyaDegistir(${idx})">
             `).join('');
         } else {
             thumbsDiv.style.display = 'none';
@@ -867,15 +1030,17 @@
 
         if (aktifUrunMedyalari.length > 0) {
             medyaGoster(aktifUrunMedyalari[0]);
+        } else {
+            let medyaDiv = document.getElementById('medyaKapsayici');
+            medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 12px; font-weight:bold;">📷 Görsel Eklenmemiş</p>';
+            sonYuklenenSahneMedyaUrl = null;
         }
     }
 
     function medyaDegistir(index) {
         playUserClickSound();
         if (aktifUrunMedyalari[index]) {
-            document.querySelectorAll('.thumb-item').forEach((el, i) => {
-                el.classList.toggle('active', i === index);
-            });
+            document.querySelectorAll('.thumb-item').forEach((el, i) => { el.classList.toggle('active', i === index); });
             medyaGoster(aktifUrunMedyalari[index]);
         }
     }
@@ -888,8 +1053,7 @@
         medyaDiv.innerHTML = "";
         if (medya.tip === 'video') {
             let v = document.createElement('video');
-            v.id = "stageVideo";
-            v.src = medya.url;
+            v.id = "stageVideo"; v.src = medya.url;
             v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
             medyaDiv.appendChild(v);
             v.play().catch(e=>{});
@@ -901,7 +1065,7 @@
     }
 
     function kullaniciGirisKontrol() {
-        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)") {
+        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)" || kullaniciAdi === "Misafir") {
             document.getElementById('authRegisterModal').style.display = 'flex';
             return false;
         }
@@ -911,22 +1075,33 @@
     function yuzdeOnPeyVer() {
         playUserClickSound();
         if (!kullaniciGirisKontrol()) return;
-        if (sahnedekiUrunSatildiMi) { alert("⚠️ Bu ürün satılmıştır!"); return; }
-        if (!aktifSahneUrunId) { alert("Sahnede aktif ürün bulunmuyor!"); return; }
+        if (sahnedekiUrunSatildiMi) return alert("⚠️ Bu ürün satılmıştır!");
+        if (!aktifSahneUrunId) return alert("Sahnede aktif ürün bulunmuyor!");
         peyGonder(0);
+    }
+
+    function asgariArtisHesapla(mevcutFiyat) {
+        if (mevcutFiyat < 500) return 50;
+        if (mevcutFiyat < 2500) return 100;
+        if (mevcutFiyat < 10000) return 250;
+        return 500;
     }
 
     function serbestPeyVer() {
         playUserClickSound();
         if (!kullaniciGirisKontrol()) return;
-        if (sahnedekiUrunSatildiMi) { alert("⚠️ Bu ürün satılmıştır!"); return; }
-        if (!aktifSahneUrunId) { alert("Sahnede aktif ürün bulunmuyor!"); return; }
-        let current = parseFloat(document.getElementById('currentBid').innerText) || 0;
-        let miktar = prompt(`Mevcut Fiyat: ${current} TL\nTeklifinizi yazın:`);
+        if (sahnedekiUrunSatildiMi) return alert("⚠️ Bu ürün satılmıştır!");
+        if (!aktifSahneUrunId) return alert("Sahnede aktif ürün bulunmuyor!");
+        
+        let current = parseFloat(document.getElementById('currentBid').innerText.replace(/[^0-9.]/g, '')) || 0;
+        let gerekenArtis = asgariArtisHesapla(current);
+        let minKabulFiyat = current + gerekenArtis;
+
+        let miktar = prompt(`Mevcut Fiyat: ${current} TL\nEn az +${gerekenArtis} TL artırabilirsiniz.\nMinimum Teklif: ${minKabulFiyat} TL\n\nTeklifinizi TL cinsinden yazın:`);
         if (!miktar) return;
         let tutar = parseFloat(miktar);
-        if (isNaN(tutar) || tutar <= current) {
-            alert(`⚠️ Teklifiniz mevcut fiyattan (${current} TL) yüksek olmalıdır!`);
+        if (isNaN(tutar) || tutar < minKabulFiyat) {
+            alert(`⚠️ Geçersiz teklif! Kural gereği en az ${minKabulFiyat} TL teklif vermelisiniz.`);
             return;
         }
         peyGonder(tutar);
@@ -938,7 +1113,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
                 urun_id: aktifSahneUrunId, 
-                musteri_id: kullaniciId,
+                musteri_id: kullaniciId, 
                 musteri_adi: kullaniciAdi, 
                 telefon: kullaniciTel,
                 miktar: miktar, 
@@ -956,15 +1131,15 @@
     function hemenAl() {
         playUserClickSound();
         if (!kullaniciGirisKontrol()) return;
-        if (sahnedekiUrunSatildiMi) { alert("⚠️ Bu ürün satılmıştır!"); return; }
-        if (!aktifSahneUrunId) { alert("Sahnede aktif ürün yok!"); return; }
+        if (sahnedekiUrunSatildiMi) return alert("⚠️ Bu ürün satılmıştır!");
+        if (!aktifSahneUrunId) return alert("Sahnede aktif ürün yok!");
         if (!confirm("Bu ürünü hemen almak istiyor musunuz?")) return;
         fetch('/pey-ver', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
                 urun_id: aktifSahneUrunId, 
-                musteri_id: kullaniciId,
+                musteri_id: kullaniciId, 
                 musteri_adi: kullaniciAdi, 
                 telefon: kullaniciTel,
                 islem: 'hemen_al' 
@@ -973,37 +1148,130 @@
             if(d.success) {
                 document.getElementById('congratsModal').style.display = 'flex';
                 canliDurumuGetirHafif();
+                sepetAdediGuncelle();
             } else {
                 alert(d.mesaj || "İşlem yapılamadı.");
             }
         });
     }
 
+    function sahnedekiUrunuTakipEt() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+        if (!aktifSahneUrunId) return alert("Sahnede ürün yok!");
+
+        fetch('/urun-takip-et', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: kullaniciId, urun_id: aktifSahneUrunId })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+        });
+    }
+
+    function openSepetModal() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+        document.getElementById('sepetModal').style.display = 'flex';
+        sepetVerileriniGetir();
+    }
+
+    function sepetAdediGuncelle() {
+        let hedefId = kullaniciId || 0;
+        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
+        fetch(`/sepet-getir/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+            if (res.success && res.urunler) {
+                document.getElementById('sepetAdet').innerText = res.urunler.length;
+            }
+        }).catch(e=>{});
+    }
+
+    // Müşteri için sil butonu kaldırılmış sepet görünümü
+    function sepetVerileriniGetir() {
+        let hedefId = kullaniciId || 0;
+        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
+        fetch(`/sepet-getir/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+            const listDiv = document.getElementById('sepetUrunlerListesi');
+            if (!res.success || !res.urunler || res.urunler.length === 0) {
+                listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:11px; padding:10px 0;">Sepetinizde ürün bulunmamaktadır.</p>';
+                document.getElementById('sepetAraToplam').innerText = formatFiyat(0);
+                document.getElementById('sepetKdv').innerText = formatFiyat(0);
+                document.getElementById('sepetKargo').innerText = formatFiyat(0);
+                document.getElementById('sepetGenelToplam').innerText = formatFiyat(0);
+                document.getElementById('sepetAdet').innerText = "0";
+                return;
+            }
+
+            document.getElementById('sepetAdet').innerText = res.urunler.length;
+            document.getElementById('sepetAraToplam').innerText = formatFiyat(res.ara_toplam);
+            document.getElementById('sepetKdv').innerText = formatFiyat(res.kdv_tutari);
+            document.getElementById('sepetKargo').innerText = formatFiyat(res.kargo_ucreti);
+            document.getElementById('sepetGenelToplam').innerText = formatFiyat(res.genel_toplam);
+
+            let html = '<table class="table-custom"><thead><tr><th>Lot</th><th>Ürün Adı</th><th>Tutar</th></tr></thead><tbody>';
+            res.urunler.forEach(item => {
+                html += `<tr>
+                    <td><b>#${item.lot}</b></td>
+                    <td>${item.ad}</td>
+                    <td style="color:#34d399; font-weight:bold;">${formatFiyat(item.fiyat)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            html += '<p style="font-size:10px; color:#f87171; margin-top:6px;">⚠️ Mezat kuralları gereği kazanılan ürünler müşteri tarafından iptal edilemez. İptal talepleriniz için lütfen yönetici ile iletişime geçiniz.</p>';
+            listDiv.innerHTML = html;
+        });
+    }
+
+    function openGecmisModal() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+        document.getElementById('gecmisModal').style.display = 'flex';
+        gecmisVerileriniGetir();
+    }
+
+    function gecmisVerileriniGetir() {
+        let hedefId = kullaniciId || 0;
+        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
+        fetch(`/siparis-gecmisi/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+            const listDiv = document.getElementById('gecmisUrunlerListesi');
+            if (!res.success || !res.gecmis || res.gecmis.length === 0) {
+                listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:11px; padding:10px 0;">Henüz satın aldığınız bir ürün bulunmuyor.</p>';
+                document.getElementById('gecmisToplamHarcama').innerText = formatFiyat(0);
+                return;
+            }
+
+            document.getElementById('gecmisToplamHarcama').innerText = formatFiyat(res.toplam_harcama);
+            let html = '<table class="table-custom"><thead><tr><th>Lot</th><th>Ürün</th><th>Kazanılan Fiyat</th></tr></thead><tbody>';
+            res.gecmis.forEach(item => {
+                html += `<tr>
+                    <td>#${item.lot}</td>
+                    <td>${item.ad}</td>
+                    <td style="color:var(--accent-gold); font-weight:bold;">${formatFiyat(item.fiyat)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            listDiv.innerHTML = html;
+        });
+    }
+
     function onTeklifGonder() {
         playUserClickSound();
         if (!kullaniciGirisKontrol()) return;
-        
         let urunId = secilenArsivUrunId;
         let teklifMiktari = parseFloat(document.getElementById('onTeklifMiktari').value);
 
-        if(!urunId || isNaN(teklifMiktari) || teklifMiktari <= 0) { 
-            alert("Lütfen önce listeden bir ürün seçin ve geçerli bir teklif tutarı giriniz!"); 
-            return; 
-        }
+        if(!urunId || isNaN(teklifMiktari) || teklifMiktari <= 0) return alert("Geçerli bir teklif tutarı giriniz!");
 
         fetch('/on-teklif-ver', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ 
                 urun_id: urunId, 
-                musteri_id: kullaniciId,
+                musteri_id: kullaniciId, 
                 musteri_adi: kullaniciAdi, 
-                telefon: kullaniciTel,
                 teklif: teklifMiktari 
             })
-        })
-        .then(res => res.json())
-        .then(d => {
+        }).then(res => res.json()).then(d => {
             if (d.success) {
                 alert(d.mesaj || "✅ Ön teklif kaydedildi.");
                 document.getElementById('onTeklifMiktari').value = "";
@@ -1023,18 +1291,16 @@
         let adres = document.getElementById('k_adres').value.trim();
         let sozlesme = document.getElementById('sozlesmeOnay').checked;
 
-        if(!ad) { alert("Lütfen Ad Soyad alanını doldurun!"); return; }
-        if(!tel) { alert("Lütfen Telefon alanını doldurun!"); return; }
-        if(!sozlesme) { alert("Lütfen Mesafeli Satış ve Mezat Şartnamesini onaylayın!"); return; }
+        if(!ad || !tel) return alert("Ad ve Telefon zorunludur!");
+        if(!sozlesme) return alert("Lütfen şartnameyi onaylayın!");
 
         fetch('/kayit-ol', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ad, tel, mail, adres, sozlesme })
         }).then(res => res.json()).then(d => {
-            alert(d.mesaj || "Kayıt talebiniz alındı.");
-            kullaniciAdi = ad;
-            kullaniciTel = tel;
+            alert(d.mesaj || "Kayıt tamamlandı.");
+            kullaniciAdi = ad; kullaniciTel = tel;
             if(d.musteri_id) kullaniciId = d.musteri_id;
 
             localStorage.setItem('halic_antik_ad', ad);
@@ -1044,12 +1310,13 @@
             document.getElementById('aktifKullaniciGosterge').innerText = ad;
             closeModal('authRegisterModal');
             canliDurumuGetirHafif();
+            sepetAdediGuncelle();
         });
     }
 
     function openRegisterModal() {
         playUserClickSound();
-        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)") {
+        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)" || kullaniciAdi === "Misafir") {
             document.getElementById('authRegisterModal').style.display = 'flex';
         } else {
             document.getElementById('p_ad').value = kullaniciAdi;
@@ -1074,11 +1341,11 @@
         }).then(res => res.json()).then(d => {
             localStorage.setItem('halic_antik_ad', yeniAd);
             localStorage.setItem('halic_antik_tel', tel);
-            kullaniciAdi = yeniAd;
-            kullaniciTel = tel;
+            kullaniciAdi = yeniAd; kullaniciTel = tel;
             document.getElementById('aktifKullaniciGosterge').innerText = yeniAd;
             closeModal('profileModal');
             alert("✅ Profil güncellendi.");
+            sepetAdediGuncelle();
         });
     }
 
@@ -1096,7 +1363,7 @@
         let konu = document.getElementById('fb_konu').value.trim();
         let mesaj = document.getElementById('fb_mesaj').value.trim();
 
-        if(!konu || !mesaj) { alert("Lütfen konu ve mesaj alanını doldurun!"); return; }
+        if(!konu || !mesaj) return alert("Lütfen konu ve mesaj alanını doldurun!");
 
         fetch('/sikayet-oneri-gonder', {
             method: 'POST',
@@ -1108,6 +1375,7 @@
         });
     }
 
+    function openAboutModal() { playUserClickSound(); document.getElementById('aboutModal').style.display = 'flex'; }
     function openFeedbackModal() { playUserClickSound(); document.getElementById('feedbackModal').style.display = 'flex'; }
     function openPosModal() { playUserClickSound(); document.getElementById('posModal').style.display = 'flex'; }
     function closeModal(id) { playUserClickSound(); document.getElementById(id).style.display = 'none'; }
