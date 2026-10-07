@@ -11,3 +11,4 @@ gunicorn==22.0.0
 Flask-Compress==1.14
 TikTokLive==6.3.5
 pyotp==2.9.0
+pyotp
