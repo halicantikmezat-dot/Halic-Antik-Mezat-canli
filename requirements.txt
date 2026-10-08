@@ -11,5 +11,4 @@ gunicorn==22.0.0
 Flask-Compress==1.14
 TikTokLive
 pyotp==2.9.0
-psycopg2-binary
-psycopg[binary]
+psycogreen
