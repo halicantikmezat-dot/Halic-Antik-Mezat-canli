@@ -5,7 +5,7 @@ import requests
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-BASE_URL = "http://127.0.0.1:5000/api/tiktok-web-chat"
+BASE_URL = "https://halicantikcanli.com/api/tiktok-web-chat"
 
 # Argümanları oku: python canli_bot.py <TIKTOK_USER> <FB_LINK_OR_ID> <IG_USER>
 args = sys.argv[1:]
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     fb_gorunum = "Aktif (Otomatik)" if FB_PARAM == "AUTO" else (FB_PARAM if FB_PARAM and FB_PARAM != "-" else "Devre Dışı")
 
     print("==================================================")
-    print("🚀 HALİÇ ANTİK ÇOKLU PLATFORM PEY MOTORU AKTİF")
+    print("🚀 HALİÇ ANTIK ÇOKLU PLATFORM PEY MOTORU AKTİF")
     print(f"   TikTok    : @{TIKTOK_KULLANICI if TIKTOK_KULLANICI != '-' else 'Devre Dışı'}")
     print(f"   Facebook  : {fb_gorunum}")
     print(f"   Instagram : {IG_USERNAME if IG_USERNAME and IG_USERNAME != '-' else 'Harici Pencerede Aktif'}")
