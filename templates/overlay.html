@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Haliç Antik Mezat - Canlı Yayın Katmanı</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            background: transparent;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        .overlay-box {
+            background: rgba(4, 8, 20, 0.90);
+            border: 2px solid #ffb703;
+            border-radius: 8px;
+            padding: 10px 14px;
+            width: fit-content;
+            min-width: 260px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+        }
+
+        .lot-title { font-size: 14px; font-weight: 800; color: #ffb703; text-transform: uppercase; }
+        .price-row { display: flex; align-items: baseline; gap: 8px; margin: 4px 0; }
+        .price-val { font-size: 22px; font-weight: 900; color: #00f0ff; }
+        .bidder { font-size: 12px; color: #cbd5e1; }
+        .timer { font-size: 13px; font-weight: bold; color: #ef4444; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="overlay-box" id="overlayBox">
+    <div class="lot-title" id="overlayLot">LOT #000 - MEZAT BEKLENİYOR</div>
+    <div class="price-row">
+        <span class="price-val" id="overlayFiyat">0 TL</span>
+        <span class="bidder" id="overlayKazanan">Son Teklif: Yok</span>
+    </div>
+    <div class="timer" id="overlaySayac">⏱️ MEZAT BEKLENİYOR</div>
+</div>
+
+<script>
+    const socket = io({ 
+        transports: ['websocket'],
+        upgrade: false 
+    });
+
+    socket.on('pey_guncellendi', function(data) {
+        if (!data) return;
+        let fiyat = data.pey || data.guncel_fiyat || 0;
+        let kazanan = data.kazanan || data.kazanan_ad || "Yok";
+        document.getElementById('overlayFiyat').innerText = fiyat + " TL";
+        document.getElementById('overlayKazanan').innerText = "Son Teklif: " + kazanan;
+    });
+
+    socket.on('yeni_sahne_urunu', function(urun) {
+        if (urun) {
+            document.getElementById('overlayLot').innerText = `LOT #${urun.lot} - ${urun.ad}`;
+            document.getElementById('overlayFiyat').innerText = (urun.guncel_fiyat || urun.fiyat || 0) + " TL";
+            document.getElementById('overlayKazanan').innerText = "Son Teklif: Yok";
+            document.getElementById('overlaySayac').innerText = "⏱️ MEZAT BEKLENİYOR";
+        }
+    });
+
+    socket.on('sayac_guncelle', function(data) {
+        if (data && data.kalan !== undefined) {
+            document.getElementById('overlaySayac').innerText = `⏱️ KALAN SÜRE: ${data.kalan} SN`;
+        }
+    });
+
+    socket.on('sayac_uzatildi', function(data) {
+        document.getElementById('overlaySayac').innerText = `🔥 15 SN UZATILDI!`;
+    });
+
+    socket.on('sayac_bitti', function(data) {
+        let kazanan = (data && data.kazanan) ? ` (${data.kazanan})` : '';
+        document.getElementById('overlaySayac').innerText = `🔨 SATILDI!${kazanan}`;
+    });
+
+    function ilkDurumuGetir() {
+        fetch('/canli-durum')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.aktif_urun) {
+                document.getElementById('overlayLot').innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
+                document.getElementById('overlayFiyat').innerText = (data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0) + " TL";
+                document.getElementById('overlayKazanan').innerText = "Son Teklif: " + (data.kazanan || "Yok");
+                document.getElementById('overlaySayac').innerText = data.durum === "Satıldı" ? "🔨 SATILDI!" : "⏱️ MEZAT BEKLENİYOR";
+            }
+        })
+        .catch(() => {});
+    }
+
+    window.onload = ilkDurumuGetir;
+</script>
+</body>
+</html>
