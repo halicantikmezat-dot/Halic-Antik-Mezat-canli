@@ -416,9 +416,21 @@
             <div style="color: var(--text-muted); font-style: italic;">Canlı pey geçmişi bekleniyor...</div>
         </div>
 
-        <div class="box" style="background: #080c13; margin-top:0; padding:4px 8px;">
-            <p style="margin:0 0 2px 0; font-size:10px; color:var(--accent-gold); font-weight:bold;">🎵 Arka Plan Müzik (Mezatla Otomatik Başlar)</p>
-            <audio id="arkaplanMuzik" controls loop style="width:100%; height:22px;"></audio>
+        <!-- 7/24 CANLI YAYIN MÜZİK (GÖRSELSİZ / YÖNLENDİRMESİZ) -->
+        <div class="box" style="background: #080c13; margin-top:0; padding:8px 12px; display:flex; align-items:center; justify-content:space-between; border-radius:6px; border:1px solid var(--card-border);">
+            <div style="font-size:11px; color:var(--accent-gold); font-weight:bold; display:flex; align-items:center; gap:6px;">
+                <span id="canliMuzikAnimasyon">🎵</span> 
+                <span id="canliMuzikDurumYazi">Canlı Müzik (Kapalı)</span>
+            </div>
+            <button type="button" id="btnCanliMuzikToggle" onclick="canliMuzikAcKapa()" 
+                    style="background: #1e3a8a; color:#fff; border:1px solid #3b82f6; padding:5px 12px; border-radius:4px; font-size:11px; font-weight:800; cursor:pointer;">
+                ▶️ Müziği Başlat
+            </button>
+        </div>
+
+        <!-- Arka Planda Gizli YouTube Oynatıcı -->
+        <div style="position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
+            <div id="ytBackgroundAudioPlayer"></div>
         </div>
     </div>
 
@@ -434,7 +446,7 @@
     </div>
 </div>
 
-<!-- 1. MÜŞTERİ SEPET MODALI -->
+<!-- MODALLAR -->
 <div id="sepetModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">🛒 Alışveriş Sepetim</h3>
@@ -460,7 +472,6 @@
     </div>
 </div>
 
-<!-- 2. SATIN ALMA GEÇMİŞİ HAVUZU -->
 <div id="gecmisModal" class="modal">
     <div class="modal-content" style="text-align: left; max-width:440px;">
         <h3 style="color: var(--accent-gold); margin-bottom: 6px; font-size:14px; font-weight:800;">📜 Satın Alma & Mezat Geçmişim</h3>
@@ -475,7 +486,6 @@
     </div>
 </div>
 
-<!-- 3. HAKKIMIZDA & MEZAT KURALLARI MODALI -->
 <div id="aboutModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">🏛️ Haliç Antik Mezat Hakkında</h3>
@@ -493,7 +503,6 @@
     </div>
 </div>
 
-<!-- SÖZLEŞME VE KAYIT MODALI -->
 <div id="authRegisterModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 6px; font-size:13px; font-weight:800;">📝 Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
@@ -857,11 +866,6 @@
         }
     });
 
-    socket.on('mezat_basladi_muzik', function() {
-        let player = document.getElementById('arkaplanMuzik');
-        if (player && player.src) player.play().catch(e => {});
-    });
-
     socket.on('pey_guncellendi', function(data) {
         let fiyat = data.pey || data.guncel_fiyat || 0;
         let kisi = data.kazanan || data.kazanan_ad || "Yok";
@@ -920,9 +924,6 @@
         if (digits) digits.innerText = "00";
         if (statusTitle) statusTitle.innerText = "🔨 SATILDI!";
         tokmakSesiCal();
-        
-        let player = document.getElementById('arkaplanMuzik');
-        if (player) player.pause();
 
         let soldBanner = document.getElementById('soldBanner');
         if (soldBanner && data) {
@@ -1388,6 +1389,77 @@
             window.speechSynthesis.speak(u);
         }
     }
+
+    // ==========================================
+    // 7/24 GÖRSELSİZ CANLI MÜZİK (YOUTUBE API)
+    // ==========================================
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    var ytAudioPlayer = null;
+    var muzikCaliyorMu = false;
+
+    function onYouTubeIframeAPIReady() {
+        ytAudioPlayer = new YT.Player('ytBackgroundAudioPlayer', {
+            height: '1',
+            width: '1',
+            videoId: 'j12l7mQANFU',
+            playerVars: {
+                'autoplay': 0,
+                'controls': 0,
+                'disablekb': 1,
+                'fs': 0,
+                'playsinline': 1,
+                'rel': 0
+            },
+            events: {
+                'onStateChange': onYtAudioStateChange
+            }
+        });
+    }
+
+    function onYtAudioStateChange(event) {
+        var btn = document.getElementById('btnCanliMuzikToggle');
+        var yazi = document.getElementById('canliMuzikDurumYazi');
+        if (!btn || !yazi) return;
+
+        if (event.data === YT.PlayerState.PLAYING) {
+            muzikCaliyorMu = true;
+            btn.innerHTML = "⏸️ Müziği Durdur";
+            btn.style.background = "#881337";
+            btn.style.borderColor = "#f43f5e";
+            yazi.innerText = "Canlı Müzik Çalıyor 🎶";
+            yazi.style.color = "#34d399";
+        } else {
+            muzikCaliyorMu = false;
+            btn.innerHTML = "▶️ Müziği Başlat";
+            btn.style.background = "#1e3a8a";
+            btn.style.borderColor = "#3b82f6";
+            yazi.innerText = "Canlı Müzik (Kapalı)";
+            yazi.style.color = "var(--accent-gold)";
+        }
+    }
+
+    function canliMuzikAcKapa() {
+        playUserClickSound();
+        if (!ytAudioPlayer || typeof ytAudioPlayer.playVideo !== 'function') {
+            return alert("Canlı yayın akışı hazırlanıyor, lütfen 2 saniye sonra tekrar deneyin.");
+        }
+        if (muzikCaliyorMu) {
+            ytAudioPlayer.pauseVideo();
+        } else {
+            ytAudioPlayer.playVideo();
+        }
+    }
+
+    // Yönetici panelinden müzik linki değiştirildiğinde anında yeni yayına geç
+    socket.on('canli_muzik_degisti', function(data) {
+        if (data && data.video_id && ytAudioPlayer && typeof ytAudioPlayer.loadVideoById === 'function') {
+            ytAudioPlayer.loadVideoById(data.video_id);
+        }
+    });
 </script>
 </body>
 </html>

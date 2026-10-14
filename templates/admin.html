@@ -188,12 +188,20 @@
             </div>
         </div>
 
+        <!-- 🎵 7/24 CANLI YAYIN MÜZİK YÖNETİMİ -->
         <div class="card">
-            <div class="card-title">🎵 Arka Plan Müzik Yönetimi</div>
-            <form id="muzikForm" onsubmit="muzikYukle(event)" style="display: flex; gap: 8px;">
-                <input type="file" name="muzik_dosyasi" accept="audio/*" required style="margin: 0;">
-                <button type="submit" class="btn btn-blue" style="white-space: nowrap;">Müzik Yükle</button>
-            </form>
+            <div class="card-title">🎵 7/24 Canlı Müzik Yayını Yönetimi</div>
+            <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">
+                YouTube canlı yayın linkini veya Video ID'sini giriniz:
+            </p>
+            <div style="display: flex; gap: 6px;">
+                <input type="text" id="adminYtMusicInput" placeholder="Örn: j12l7mQANFU veya https://youtube.com/watch?v=..." 
+                       value="j12l7mQANFU" 
+                       style="flex: 1; margin: 0;">
+                <button type="button" class="btn btn-blue" onclick="adminCanliMuzikGuncelle()" style="white-space: nowrap;">
+                    💾 Müziği Güncelle
+                </button>
+            </div>
         </div>
     </div>
 
@@ -427,7 +435,6 @@
 </div>
 
 <script>
-    // WebSocket bağlantısı - polling kapatıldı
     const socket = io({
         transports: ['websocket'],
         upgrade: false
@@ -675,7 +682,6 @@
         setTimeout(sikayetleriGetir, 1200);
     };
 
-    // Sunucu yoğunluğunu önlemek için en az 1.5 saniyelik aralıkla çeker
     socket.on('veri_guncellendi', function() {
         const simdi = Date.now();
         if (simdi - sonVeriCekmeZamani > 1500) {
@@ -683,7 +689,6 @@
         }
     });
 
-    // Sahneye yeni ürün çıktığında HTTP isteği atmadan doğrudan WebSocket verisinden okur
     socket.on('yeni_sahne_urunu', function(urun) {
         if (urun) {
             document.getElementById('aktifUrunAdi').innerText = `LOT #${urun.lot} - ${urun.ad}`;
@@ -693,7 +698,6 @@
         }
     });
 
-    // Pey geldiğinde HTTP isteği atmadan paneli günceller
     socket.on('pey_guncellendi', function(data) {
         if(data) {
             if(data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
@@ -1302,22 +1306,30 @@
         });
     }
 
-    function muzikYukle(e) {
-        e.preventDefault();
+    // 🎵 7/24 YouTube Canlı Müzik Bağlantısını Güncelleme
+    function adminCanliMuzikGuncelle() {
         playClickSound();
-        let formData = new FormData(e.target);
-        fetch('/muzik-ekle', { 
-            method: 'POST', 
-            headers: { 'X-Admin-Password': ADMIN_PASS },
-            body: formData 
-        })
-        .then(res => res.json())
-        .then(d => {
-            if(d.success) {
-                alert("✅ Müzik yüklendi ve yayına alındı.");
-                e.target.reset();
+        let inputVal = document.getElementById('adminYtMusicInput').value.trim();
+        if (!inputVal) return alert("Lütfen bir YouTube linki veya Video ID girin!");
+
+        let videoId = inputVal;
+        if (inputVal.includes("v=")) {
+            videoId = inputVal.split("v=")[1].split("&")[0];
+        } else if (inputVal.includes("youtu.be/")) {
+            videoId = inputVal.split("youtu.be/")[1].split("?")[0];
+        }
+
+        fetch('/api/admin/muzik-link-guncelle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ video_id: videoId })
+        }).then(r => r.json()).then(res => {
+            if(res.success) {
+                alert("✅ Canlı müzik yayını başarıyla güncellendi! Yeni müzik izleyicilere iletildi.");
+            } else {
+                alert("Hata: " + res.mesaj);
             }
-        });
+        }).catch(e => alert("Bağlantı hatası!"));
     }
 
     function modalKapat(id) {
