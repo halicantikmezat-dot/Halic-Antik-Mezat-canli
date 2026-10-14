@@ -247,6 +247,11 @@ class Urun(db.Model):
         )
         hemen_val = float(self.hemen_al_fiyati or 0.0)
 
+        # Eğer fotoğraf yoksa ama video varsa, vitrinde oynaması için videoyu listeye ekle
+        foto_listesi = list(self.fotograflar or [])
+        if not foto_listesi and self.video:
+            foto_listesi = [self.video]
+
         if hafif:
             return {
                 "id": self.id,
@@ -256,7 +261,8 @@ class Urun(db.Model):
                 "fiyat": fiyat_val,
                 "guncel_fiyat": guncel_val,
                 "hemen_al_fiyat": hemen_val,
-                "fotograflar": (self.fotograflar or [])[:1],
+                "fotograflar": foto_listesi[:1],
+                "video": self.video or "",
                 "durum": self.durum or "Aktif",
             }
 
@@ -270,7 +276,7 @@ class Urun(db.Model):
             "hemen_al_fiyat": hemen_val,
             "hemen_al_fiyati": hemen_val,
             "tanitim_yazisi": self.tanitim_yazisi or "",
-            "fotograflar": self.fotograflar or [],
+            "fotograflar": foto_listesi,
             "video": self.video or "",
             "ses": self.ses_dosyasi or "",
             "durum": self.durum or "Aktif",
@@ -409,11 +415,9 @@ def geri_sayim_gorevi(saniye, gorev_id):
         if sayac_kalan <= 0:
             break
 
-        # Süre uzatılırsa (örneğin 15 saniyeye çıkarsa) uyarı bayrağını sıfırla
         if sayac_kalan > 10:
             son_uyari_yapildi = False
 
-        # Son 10 saniyede Ahmet Usta'nın devreye girmesi
         if sayac_kalan == 10 and not son_uyari_yapildi:
             son_uyari_yapildi = True
             bota_haber_ver("geri_sayim_uyari", {"kalan_saniye": 10})
@@ -464,7 +468,6 @@ def geri_sayim_gorevi(saniye, gorev_id):
                 },
             )
 
-            # Yapay Zeka Satış Tebrik Anonsu
             bota_haber_ver("satis_bitti", {
                 "kazanan": mezat_durumu["kazanan"],
                 "fiyat": mezat_durumu["pey"]
@@ -838,7 +841,7 @@ def sepet_getir(musteri_id):
                 "gorsel": (
                     u.fotograflar[0]
                     if (u.fotograflar and len(u.fotograflar) > 0)
-                    else ""
+                    else (u.video or "")
                 ),
             })
 
@@ -866,7 +869,7 @@ def sepet_getir(musteri_id):
                     "gorsel": (
                         u.fotograflar[0]
                         if (u.fotograflar and len(u.fotograflar) > 0)
-                        else ""
+                        else (u.video or "")
                     ),
                 })
 
@@ -925,7 +928,7 @@ def siparis_gecmisi(musteri_id):
                 "gorsel": (
                     u.fotograflar[0]
                     if (u.fotograflar and len(u.fotograflar) > 0)
-                    else ""
+                    else (u.video or "")
                 ),
             })
 
@@ -1152,7 +1155,6 @@ def pey_ver():
                 db.session.add(urun)
                 db.session.commit()
 
-                # YAPAY ZEKA AHMET USTA'YA YENİ PEYİ ANONS ETTİR
                 bota_haber_ver("yeni_pey_geldi", {
                     "kisi": etiket_ad,
                     "fiyat": miktar
@@ -1608,7 +1610,6 @@ def sahneye_al():
         },
     )
 
-    # Yapay Zeka Ahmet Usta yeni ürünü anons eder
     bota_haber_ver("urun_sahneye_aldi", {
         "lot": urun.lot_no,
         "baslik": urun.urun_adi,
@@ -1879,8 +1880,9 @@ def urun_ekle():
             url, temiz_ad = kaydet_guvenli_dosya(dosya)
             if url and temiz_ad:
                 ext = temiz_ad.lower()
-                if ext.endswith((".mp4", ".mov", ".avi", ".webm", ".mkv")):
+                if ext.endswith((".mp4", ".mov", ".avi", ".webm", ".mkv", ".3gp", ".m4v")):
                     video_url = url
+                    fotograflar.append(url)
                 elif ext.endswith((".mp3", ".wav", ".ogg", ".m4a")):
                     ses_url = url
                 else:
@@ -2510,7 +2512,6 @@ def hemen_al_tetikle():
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
         db.session.commit()
 
-        # Kazanana ürünü sepetine/ekstresine ekleme
         urunu_kazanana_sepete_ekle(biten_urun_id, etiket_ad, None)
 
         onbellegi_temizle()
