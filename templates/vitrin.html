@@ -38,7 +38,7 @@
         .item-card:hover { transform: translateY(-3px); border-color: var(--accent-gold); box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         
         .item-img-box { width: 100%; height: 170px; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .item-img-box img { width: 100%; height: 100%; object-fit: contain; }
+        .item-img-box img, .item-img-box video { width: 100%; height: 100%; object-fit: contain; }
         
         .item-content { padding: 10px; display: flex; flex-direction: column; flex: 1; gap: 4px; }
         .item-lot { font-size: 11px; color: var(--accent-gold); font-weight: bold; }
@@ -186,10 +186,25 @@
                     let acilisFiyat = Number(u.fiyat || 0);
                     let sadeKategori = temizKategoriAdi(u.kategori);
 
+                    // Medya tespiti: WhatsApp ve standart video uzantılarını yakalar
+                    let medyaHtml = `<span style="color:#666; font-size:11px;">Görsel Yok</span>`;
+                    if (gorsel) {
+                        let gLower = gorsel.toLowerCase().split('?')[0];
+                        let isVideo = gLower.endsWith('.mp4') || gLower.endsWith('.webm') || 
+                                      gLower.endsWith('.mov') || gLower.endsWith('.3gp') || 
+                                      gLower.endsWith('.m4v');
+                        
+                        if (isVideo) {
+                            medyaHtml = `<video src="${gorsel}" autoplay loop muted playsinline preload="metadata" style="width:100%; height:100%; object-fit:contain;"></video>`;
+                        } else {
+                            medyaHtml = `<img src="${gorsel}" alt="${u.ad}" style="width:100%; height:100%; object-fit:contain;">`;
+                        }
+                    }
+
                     return `
                         <div class="item-card">
                             <div class="item-img-box">
-                                ${gorsel ? `<img src="${gorsel}" alt="${u.ad}">` : `<span style="color:#666; font-size:11px;">Görsel Yok</span>`}
+                                ${medyaHtml}
                             </div>
                             <div class="item-content">
                                 <span class="item-lot">LOT #${u.lot} • ${sadeKategori}</span>
