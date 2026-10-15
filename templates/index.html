@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
     <title>Haliç Antik Mezat - Canlı Mezat</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
@@ -44,11 +44,54 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid var(--accent-gold);
+            gap: 8px;
         }
-        .logo-box { display: flex; align-items: center; gap: 6px; }
-        .logo-box h2 { font-size: 15px; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 800; }
-        
-        .header-actions { display: flex; align-items: center; gap: 6px; }
+        .logo-box { 
+            display: flex; 
+            align-items: center; 
+            gap: 8px; 
+            flex-wrap: nowrap;
+        }
+        .logo-box h2 { 
+            font-size: 14px; 
+            color: var(--accent-gold); 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px; 
+            font-weight: 800; 
+            white-space: nowrap;
+            margin: 0;
+        }
+
+        /* 📍 BAŞLIK YANINDAKİ İSTANBUL / BALAT ROZETİ */
+        .header-lokasyon-rozet {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(15, 21, 29, 0.95);
+            border: 1px solid rgba(212, 175, 55, 0.55);
+            padding: 2px 8px;
+            border-radius: 14px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #f1f5f9;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .header-rozet-pulse {
+            width: 6px;
+            height: 6px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 6px #22c55e;
+            animation: pulseLokasyon 1.4s infinite;
+        }
+        @keyframes pulseLokasyon {
+            0% { opacity: 0.3; transform: scale(0.85); }
+            50% { opacity: 1; transform: scale(1.15); }
+            100% { opacity: 0.3; transform: scale(0.85); }
+        }
+
+        .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
         .currency-select {
             background: #0f151d;
             color: var(--accent-gold);
@@ -60,7 +103,7 @@
             outline: none;
             cursor: pointer;
         }
-        .live-badge { background: var(--btn-red); color: white; padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; }
+        .live-badge { background: var(--btn-red); color: white; padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; white-space: nowrap; }
 
         .user-bar-compact {
             background: #0d121a;
@@ -247,7 +290,7 @@
         .btn-footer { background: #141b24; color: #fff; border: 1px solid var(--card-border); padding: 5px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; text-decoration: none; }
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 2000; }
-        .modal-content { background: var(--card-bg); padding: 16px; border-radius: 8px; width: 88%; max-width: 400px; text-align: center; border: 1.5px solid var(--accent-gold); max-height: 85vh; overflow-y: auto; }
+        .modal-content { background: var(--card-bg); padding: 16px; border-radius: 8px; width: 88%; max-width: 420px; text-align: center; border: 1.5px solid var(--accent-gold); max-height: 85vh; overflow-y: auto; }
         
         .table-custom { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
         .table-custom th, .table-custom td { padding: 6px; text-align: left; border-bottom: 1px solid var(--card-border); }
@@ -261,8 +304,12 @@
 <div class="mobile-container">
     <div class="header">
         <div class="logo-box">
-            <span>🏛️</span>
+            <span style="font-size: 18px;">🏛️</span>
             <h2>HALİÇ ANTİK MEZAT</h2>
+            <div class="header-lokasyon-rozet">
+                <span class="header-rozet-pulse"></span>
+                <span>İSTANBUL / BALAT</span>
+            </div>
         </div>
         <div class="header-actions">
             <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
@@ -437,12 +484,48 @@
     <!-- ALT BÖLÜM VE LİNKLER -->
     <div class="footer">
         <div class="footer-btns">
-            <button class="btn-footer" onclick="openAboutModal()">ℹ️ Hakkımızda & Kurallar</button>
+            <button class="btn-footer" onclick="kurallariAc()">ℹ️ Hakkımızda & Kurallar</button>
             <button class="btn-footer" onclick="openFeedbackModal()">📩 Şikayet / Görüş İlet</button>
             <button class="btn-footer" onclick="openPosModal()">💳 POS</button>
             <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:#34d399;">💬 WhatsApp</a>
         </div>
-        <p>© 2026 🏛️ Haliç Antik Mezat Sistemi - Tüm Hakları Saklıdır.</p>
+        <p>© 2026 🏛️ Haliç Antik Mezat Sistemi - Balat / İstanbul</p>
+    </div>
+</div>
+
+<!-- HAKKIMIZDA & GÜVENLİK KURALLARI PENCERESİ (ESCROW - ZOOM YAPILABİLİR, OKUNAKLI) -->
+<div id="modalKurallar" class="modal">
+    <div class="modal-content" style="text-align: left; max-width: 500px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px; margin-bottom:12px;">
+            <h3 style="color:var(--accent-gold); margin:0; font-size:15px; font-weight:800;">🏛️ Haliç Antik - Güvenli Mezat Şartnamesi</h3>
+            <button onclick="kurallariKapat()" style="background:#881337; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:12px;">✕</button>
+        </div>
+
+        <div style="font-size:12px; line-height:1.7; color:#cbd5e1; max-height:60vh; overflow-y:auto; padding-right:4px;">
+            <p style="margin-bottom:10px;">
+                <b style="color:#38bdf8;">🛡️ Haliç Antik Güvenli Havuz (Escrow) Güvencesi:</b><br>
+                İstanbul Balat merkezli canlı mezatımızda kazanılan ürünlerde ödemeler doğrudan Haliç Antik kurumsal havuzunda tutulur. Alıcı ürünü teslim alıp onaylayana kadar satıcıya para aktarılmaz.
+            </p>
+
+            <div style="background:#080c13; border-left:3px solid var(--accent-gold); padding:8px 10px; border-radius:4px; margin-bottom:10px;">
+                <b style="color:var(--accent-gold);">📦 ALICILAR İÇİN (Açılış Videosu Şartı):</b><br>
+                Antika ve hassas koleksiyon ürünleri güvenliği için kargo teslim alındığında <b>ambalaj açılışının kesintisiz video kaydına alınması zorunludur</b>[cite: 1]. Açılış videosu ve hasar tespit tutanağı bulunmayan kırık/hasar bildirimleri işleme alınamamaktadır[cite: 1].
+            </div>
+
+            <div style="background:#080c13; border-left:3px solid #34d399; padding:8px 10px; border-radius:4px; margin-bottom:10px;">
+                <b style="color:#34d399;">🏷️ SATICILAR İÇİN (Paketleme & Cayma Yasağı):</b><br>
+                • Mezatımızda sergilenen ürünler mezat süresince başka bir yerde satılamaz[cite: 1].<br>
+                • Satıcılar ürünün sağlamlığını ve korunaklı paketlenme aşamasını arşiv amaçlı kısa bir video ile kaydetmekle yükümlüdür[cite: 1].
+            </div>
+
+            <p style="margin-bottom:0; font-size:11px; color:var(--text-muted); text-align:center;">
+                <i>Mezata teklif veren ve ürün teslim eden tüm kullanıcılar bu şartları peşinen kabul etmiş sayılır.</i>
+            </p>
+        </div>
+
+        <button onclick="kurallariKapat()" class="btn-bid btn-action-green" style="width:100%; margin-top:12px;">
+            Okudum, Anladım ve Kabul Ediyorum
+        </button>
     </div>
 </div>
 
@@ -483,23 +566,6 @@
             <span id="gecmisToplamHarcama">0 TL</span>
         </div>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:8px;" onclick="closeModal('gecmisModal')">Kapat</button>
-    </div>
-</div>
-
-<div id="aboutModal" class="modal">
-    <div class="modal-content" style="text-align: left;">
-        <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:14px; font-weight:800;">🏛️ Haliç Antik Mezat Hakkında</h3>
-        <div style="font-size:11px; color:#cbd5e1; line-height:1.5; max-height:220px; overflow-y:auto;">
-            <p><b>Kurumsal Bilgi:</b> Haliç Antik Mezat, tarihi ve sanatsal değere sahip seçkin antika ve koleksiyon ürünlerini güvenli canlı mezat deneyimiyle koleksiyonerlerle buluşturmaktadır.</p>
-            <br>
-            <p><b>Mezat Kuralları:</b></p>
-            <ul style="padding-left:16px;">
-                <li>Teklif veren üyeler tekliflerini geri çekemez.</li>
-                <li>Son saniye tekliflerinde mezat süresi adil rekabet için otomatik 15 saniye uzatılır.</li>
-                <li>Kazanılan ürünler 3 iş günü içerisinde sepet veya online POS üzerinden ödenmelidir.</li>
-            </ul>
-        </div>
-        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:10px;" onclick="closeModal('aboutModal')">Anladım</button>
     </div>
 </div>
 
@@ -579,7 +645,7 @@
 
 <script>
     const socket = io({ 
-        transports: ['websocket'],
+        transports: ['websocket'], 
         upgrade: false 
     });
 
@@ -598,6 +664,33 @@
 
     let aktifParaBirimi = "TRY";
     const kurlar = { "TRY": 1.0, "USD": 34.20, "EUR": 37.50 };
+
+    async function iriunMikrofonunuBagla() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            const iriunDevice = audioInputs.find(device => device.label.toLowerCase().includes('iriun'));
+            
+            if (iriunDevice) {
+                navigator.mediaDevices.getUserMedia({
+                    audio: { deviceId: { exact: iriunDevice.deviceId } }
+                }).then(stream => {
+                    window.iriunAudioStream = stream;
+                }).catch(() => {});
+            }
+        } catch(e) {}
+    }
+
+    function kurallariAc() {
+        playUserClickSound();
+        document.getElementById('modalKurallar').style.display = 'flex';
+    }
+
+    function kurallariKapat() {
+        playUserClickSound();
+        document.getElementById('modalKurallar').style.display = 'none';
+    }
 
     function formatFiyat(tlTutari) {
         let t = parseFloat(tlTutari) || 0;
@@ -618,6 +711,7 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
         const v = document.getElementById('stageVideo');
         if (v && v.paused) v.play().catch(e => {});
+        iriunMikrofonunuBagla();
     }
 
     function playTone(freq, duration, type = 'sine', gainVal = 0.2) {
@@ -844,6 +938,7 @@
         }
         
         canliDurumuGetirHafif();
+        iriunMikrofonunuBagla();
     };
 
     socket.on('urun_takip_bildirimi', function(data) {
@@ -1373,7 +1468,6 @@
         });
     }
 
-    function openAboutModal() { playUserClickSound(); document.getElementById('aboutModal').style.display = 'flex'; }
     function openFeedbackModal() { playUserClickSound(); document.getElementById('feedbackModal').style.display = 'flex'; }
     function openPosModal() { playUserClickSound(); document.getElementById('posModal').style.display = 'flex'; }
     function closeModal(id) { playUserClickSound(); document.getElementById(id).style.display = 'none'; }
@@ -1454,7 +1548,6 @@
         }
     }
 
-    // Yönetici panelinden müzik linki değiştirildiğinde anında yeni yayına geç
     socket.on('canli_muzik_degisti', function(data) {
         if (data && data.video_id && ytAudioPlayer && typeof ytAudioPlayer.loadVideoById === 'function') {
             ytAudioPlayer.loadVideoById(data.video_id);

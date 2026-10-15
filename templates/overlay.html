@@ -12,23 +12,58 @@
             color: #ffffff;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
+            user-select: none;
         }
 
         .overlay-box {
-            background: rgba(4, 8, 20, 0.90);
+            background: rgba(4, 8, 20, 0.92);
             border: 2px solid #ffb703;
             border-radius: 8px;
             padding: 10px 14px;
             width: fit-content;
-            min-width: 260px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+            min-width: 270px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.85);
+            backdrop-filter: blur(4px);
         }
 
-        .lot-title { font-size: 14px; font-weight: 800; color: #ffb703; text-transform: uppercase; }
-        .price-row { display: flex; align-items: baseline; gap: 8px; margin: 4px 0; }
-        .price-val { font-size: 22px; font-weight: 900; color: #00f0ff; }
-        .bidder { font-size: 12px; color: #cbd5e1; }
-        .timer { font-size: 13px; font-weight: bold; color: #ef4444; margin-top: 2px; }
+        .lot-title { 
+            font-size: 13px; 
+            font-weight: 800; 
+            color: #ffb703; 
+            text-transform: uppercase; 
+            max-width: 320px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .price-row { 
+            display: flex; 
+            align-items: baseline; 
+            gap: 8px; 
+            margin: 4px 0; 
+        }
+        .price-val { 
+            font-size: 24px; 
+            font-weight: 900; 
+            color: #00f0ff; 
+            line-height: 1.1;
+        }
+        .bidder { 
+            font-size: 12px; 
+            color: #cbd5e1; 
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+        }
+        .timer { 
+            font-size: 13px; 
+            font-weight: 800; 
+            color: #ef4444; 
+            margin-top: 2px; 
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
@@ -44,40 +79,51 @@
 
 <script>
     const socket = io({ 
-        transports: ['websocket'],
+        transports: ['websocket'], 
         upgrade: false 
     });
+
+    function paraFormatla(val) {
+        return Number(val || 0).toLocaleString('tr-TR') + ' TL';
+    }
 
     socket.on('pey_guncellendi', function(data) {
         if (!data) return;
         let fiyat = data.pey || data.guncel_fiyat || 0;
         let kazanan = data.kazanan || data.kazanan_ad || "Yok";
-        document.getElementById('overlayFiyat').innerText = fiyat + " TL";
+        document.getElementById('overlayFiyat').innerText = paraFormatla(fiyat);
         document.getElementById('overlayKazanan').innerText = "Son Teklif: " + kazanan;
     });
 
     socket.on('yeni_sahne_urunu', function(urun) {
         if (urun) {
             document.getElementById('overlayLot').innerText = `LOT #${urun.lot} - ${urun.ad}`;
-            document.getElementById('overlayFiyat').innerText = (urun.guncel_fiyat || urun.fiyat || 0) + " TL";
+            document.getElementById('overlayFiyat').innerText = paraFormatla(urun.guncel_fiyat || urun.fiyat || 0);
             document.getElementById('overlayKazanan').innerText = "Son Teklif: Yok";
             document.getElementById('overlaySayac').innerText = "⏱️ MEZAT BEKLENİYOR";
+            document.getElementById('overlaySayac').style.color = "#ffb703";
         }
     });
 
     socket.on('sayac_guncelle', function(data) {
         if (data && data.kalan !== undefined) {
             document.getElementById('overlaySayac').innerText = `⏱️ KALAN SÜRE: ${data.kalan} SN`;
+            document.getElementById('overlaySayac').style.color = data.kalan <= 10 ? "#ef4444" : "#38bdf8";
         }
     });
 
     socket.on('sayac_uzatildi', function(data) {
         document.getElementById('overlaySayac').innerText = `🔥 15 SN UZATILDI!`;
+        document.getElementById('overlaySayac').style.color = "#f59e0b";
     });
 
     socket.on('sayac_bitti', function(data) {
-        let kazanan = (data && data.kazanan) ? ` (${data.kazanan})` : '';
+        let kazanan = (data && data.kazanan && data.kazanan !== "Yok") ? ` (${data.kazanan})` : '';
         document.getElementById('overlaySayac').innerText = `🔨 SATILDI!${kazanan}`;
+        document.getElementById('overlaySayac').style.color = "#10b981";
+        if (data && data.fiyat) {
+            document.getElementById('overlayFiyat').innerText = paraFormatla(data.fiyat);
+        }
     });
 
     function ilkDurumuGetir() {
@@ -86,9 +132,20 @@
         .then(data => {
             if (data && data.aktif_urun) {
                 document.getElementById('overlayLot').innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
-                document.getElementById('overlayFiyat').innerText = (data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0) + " TL";
+                let aktifPey = data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0;
+                document.getElementById('overlayFiyat').innerText = paraFormatla(aktifPey);
                 document.getElementById('overlayKazanan').innerText = "Son Teklif: " + (data.kazanan || "Yok");
-                document.getElementById('overlaySayac').innerText = data.durum === "Satıldı" ? "🔨 SATILDI!" : "⏱️ MEZAT BEKLENİYOR";
+                
+                if (data.durum === "Satıldı") {
+                    document.getElementById('overlaySayac').innerText = "🔨 SATILDI!";
+                    document.getElementById('overlaySayac').style.color = "#10b981";
+                } else if (data.durum === "Sayim") {
+                    document.getElementById('overlaySayac').innerText = "⏱️ MEZAT SÜRÜYOR";
+                    document.getElementById('overlaySayac').style.color = "#ef4444";
+                } else {
+                    document.getElementById('overlaySayac').innerText = "⏱️ MEZAT BEKLENİYOR";
+                    document.getElementById('overlaySayac').style.color = "#ffb703";
+                }
             }
         })
         .catch(() => {});

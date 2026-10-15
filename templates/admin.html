@@ -150,6 +150,40 @@
             max-height: 90vh;
             overflow-y: auto;
         }
+
+        .medya-kapsayici {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+            margin-bottom: 8px;
+            min-height: 38px;
+            background: #0b0f16;
+            border: 1px dashed var(--card-border);
+            padding: 6px;
+            border-radius: 6px;
+        }
+        .medya-etiket {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #e2e8f0;
+        }
+        .medya-etiket button {
+            background: transparent;
+            border: none;
+            color: #f87171;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .medya-etiket button:hover { color: #ef4444; }
     </style>
 </head>
 <body>
@@ -159,6 +193,7 @@
         <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span style="font-size: 13px; margin-right: 5px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
+            <a href="/admin/pazaryeri/" class="btn btn-yellow btn-sm" style="text-decoration: none; font-weight: bold;">📦 Tedarikçi & Kargo</a>
             <a href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
             <a href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
             <a href="/excel-indir?sifre=1453" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
@@ -210,18 +245,39 @@
         <div class="card">
             <div class="card-title">➕ Manuel Tek Ürün Ekle (10+ Medya Destekli)</div>
             <form id="urunForm" onsubmit="urunYukle(event)">
-                <input type="number" id="lot" placeholder="Lot Numarası (Boş bırakılırsa sıradaki lot atanır)">
+                <label style="font-size: 11px; color: var(--accent-gold); font-weight: bold; display: block; margin-bottom: 2px;">
+                    Lot Numarası (Sıradaki Lot Otomatik Getirildi):
+                </label>
+                <input type="number" id="lot" placeholder="Lot Numarası" value="{{ siradaki_lot or '' }}" style="font-weight: bold; color: var(--accent-gold);" required>
                 <input type="text" id="ad" placeholder="Ürün Adı" required>
+                
+                <!-- Tedarikçi Seçim Alanı -->
+                <select id="tedarikci_id">
+                    <option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>
+                </select>
+
                 <input list="kategoriDatalist" id="kategori" placeholder="Kategori Seçin veya Yazın..." value="Hediyelik eşya">
                 <datalist id="kategoriDatalist"></datalist>
                 <input type="number" step="any" id="fiyat" placeholder="Açılış Fiyatı (TL)" required>
                 <input type="number" step="any" id="hemen_al_fiyat" placeholder="Hemen Al Fiyatı (TL)">
                 <textarea id="tanitim_yazisi" rows="2" placeholder="Ürün Tanıtım ve Hikayesi..."></textarea>
                 
-                <label style="font-size: 11px; color: #cbd5e1; font-weight: bold; display: block; margin-bottom: 2px;">
-                    📷 Görseller ve Video (Birden fazla seçebilirsiniz - 10+ Dosya):
-                </label>
-                <input type="file" id="dosyalar" multiple accept="image/*,video/*,audio/*">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <label style="font-size: 11px; color: #cbd5e1; font-weight: bold;">
+                        📷 Görseller ve Medya (Maks 10 Bağımsız Dosya):
+                    </label>
+                    <span id="medyaSayisiMetni" style="font-size: 11px; color: var(--accent-blue);">0/10 Seçildi</span>
+                </div>
+                
+                <!-- Bağımsız Çoklu Dosya Seçim Alanı -->
+                <input type="file" id="dosyaSecici" multiple accept="image/*,video/*,audio/*" style="display: none;" onchange="dosyaSecildi(this)">
+                <button type="button" class="btn btn-blue btn-sm" onclick="document.getElementById('dosyaSecici').click()" style="width: 100%; margin-top: 4px;">
+                    📁 Dosya Ekle (Tek Tek veya Toplu)
+                </button>
+                <div id="secilenDosyalarListesi" class="medya-kapsayici">
+                    <span style="font-size: 11px; color: #64748b;">Henüz dosya eklenmedi.</span>
+                </div>
+
                 <button type="submit" class="btn btn-green" style="width: 100%; margin-top: 5px;">💾 Ürünü Kaydet</button>
             </form>
         </div>
@@ -419,6 +475,13 @@
         <input type="number" id="edit_lot">
         <label style="font-size:12px; font-weight:bold;">Ürün Adı:</label>
         <input type="text" id="edit_ad">
+        
+        <!-- Düzenleme Modalı Tedarikçi Seçim Alanı -->
+        <label style="font-size:12px; font-weight:bold;">Tedarikçi / Satıcı:</label>
+        <select id="edit_tedarikci_id">
+            <option value="">-- Tedarikçi Yok --</option>
+        </select>
+
         <label style="font-size:12px; font-weight:bold;">Kategori:</label>
         <input list="kategoriDatalist" id="edit_kategori" placeholder="Kategori Girin...">
         <label style="font-size:12px; font-weight:bold;">Açılış Fiyatı (TL):</label>
@@ -441,11 +504,60 @@
     });
 
     let ADMIN_PASS = '1453';
-    let tumUrunler = [];
     let tumOnTeklifler = [];
     let audioCtx = null;
     let yukleniyorMu = false;
     let sonVeriCekmeZamani = 0;
+    let adminAramaTimer = null;
+
+    // Çoklu Medya Depolama Havuzu (DataTransfer nesnesi)
+    const medyaDosyaHavuzu = new DataTransfer();
+
+    function dosyaSecildi(input) {
+        if (!input.files || input.files.length === 0) return;
+
+        for (let i = 0; i < input.files.length; i++) {
+            if (medyaDosyaHavuzu.items.length >= 10) {
+                alert("En fazla 10 medya dosyası yükleyebilirsiniz!");
+                break;
+            }
+            medyaDosyaHavuzu.items.add(input.files[i]);
+        }
+
+        input.value = "";
+        medyaArayuzunuGuncelle();
+    }
+
+    function medyaDosyasiSil(index) {
+        playClickSound();
+        medyaDosyaHavuzu.items.remove(index);
+        medyaArayuzunuGuncelle();
+    }
+
+    function medyaArayuzunuGuncelle() {
+        const listeDiv = document.getElementById('secilenDosyalarListesi');
+        const sayiMetni = document.getElementById('medyaSayisiMetni');
+        const toplam = medyaDosyaHavuzu.files.length;
+
+        sayiMetni.innerText = `${toplam}/10 Seçildi`;
+
+        if (toplam === 0) {
+            listeDiv.innerHTML = '<span style="font-size: 11px; color: #64748b;">Henüz dosya eklenmedi.</span>';
+            return;
+        }
+
+        let html = '';
+        Array.from(medyaDosyaHavuzu.files).forEach((file, idx) => {
+            let kisaAd = file.name.length > 18 ? file.name.substring(0, 15) + '...' : file.name;
+            html += `
+                <div class="medya-etiket">
+                    <span>${kisaAd}</span>
+                    <button type="button" onclick="medyaDosyasiSil(${idx})" title="Kaldır">✕</button>
+                </div>
+            `;
+        });
+        listeDiv.innerHTML = html;
+    }
 
     function playClickSound() {
         try {
@@ -536,7 +648,7 @@
         }).then(r => r.json()).then(res => {
             alert(res.mesaj);
             copVerileriniGetir();
-            veriCekAdmin();
+            adminUrunAra();
         });
     }
 
@@ -638,9 +750,28 @@
             alert(data.mesaj);
             if (data.success) {
                 veriCekAdmin();
+                adminUrunAra();
             }
         })
         .catch(() => alert("Fiyatlar güncellenirken bir hata oluştu!"));
+    }
+
+    function tedarikcileriYukleAdmin() {
+        fetch('/admin/pazaryeri/api/veriler')
+        .then(r => r.json())
+        .then(d => {
+            if(!d.tedarikciler) return;
+            const tSelect = document.getElementById('tedarikci_id');
+            const editTSelect = document.getElementById('edit_tedarikci_id');
+            
+            let options = '<option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>';
+            d.tedarikciler.forEach(t => {
+                options += `<option value="${t.id}">${t.ad_soyad} (${t.telefon})</option>`;
+            });
+            
+            if(tSelect) tSelect.innerHTML = options;
+            if(editTSelect) editTSelect.innerHTML = '<option value="">-- Tedarikçi Yok --</option>' + options.replace('<option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>', '');
+        }).catch(()=>{});
     }
 
     function kategorileriDoldurAdmin() {
@@ -658,7 +789,7 @@
                 data.forEach(k => {
                     let opt = document.createElement('option');
                     opt.value = k;
-                    opt.innerText = k.replace(/^kategorilerimiz\s*[»>]\s*/i, '').trim();
+                    opt.innerText = k;
                     filtreSelect.appendChild(opt);
                 });
                 if (seciliFiltre) filtreSelect.value = seciliFiltre;
@@ -679,6 +810,8 @@
     window.onload = async function() {
         await veriCekAdmin();
         kategorileriDoldurAdmin();
+        adminUrunAra();
+        tedarikcileriYukleAdmin();
         setTimeout(sikayetleriGetir, 1200);
     };
 
@@ -686,6 +819,7 @@
         const simdi = Date.now();
         if (simdi - sonVeriCekmeZamani > 1500) {
             veriCekAdmin();
+            adminUrunAra();
         }
     });
 
@@ -713,7 +847,10 @@
 
     socket.on('sayac_bitti', function(data) {
         document.getElementById('aktifDurum').innerText = "Satıldı";
-        setTimeout(veriCekAdmin, 1000);
+        setTimeout(() => {
+            veriCekAdmin();
+            adminUrunAra();
+        }, 1000);
     });
 
     socket.on('izleyici_sayisi_guncelle', function(data) {
@@ -722,43 +859,44 @@
         }
     });
 
+    // 100.000+ Üründe dahi kasmayan Sunucu Taraflı Arama Fonksiyonu
     function adminUrunAra() {
-        const arama = (document.getElementById('adminAramaInput').value || '').trim().toLowerCase();
-        const seciliKategori = (document.getElementById('kategoriFiltre').value || '').trim();
-        let liste = document.getElementById('urunlerArsivListesi');
-        liste.innerHTML = "";
+        clearTimeout(adminAramaTimer);
+        adminAramaTimer = setTimeout(() => {
+            const arama = (document.getElementById('adminAramaInput').value || '').trim();
+            const seciliKategori = (document.getElementById('kategoriFiltre').value || '').trim();
+            const liste = document.getElementById('urunlerArsivListesi');
 
-        let filtrelenmis = tumUrunler.filter(u => {
-            if (u.durum === "Satıldı") return false;
-            if (seciliKategori && seciliKategori !== 'Tüm Kategoriler' && u.kategori && u.kategori.trim() !== seciliKategori) return false;
-            if (arama) {
-                const eslestiMi = String(u.lot).includes(arama) || (u.ad && u.ad.toLowerCase().includes(arama));
-                if (!eslestiMi) return false;
-            }
-            return true;
-        });
+            liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 6px;">Aranıyor...</div>';
 
-        if (filtrelenmis.length === 0) {
-            liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 6px;">Aramanıza uygun ürün bulunamadı.</div>';
-            return;
-        }
+            fetch(`/admin/urun-ara?arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(seciliKategori)}`)
+                .then(res => res.json())
+                .then(data => {
+                    liste.innerHTML = "";
+                    if (!data.urunler || data.urunler.length === 0) {
+                        liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 6px;">Ürün bulunamadı.</div>';
+                        return;
+                    }
 
-        filtrelenmis.forEach(u => {
-            let div = document.createElement('div');
-            div.className = 'item-row';
-            let durumBadge = u.durum === 'Katalog' ? '<span style="color:#a855f7; font-size:10px; font-weight:bold; margin-right:4px;">[VİTRİN]</span>' : '';
-            let sadeKategori = (u.kategori || '').replace(/^kategorilerimiz\s*[»>]\s*/i, '').trim();
+                    data.urunler.forEach(u => {
+                        let div = document.createElement('div');
+                        div.className = 'item-row';
 
-            div.innerHTML = `
-                <span>${durumBadge}<b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${sadeKategori || 'Genel'}]</small></span>
-                <div class="actions">
-                    <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${u.id})">🎬 Sahneye Al</button>
-                    <button class="btn btn-yellow btn-sm" onclick="duzenleModalAc(${u.id})">✏️ Düzenle</button>
-                    <button class="btn btn-red btn-sm" onclick="urunSil(${u.id})">Sil</button>
-                </div>
-            `;
-            liste.appendChild(div);
-        });
+                        div.innerHTML = `
+                            <span><b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${u.kategori || 'Genel'}]</small></span>
+                            <div class="actions">
+                                <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${u.id})">🎬 Sahneye Al</button>
+                                <button class="btn btn-yellow btn-sm" onclick="duzenleModalAc(${u.id})">✏️ Düzenle</button>
+                                <button class="btn btn-red btn-sm" onclick="urunSil(${u.id})">Sil</button>
+                            </div>
+                        `;
+                        liste.appendChild(div);
+                    });
+                })
+                .catch(() => {
+                    liste.innerHTML = '<div style="color: #ef4444; font-size: 12px; padding: 6px;">Arama hatası!</div>';
+                });
+        }, 250);
     }
 
     function veriCekAdmin() {
@@ -779,11 +917,6 @@
                 document.getElementById('aktifFiyat').innerText = "0 TL";
                 document.getElementById('aktifKazanan').innerText = "Yok";
                 document.getElementById('aktifDurum').innerText = "Bekliyor";
-            }
-
-            if(data.urunler) {
-                tumUrunler = data.urunler;
-                adminUrunAra();
             }
 
             if(data.on_teklifler) {
@@ -928,6 +1061,7 @@
             if(res.success) {
                 alert(res.mesaj || "Ürün başarıyla iptal edildi.");
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert(res.mesaj || "İptal işlemi başarısız!");
             }
@@ -952,6 +1086,7 @@
             if(d.success) {
                 alert(d.mesaj || "Müşteri dosyası sıfırlandı.");
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert(d.error || d.mesaj || "Silme başarısız!");
             }
@@ -991,6 +1126,7 @@
                 urlInput.value = "";
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert("Hata: " + data.mesaj);
             }
@@ -1036,6 +1172,7 @@
             if(d.success) {
                 modalKapat('onTeklifDuzenleModal');
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert(d.mesaj || "Güncelleme başarısız.");
             }
@@ -1053,7 +1190,10 @@
             },
             body: JSON.stringify({ id: id, sifre: ADMIN_PASS })
         }).then(res => res.json()).then(d => {
-            if(d.success) veriCekAdmin();
+            if(d.success) {
+                veriCekAdmin();
+                adminUrunAra();
+            }
         });
     }
 
@@ -1131,15 +1271,15 @@
         let formData = new FormData();
         formData.append('lot', document.getElementById('lot').value);
         formData.append('ad', document.getElementById('ad').value);
+        formData.append('tedarikci_id', document.getElementById('tedarikci_id').value);
         formData.append('kategori', document.getElementById('kategori').value);
         formData.append('fiyat', document.getElementById('fiyat').value);
         formData.append('hemen_al_fiyat', document.getElementById('hemen_al_fiyat').value);
         formData.append('tanitim_yazisi', document.getElementById('tanitim_yazisi').value);
         
-        let fileInput = document.getElementById('dosyalar');
-        for(let i=0; i<fileInput.files.length; i++) {
-            formData.append('dosyalar', fileInput.files[i]);
-        }
+        Array.from(medyaDosyaHavuzu.files).forEach(file => {
+            formData.append('dosyalar', file);
+        });
 
         fetch('/urun-ekle', { 
             method: 'POST', 
@@ -1151,8 +1291,17 @@
             if(d.success) {
                 alert("✅ Ürün başarıyla kaydedildi.");
                 document.getElementById('urunForm').reset();
+                
+                medyaDosyaHavuzu.items.clear();
+                medyaArayuzunuGuncelle();
+
+                if (d.lot_no) {
+                    document.getElementById('lot').value = parseInt(d.lot_no) + 1;
+                }
+
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert("Hata: " + d.mesaj);
             }
@@ -1161,18 +1310,23 @@
 
     function duzenleModalAc(urunId) {
         playClickSound();
-        let urun = tumUrunler.find(u => u.id === urunId);
-        if(!urun) return;
+        fetch(`/admin/urun-ara?arama=${urunId}`)
+        .then(r => r.json())
+        .then(res => {
+            let urun = (res.urunler || []).find(u => u.id === urunId);
+            if(!urun) return alert("Ürün bilgisi alınamadı!");
 
-        document.getElementById('edit_id').value = urun.id;
-        document.getElementById('edit_lot').value = urun.lot;
-        document.getElementById('edit_ad').value = urun.ad;
-        document.getElementById('edit_kategori').value = urun.kategori || "Hediyelik eşya";
-        document.getElementById('edit_fiyat').value = urun.fiyat;
-        document.getElementById('edit_hemen_al_fiyat').value = urun.hemen_al_fiyat || 0;
-        document.getElementById('edit_tanitim').value = urun.tanitim_yazisi || "";
+            document.getElementById('edit_id').value = urun.id;
+            document.getElementById('edit_lot').value = urun.lot;
+            document.getElementById('edit_ad').value = urun.ad;
+            document.getElementById('edit_tedarikci_id').value = urun.tedarikci_id || "";
+            document.getElementById('edit_kategori').value = urun.kategori || "Hediyelik eşya";
+            document.getElementById('edit_fiyat').value = urun.fiyat;
+            document.getElementById('edit_hemen_al_fiyat').value = urun.hemen_al_fiyat || 0;
+            document.getElementById('edit_tanitim').value = urun.tanitim_yazisi || "";
 
-        document.getElementById('duzenleModal').style.display = 'flex';
+            document.getElementById('duzenleModal').style.display = 'flex';
+        });
     }
 
     function urunGuncelleKaydet() {
@@ -1180,6 +1334,7 @@
         let id = document.getElementById('edit_id').value;
         let lot = document.getElementById('edit_lot').value;
         let ad = document.getElementById('edit_ad').value;
+        let tedarikci_id = document.getElementById('edit_tedarikci_id').value;
         let kategori = document.getElementById('edit_kategori').value;
         let fiyat = document.getElementById('edit_fiyat').value;
         let hemen_al_fiyat = document.getElementById('edit_hemen_al_fiyat').value;
@@ -1197,7 +1352,7 @@
                 'X-Admin-Password': ADMIN_PASS
             },
             body: JSON.stringify({
-                id: id, lot: lot, ad: ad, kategori: kategori,
+                id: id, lot: lot, ad: ad, tedarikci_id: tedarikci_id, kategori: kategori,
                 fiyat: fiyat, hemen_al_fiyat: hemen_al_fiyat, tanitim_yazisi: tanitim_yazisi,
                 sifre: ADMIN_PASS
             })
@@ -1209,6 +1364,7 @@
                 modalKapat('duzenleModal');
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
+                adminUrunAra();
             } else {
                 alert(d.mesaj || "Güncelleme başarısız.");
             }
@@ -1243,6 +1399,7 @@
             if(d.success) {
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
+                adminUrunAra();
             }
         });
     }
@@ -1306,7 +1463,6 @@
         });
     }
 
-    // 🎵 7/24 YouTube Canlı Müzik Bağlantısını Güncelleme
     function adminCanliMuzikGuncelle() {
         playClickSound();
         let inputVal = document.getElementById('adminYtMusicInput').value.trim();

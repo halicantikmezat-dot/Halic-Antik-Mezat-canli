@@ -18,6 +18,7 @@ import os
 import re
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from flask import (
@@ -37,7 +38,7 @@ from gevent.lock import BoundedSemaphore
 import pandas as pd
 import pyotp
 import requests
-from sqlalchemy import or_, text
+from sqlalchemy import or_, text, func
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -130,18 +131,29 @@ def shutdown_session(exception=None):
 def admin_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        # 1. Oturum kontrolü (Session + 2FA)
         if session.get("is_admin") is True and session.get("admin_2fa_ok") is True:
             return f(*args, **kwargs)
 
-        if request.is_json or request.path.startswith("/api/"):
+        # 2. Header veya JSON gövde şifre kontrolü
+        req_auth_header = request.headers.get("X-Admin-Password")
+        req_json_pass = request.json.get("sifre") if request.is_json and request.json else None
+        incoming_pass = req_auth_header or req_json_pass
+
+        if incoming_pass and check_password_hash(ADMIN_PASSWORD_HASH, str(incoming_pass)):
+            return f(*args, **kwargs)
+
+        # 3. POST / API istekleri için 403
+        if request.is_json or request.path.startswith("/api/") or request.method == "POST":
             return (
                 jsonify({
                     "success": False,
-                    "mesaj": "Yetkisiz erişim! 2FA doğrulanmış yönetici girişi yapınız.",
+                    "mesaj": "Yetkisiz erişim! Yönetici girişi yapınız.",
                 }),
                 403,
             )
 
+        # 4. URL parametresiyle gelen şifre
         req_pass = request.args.get("sifre")
         if req_pass and check_password_hash(ADMIN_PASSWORD_HASH, req_pass):
             session["admin_sifre_ok"] = True
@@ -237,6 +249,10 @@ class Urun(db.Model):
     durum = db.Column(db.String(20), default="Aktif", index=True)
     kazanan_adi = db.Column(db.String(100), nullable=True, default="Yok")
     kazanan_id = db.Column(db.Integer, db.ForeignKey("kullanici.id"), nullable=True)
+    tedarikci_id = db.Column(db.Integer, nullable=True)
+    siparis_durumu = db.Column(db.String(30), default="Odeme_Bekliyor")
+    kargo_takip_no = db.Column(db.String(100), nullable=True)
+    kargo_firmasi = db.Column(db.String(50), default="Yurtiçi Kargo")
     silindi_mi = db.Column(db.Boolean, default=False, index=True)
     silinme_tarihi = db.Column(db.DateTime, nullable=True)
 
@@ -247,7 +263,6 @@ class Urun(db.Model):
         )
         hemen_val = float(self.hemen_al_fiyati or 0.0)
 
-        # Eğer fotoğraf yoksa ama video varsa, vitrinde oynaması için videoyu listeye ekle
         foto_listesi = list(self.fotograflar or [])
         if not foto_listesi and self.video:
             foto_listesi = [self.video]
@@ -264,6 +279,7 @@ class Urun(db.Model):
                 "fotograflar": foto_listesi[:1],
                 "video": self.video or "",
                 "durum": self.durum or "Aktif",
+                "tedarikci_id": getattr(self, "tedarikci_id", None),
             }
 
         return {
@@ -282,6 +298,7 @@ class Urun(db.Model):
             "durum": self.durum or "Aktif",
             "kazanan": self.kazanan_adi or "Yok",
             "kazanan_id": self.kazanan_id,
+            "tedarikci_id": getattr(self, "tedarikci_id", None),
             "silindi_mi": bool(self.silindi_mi),
         }
 
@@ -494,6 +511,10 @@ def veritabani_tablolari_onar():
                 ("urun", "kazanan_adi", "VARCHAR(100) DEFAULT 'Yok'"),
                 ("urun", "kazanan_id", "INTEGER"),
                 ("urun", "guncel_fiyat", "FLOAT DEFAULT 0.0"),
+                ("urun", "tedarikci_id", "INTEGER"),
+                ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
+                ("urun", "kargo_takip_no", "VARCHAR(100)"),
+                ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
                 ("urun", "silindi_mi", "BOOLEAN DEFAULT FALSE"),
                 ("urun", "silinme_tarihi", "TIMESTAMP"),
                 ("on_teklif", "musteri_id", "INTEGER"),
@@ -625,7 +646,7 @@ def durum_getir():
             Urun.query.filter_by(silindi_mi=False)
             .filter(Urun.durum != "Satıldı")
             .order_by(Urun.lot_no.asc())
-            .limit(100)
+            .limit(2000)
             .all()
         )
         urunler = [u.to_dict(hafif=True) for u in urunler_db]
@@ -1505,7 +1526,16 @@ def admin_2fa_dogrula():
 @app.route("/admin", methods=["GET"])
 @admin_required
 def admin_panel():
-    return render_template("admin.html")
+    try:
+        en_yuksek_lot = (
+            db.session.query(func.max(Urun.lot_no))
+            .filter_by(silindi_mi=False)
+            .scalar()
+        )
+        siradaki_lot = (en_yuksek_lot + 1) if en_yuksek_lot else 1
+    except Exception:
+        siradaki_lot = 1
+    return render_template("admin.html", siradaki_lot=siradaki_lot)
 
 
 @app.route("/admin-sifre-degistir", methods=["POST"])
@@ -1871,7 +1901,10 @@ def musteri_dosya_sil():
 @admin_required
 def urun_ekle():
     try:
-        dosyalar = request.files.getlist("dosyalar")
+        dosyalar = request.files.getlist("dosyalar") or []
+        if not dosyalar:
+            dosyalar = request.files.getlist("medyalar") or []
+
         fotograflar = []
         video_url = ""
         ses_url = ""
@@ -1881,20 +1914,28 @@ def urun_ekle():
             if url and temiz_ad:
                 ext = temiz_ad.lower()
                 if ext.endswith((".mp4", ".mov", ".avi", ".webm", ".mkv", ".3gp", ".m4v")):
-                    video_url = url
+                    if not video_url:
+                        video_url = url
                     fotograflar.append(url)
                 elif ext.endswith((".mp3", ".wav", ".ogg", ".m4a")):
-                    ses_url = url
+                    if not ses_url:
+                        ses_url = url
                 else:
                     fotograflar.append(url)
 
-        mevcut_urun_sayisi = Urun.query.filter_by(silindi_mi=False).count()
         lot_raw = request.form.get("lot")
-        lot_no = (
-            int(lot_raw)
-            if lot_raw and lot_raw.isdigit()
-            else (mevcut_urun_sayisi + 1)
-        )
+        if lot_raw and str(lot_raw).strip().isdigit():
+            lot_no = int(lot_raw)
+        else:
+            en_yuksek_lot = (
+                db.session.query(func.max(Urun.lot_no))
+                .filter_by(silindi_mi=False)
+                .scalar()
+            )
+            lot_no = (en_yuksek_lot + 1) if en_yuksek_lot else 1
+
+        ted_id_raw = request.form.get("tedarikci_id")
+        secili_tedarikci_id = int(ted_id_raw) if ted_id_raw and str(ted_id_raw).isdigit() else None
 
         yeni_urun = Urun(
             lot_no=lot_no,
@@ -1909,11 +1950,12 @@ def urun_ekle():
             ses_dosyasi=ses_url,
             durum="Aktif",
             silindi_mi=False,
+            tedarikci_id=secili_tedarikci_id,
         )
         db.session.add(yeni_urun)
         db.session.commit()
         onbellegi_temizle()
-        return jsonify({"success": True})
+        return jsonify({"success": True, "lot_no": lot_no})
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": str(e)}), 500
@@ -1936,6 +1978,9 @@ def urun_guncelle():
         urun.acilis_fiyati = float(veri.get("fiyat", urun.acilis_fiyati))
         urun.hemen_al_fiyati = float(veri.get("hemen_al_fiyat", urun.hemen_al_fiyati))
         urun.tanitim_yazisi = veri.get("tanitim_yazisi", urun.tanitim_yazisi)
+
+        ted_val = veri.get("tedarikci_id")
+        urun.tedarikci_id = int(ted_val) if ted_val and str(ted_val).isdigit() else None
 
         if aktif_urun_id == urun.id and mezat_durumu["pey"] == 0:
             mezat_durumu["pey"] = urun.acilis_fiyati
@@ -1975,6 +2020,148 @@ def urun_sil():
         onbellegi_temizle()
         return jsonify({"success": True, "mesaj": "Ürün çöp kutusuna taşındı."})
     return jsonify({"success": False, "mesaj": "Ürün bulunamadı."})
+
+
+# ==========================================
+# EKSİK ROTALAR: TOPLU ÜRÜN YÜKLEME VE FİYAT ARTIRMA
+# ==========================================
+@app.route("/toplu-urun-yukle", methods=["POST"])
+@admin_required
+def toplu_urun_yukle():
+    xml_url = request.form.get("xml_url", "").strip()
+    dosya = request.files.get("dosya")
+
+    eklenen = 0
+    try:
+        if xml_url:
+            resp = requests.get(xml_url, timeout=15)
+            root = ET.fromstring(resp.content)
+            for item in root.findall(".//urun") or root.findall(".//item"):
+                ad = (
+                    item.findtext("ad")
+                    or item.findtext("baslik")
+                    or item.findtext("title")
+                    or "İsimsiz Ürün"
+                )
+                fiyat = float(
+                    item.findtext("fiyat") or item.findtext("price") or 0.0
+                )
+                kat = (
+                    item.findtext("kategori")
+                    or item.findtext("category")
+                    or "Hediyelik eşya"
+                )
+
+                en_yuksek_lot = (
+                    db.session.query(func.max(Urun.lot_no))
+                    .filter_by(silindi_mi=False)
+                    .scalar()
+                )
+                yeni_lot = (en_yuksek_lot + 1) if en_yuksek_lot else 1
+
+                yeni = Urun(
+                    lot_no=yeni_lot,
+                    urun_adi=ad,
+                    acilis_fiyati=fiyat,
+                    guncel_fiyat=fiyat,
+                    kategori=kat,
+                    durum="Aktif",
+                )
+                db.session.add(yeni)
+                db.session.commit()
+                eklenen += 1
+
+        elif dosya and dosya.filename:
+            if dosya.filename.endswith((".xlsx", ".xls")):
+                df = pd.read_excel(dosya)
+                for _, row in df.iterrows():
+                    ad = str(row.get("Ürün Adı", row.get("urun_adi", "İsimsiz")))
+                    fiyat = float(
+                        row.get("Açılış Fiyatı", row.get("fiyat", row.get("price", 0)))
+                    )
+                    kat = str(row.get("Kategori", row.get("kategori", "Hediyelik eşya")))
+
+                    en_yuksek_lot = (
+                        db.session.query(func.max(Urun.lot_no))
+                        .filter_by(silindi_mi=False)
+                        .scalar()
+                    )
+                    yeni_lot = (en_yuksek_lot + 1) if en_yuksek_lot else 1
+
+                    yeni = Urun(
+                        lot_no=yeni_lot,
+                        urun_adi=ad,
+                        acilis_fiyati=fiyat,
+                        guncel_fiyat=fiyat,
+                        kategori=kat,
+                        durum="Aktif",
+                    )
+                    db.session.add(yeni)
+                    db.session.commit()
+                    eklenen += 1
+
+        onbellegi_temizle()
+        return jsonify(
+            {"success": True, "mesaj": f"{eklenen} adet ürün başarıyla yüklendi."}
+        )
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Yükleme hatası: {str(e)}"}), 500
+
+
+@app.route("/fiyatlari-yuzde-artir", methods=["POST"])
+@admin_required
+def fiyatlari_yuzde_artir():
+    veri = request.json or {}
+    oran = float(veri.get("oran", 30))
+    carpan = 1.0 + (oran / 100.0)
+
+    try:
+        urunler = Urun.query.filter_by(silindi_mi=False).all()
+        for u in urunler:
+            u.acilis_fiyati = round((u.acilis_fiyati or 0.0) * carpan, 2)
+            if u.guncel_fiyat:
+                u.guncel_fiyat = round(u.guncel_fiyat * carpan, 2)
+            if u.hemen_al_fiyati:
+                u.hemen_al_fiyati = round(u.hemen_al_fiyati * carpan, 2)
+            db.session.add(u)
+        db.session.commit()
+        onbellegi_temizle()
+        return jsonify({
+            "success": True,
+            "mesaj": f"Tüm ürün fiyatlarına %{oran} artış uygulandı.",
+        })
+    except Exception as e:
+        db.session.rollback()
+        return (
+            jsonify(
+                {"success": False, "mesaj": f"Fiyat güncelleme hatası: {str(e)}"}
+            ),
+            500,
+        )
+
+
+@app.route("/admin/urun-ara", methods=["GET"])
+@admin_required
+def admin_urun_ara_api():
+    arama = (request.args.get("arama") or "").strip()
+    kategori = (request.args.get("kategori") or "").strip()
+
+    sorgu = Urun.query.filter(Urun.durum != "Satıldı", Urun.silindi_mi == False)
+
+    if kategori and kategori != "Tüm Kategoriler":
+        sorgu = sorgu.filter(Urun.kategori == kategori)
+
+    if arama:
+        if arama.isdigit():
+            sorgu = sorgu.filter(
+                or_(Urun.lot_no == int(arama), Urun.urun_adi.ilike(f"%{arama}%"))
+            )
+        else:
+            sorgu = sorgu.filter(Urun.urun_adi.ilike(f"%{arama}%"))
+
+    urunler = sorgu.order_by(Urun.lot_no.asc()).limit(50).all()
+    return jsonify({"urunler": [u.to_dict(hafif=True) for u in urunler]})
 
 
 @app.route("/musteri-durum-guncelle", methods=["POST"])
@@ -2185,21 +2372,27 @@ def cop_kutusundan_kalici_sil():
     return jsonify({"success": False, "mesaj": "Kayıt bulunamadı."})
 
 
+# ==========================================
+# KATEGORİ LİSTESİ (SQLITE & POSTGRESQL %100 UYUMLU)
+# ==========================================
 @app.route("/kategoriler-listesi", methods=["GET"])
 def kategoriler_listesi():
     try:
-        sonuc = (
-            db.session.execute(
-                text(
-                    "SELECT DISTINCT kategori FROM urun WHERE silindi_mi = FALSE"
-                    " AND kategori IS NOT NULL;"
-                )
-            )
-            .scalars()
+        sonuclar = (
+            db.session.query(Urun.kategori)
+            .filter(Urun.silindi_mi == False)
+            .filter(Urun.kategori.isnot(None))
+            .filter(Urun.kategori != "")
+            .distinct()
             .all()
         )
-        liste = [k for k in sonuc if k]
-        return jsonify(liste)
+        
+        kategoriler = sorted(list({k[0].strip() for k in sonuclar if k[0] and k[0].strip()}))
+        
+        if not kategoriler:
+            kategoriler = ["Hediyelik eşya", "Antika", "Koleksiyon", "Tablo", "Gümüş"]
+            
+        return jsonify(kategoriler)
     except Exception:
         db.session.rollback()
         return jsonify(["Hediyelik eşya", "Antika", "Koleksiyon", "Tablo", "Gümüş"])
@@ -2554,6 +2747,17 @@ def handle_disconnect():
 # Veritabanı tablolarını onar
 veritabani_tablolari_onar()
 
+# ==========================================
+# PAZARYERİ VE TEDARİKÇİ MODÜLÜ BAĞLANTISI
+# ==========================================
+from pazaryeri import init_pazaryeri, pazaryeri_bp
+
+init_pazaryeri(app, db, admin_required)
+app.register_blueprint(pazaryeri_bp, url_prefix="/admin/pazaryeri")
+
+# ==========================================
+# SUNUCUYU BAŞLATMA (HER ZAMAN EN ALTTA OLMALI)
+# ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     socketio.run(app, host="0.0.0.0", port=port, debug=False)

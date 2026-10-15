@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Haliç Antik Mezat - Ürün Vitrini</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
             --bg-color: #0b0f17;
@@ -70,7 +71,7 @@
 <div class="vitrin-header">
     <h2>🏛️ HALİÇ ANTİK MEZAT - KATALOG & VİTRİN</h2>
     <div class="header-actions">
-        <button onclick="sepetModalGoster()" class="btn-sepet-goruntule" id="vitrinSepetSayac">🛒 Sepetim</button>
+        <button onclick="sepetModalGoster()" class="btn-sepet-goruntule" id="vitrinSepetSayac">🛒 Sepetim (0)</button>
         <a href="/" class="btn-live">🔴 Canlı Mezata Git</a>
     </div>
 </div>
@@ -121,6 +122,8 @@
 </div>
 
 <script>
+    const socket = io({ transports: ['websocket'], upgrade: false });
+
     let seciliModalUrunId = null;
     let seciliModalMinFiyat = 0;
     let modalModu = 'on_teklif';
@@ -138,6 +141,22 @@
     function debounceArama() {
         clearTimeout(aramaTimer);
         aramaTimer = setTimeout(vitrinYukle, 300);
+    }
+
+    function sepetSayaciniGuncelle() {
+        const musteriId = localStorage.getItem('halic_antik_id') || 0;
+        const musteriAd = localStorage.getItem('halic_antik_ad') || '';
+        const istekUrl = musteriId > 0 ? `/sepet-getir/${musteriId}` : `/sepet-getir/0?ad=${encodeURIComponent(musteriAd)}`;
+
+        fetch(istekUrl)
+            .then(r => r.json())
+            .then(res => {
+                const btn = document.getElementById('vitrinSepetSayac');
+                if (btn && res.success && res.urunler) {
+                    btn.innerText = `🛒 Sepetim (${res.urunler.length})`;
+                }
+            })
+            .catch(() => {});
     }
 
     function kategorileriYukle() {
@@ -181,7 +200,6 @@
                 }
 
                 grid.innerHTML = data.urunler.map(u => {
-                    // 1. ADIM: Medya Linkini Her Türlü Format ve Olasılığa Karşı Yakala
                     let gorsel = '';
                     if (Array.isArray(u.fotograflar) && u.fotograflar.length > 0) {
                         gorsel = u.fotograflar[0];
@@ -200,7 +218,6 @@
                         gorsel = u.video;
                     }
 
-                    // 2. ADIM: Video mu Resim mi Kontrolü
                     let medyaHtml = `<span style="color:#666; font-size:11px;">Görsel Yok</span>`;
                     if (gorsel) {
                         let linkTemiz = gorsel.toLowerCase().split('?')[0];
@@ -224,6 +241,7 @@
                     let hemenAl = u.hemen_al_fiyati || u.hemen_al_fiyat || 0;
                     let acilisFiyat = Number(u.fiyat || 0);
                     let sadeKategori = temizKategoriAdi(u.kategori);
+                    let safeAd = encodeURIComponent(u.ad);
 
                     return `
                         <div class="item-card">
@@ -247,10 +265,10 @@
                                 </div>
                                 
                                 <div class="btn-group">
-                                    <button class="btn-on-teklif" onclick="modalAc(${u.id}, '${u.lot}', '${escape(u.ad)}', ${acilisFiyat})">📝 Ön Teklif</button>
-                                    <button class="btn-hemen-al" onclick="vitrindenHemenAl(${u.id}, '${u.lot}', '${escape(u.ad)}', ${hemenAl > 0 ? hemenAl : acilisFiyat})">⚡ Hemen Al</button>
+                                    <button class="btn-on-teklif" onclick="modalAc(${u.id}, '${u.lot}', '${safeAd}', ${acilisFiyat})">📝 Ön Teklif</button>
+                                    <button class="btn-hemen-al" onclick="vitrindenHemenAl(${u.id}, '${u.lot}', '${safeAd}', ${hemenAl > 0 ? hemenAl : acilisFiyat})">⚡ Hemen Al</button>
                                 </div>
-                                <button class="btn-direkt-sepet" onclick="vitrindenSepeteEkle(${u.id}, '${escape(u.ad)}')">🛒 Sepete Ekle</button>
+                                <button class="btn-direkt-sepet" onclick="vitrindenSepeteEkle(${u.id}, '${safeAd}')">🛒 Sepete Ekle</button>
                             </div>
                         </div>
                     `;
@@ -263,10 +281,11 @@
             });
     }
 
-    async function vitrindenSepeteEkle(urunId, urunAdi) {
+    async function vitrindenSepeteEkle(urunId, urunAdiEncoded) {
         let kayitliId = localStorage.getItem('halic_antik_id');
         let kayitliAd = (localStorage.getItem('halic_antik_ad') || '').trim();
         let kayitliTel = localStorage.getItem('halic_antik_tel') || '';
+        let urunAdi = decodeURIComponent(urunAdiEncoded);
 
         if (!kayitliId || !kayitliAd) {
             const ad = prompt("Sepete ürün eklemek için lütfen Adınızı ve Soyadınızı giriniz:");
@@ -308,7 +327,8 @@
             });
             const data = await res.json();
             if (data.success) {
-                alert(`✅ "${unescape(urunAdi)}" başarıyla sepetinize eklendi!`);
+                alert(`✅ "${urunAdi}" başarıyla sepetinize eklendi!`);
+                sepetSayaciniGuncelle();
             } else {
                 alert("⚠️ " + data.mesaj);
             }
@@ -340,6 +360,7 @@
             .then(res => {
                 if (!res.urunler || res.urunler.length === 0) {
                     icerik.innerHTML = "<p style='color:#94a3b8; text-align:center;'>Sepetinizde ürün bulunmamaktadır.</p>";
+                    sepetSayaciniGuncelle();
                     return;
                 }
 
@@ -361,6 +382,7 @@
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Kargo:</span> <b>${res.kargo_ucreti.toLocaleString('tr-TR')} TL</b></div>
                     <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:14px; color:var(--accent-gold); font-weight:bold;"><span>GENEL TOPLAM:</span> <span>${res.genel_toplam.toLocaleString('tr-TR')} TL</span></div>
                 `;
+                sepetSayaciniGuncelle();
             })
             .catch(() => {
                 icerik.innerHTML = "Sepet bilgisi alınamadı.";
@@ -392,16 +414,17 @@
         }
     }
 
-    function vitrindenHemenAl(id, lot, ad, hemenAlBedeli) {
+    function vitrindenHemenAl(id, lot, adEncoded, hemenAlBedeli) {
         let kayitliAd = (localStorage.getItem('halic_antik_ad') || '').replace(/^\[.*?\]\s*/, '').trim();
         let kayitliTel = localStorage.getItem('halic_antik_tel') || '';
         let kayitliId = localStorage.getItem('halic_antik_id');
+        let ad = decodeURIComponent(adEncoded);
 
         if (!kayitliAd || !kayitliTel) {
             modalModu = 'hemen_al';
             seciliModalUrunId = id;
             seciliHemenAlFiyati = hemenAlBedeli;
-            document.getElementById('modalUrunBaslik').innerText = `⚡ HEMEN AL: LOT #${lot} - ${unescape(ad)}`;
+            document.getElementById('modalUrunBaslik').innerText = `⚡ HEMEN AL: LOT #${lot} - ${ad}`;
             document.getElementById('modalAcilisFiyat').innerText = `${hemenAlBedeli.toLocaleString('tr-TR')} TL`;
             document.getElementById('tutarAlaniKutusu').style.display = 'none';
             document.getElementById('modalOnayBtn').innerText = "💳 Hemen Satın Al";
@@ -413,7 +436,7 @@
             return;
         }
 
-        if (!confirm(`LOT #${lot} - ${unescape(ad)} ürününü ${hemenAlBedeli.toLocaleString('tr-TR')} TL bedelle hemen satın alıp sepetinize eklemek istiyor musunuz?`)) {
+        if (!confirm(`LOT #${lot} - ${ad} ürününü ${hemenAlBedeli.toLocaleString('tr-TR')} TL bedelle hemen satın alıp sepetinize eklemek istiyor musunuz?`)) {
             return;
         }
 
@@ -430,6 +453,7 @@
         }).then(r => r.json()).then(res => {
             if (res.success) {
                 alert(`🎉 Tebrikler! Ürün ${hemenAlBedeli} TL bedelle sepetinize eklendi.`);
+                sepetSayaciniGuncelle();
                 vitrinYukle();
             } else {
                 alert(res.mesaj || "Satın alma işlemi gerçekleştirilemedi.");
@@ -437,11 +461,13 @@
         });
     }
 
-    function modalAc(id, lot, ad, acilis) {
+    function modalAc(id, lot, adEncoded, acilis) {
         modalModu = 'on_teklif';
         seciliModalUrunId = id;
         seciliModalMinFiyat = acilis;
-        document.getElementById('modalUrunBaslik').innerText = `LOT #${lot} - ${unescape(ad)}`;
+        let ad = decodeURIComponent(adEncoded);
+
+        document.getElementById('modalUrunBaslik').innerText = `LOT #${lot} - ${ad}`;
         document.getElementById('modalAcilisFiyat').innerText = `${acilis.toLocaleString('tr-TR')} TL`;
         document.getElementById('tutarAlaniKutusu').style.display = 'block';
         document.getElementById('modalOnayBtn').innerText = "🚀 Teklifi Kaydet";
@@ -492,6 +518,7 @@
                     if (d.success) {
                         alert(`🎉 Tebrikler! Ürün sepetinize eklendi.`);
                         modalKapat();
+                        sepetSayaciniGuncelle();
                         vitrinYukle();
                     } else {
                         alert(d.mesaj || "Satın alma yapılamadı.");
@@ -521,9 +548,15 @@
         });
     }
 
+    // Live Mezat Events (Socket)
+    socket.on('sayac_bitti', function() {
+        vitrinYukle();
+    });
+
     window.onload = function() {
         kategorileriYukle();
         vitrinYukle();
+        sepetSayaciniGuncelle();
     };
 </script>
 </body>
