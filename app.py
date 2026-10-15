@@ -2,7 +2,8 @@
 # GEVENT VE ASENKRON MOTOR (EN BAŞTA OLMALI)
 # ==========================================
 from gevent import monkey
-monkey.patch_all()
+# Python 3.11 threading ve logging çakışmasını / Render çökmesini engeller:
+monkey.patch_all(thread=False)
 
 try:
     import psycogreen.gevent
