@@ -815,11 +815,9 @@ def kategoriler_listesi():
             if not ham:
                 continue
 
-            # "Kategorilerimiz » " veya "Kategoriler > " gibi ön ekleri temizle
             temiz = re.sub(r"^kategorilerimiz\s*[»>]\s*", "", ham, flags=re.IGNORECASE)
             temiz = re.sub(r"^kategoriler\s*[»>]\s*", "", temiz, flags=re.IGNORECASE).strip()
 
-            # "Diğer herşey" / "DİĞER HERŞEY" çakışmasını baş harfleri büyüterek tekilleştir
             temiz = temiz.title() if temiz.lower() == "diğer herşey" else temiz
 
             if temiz:
@@ -2210,76 +2208,6 @@ def fiyatlari_yuzde_artir():
             ),
             500,
         )
-
-
-# ==========================================
-# ADMIN ÜRÜN ARAMA (100.000+ ÜRÜN İÇİN HIZLI API)
-# ==========================================
-@app.route("/admin/urun-ara", methods=["GET"])
-@admin_required
-def admin_urun_ara_api():
-    arama = (request.args.get("arama") or "").strip()
-    kategori = (request.args.get("kategori") or "").strip()
-
-    sorgu = Urun.query.filter(Urun.durum != "Satıldı", Urun.silindi_mi == False)
-
-    if kategori and kategori != "Tüm Kategoriler":
-        sorgu = sorgu.filter(Urun.kategori == kategori)
-
-    if arama:
-        if arama.isdigit():
-            sorgu = sorgu.filter(
-                or_(Urun.lot_no == int(arama), Urun.urun_adi.ilike(f"%{arama}%"))
-            )
-        else:
-            sorgu = sorgu.filter(Urun.urun_adi.ilike(f"%{arama}%"))
-
-    urunler = sorgu.order_by(Urun.lot_no.asc()).limit(50).all()
-    return jsonify({"urunler": [u.to_dict(hafif=True) for u in urunler]})
-
-
-# ==========================================
-# KATEGORİ LİSTESİ (SQLITE & POSTGRESQL %100 UYUMLU VE TEMİZLENMİŞ)
-# ==========================================
-@app.route("/kategoriler-listesi", methods=["GET"])
-def kategoriler_listesi():
-    try:
-        sonuclar = (
-            db.session.query(Urun.kategori)
-            .filter(Urun.silindi_mi == False)
-            .filter(Urun.kategori.isnot(None))
-            .filter(Urun.kategori != "")
-            .distinct()
-            .all()
-        )
-
-        benzersiz_kategoriler = set()
-        for k in sonuclar:
-            ham = k[0].strip() if (k and k[0]) else ""
-            if not ham:
-                continue
-
-            # "Kategorilerimiz » " veya "Kategoriler > " gibi ön ekleri temizle
-            temiz = re.sub(r"^kategorilerimiz\s*[»>]\s*", "", ham, flags=re.IGNORECASE)
-            temiz = re.sub(r"^kategoriler\s*[»>]\s*", "", temiz, flags=re.IGNORECASE).strip()
-
-            # "Diğer herşey" / "DİĞER HERŞEY" çakışmasını baş harfleri büyüterek tekilleştir
-            temiz = temiz.title() if temiz.lower() == "diğer herşey" else temiz
-
-            if temiz:
-                benzersiz_kategoriler.add(temiz)
-
-        kategoriler = sorted(list(benzersiz_kategoriler))
-
-        if not kategoriler:
-            kategoriler = ["Hediyelik Eşya", "Antika", "Koleksiyon", "Tablo", "Gümüş"]
-
-        return jsonify(kategoriler)
-    except Exception:
-        db.session.rollback()
-        return jsonify(["Hediyelik Eşya", "Antika", "Koleksiyon", "Tablo", "Gümüş"])
-    finally:
-        db.session.remove()
 
 
 @app.route("/musteri-durum-guncelle", methods=["POST"])
