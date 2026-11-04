@@ -1,0 +1,2053 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haliç Antik Mezat - Çok Dükkanlı Yönetici Portalı</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f141c;
+            --card-bg: #18202c;
+            --card-border: #283548;
+            --accent-gold: #d4af37;
+            --accent-gold-hover: #b8972e;
+            --accent-blue: #38bdf8;
+            --btn-green: #1b4d3e;
+            --btn-green-hover: #226350;
+            --btn-red: #991b1b;
+            --text-light: #ededed;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-light); padding: 15px; }
+
+        .container { max-width: 1300px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        
+        .header {
+            background: #141b24;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border-bottom: 2px solid var(--accent-gold);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .header h2 { color: var(--accent-gold); font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* 10 DÜKKAN SEÇİM BARI */
+        .shop-selector-bar {
+            background: #141b24;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .shop-tab {
+            background: #0f141c;
+            color: #94a3b8;
+            border: 1px solid var(--card-border);
+            padding: 7px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+        .shop-tab:hover { border-color: var(--accent-gold); color: #fff; }
+        .shop-tab.active { background: var(--accent-gold); color: #000; border-color: var(--accent-gold); }
+        .shop-tab .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+        .shop-tab.active .dot { background: #000; }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media(max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 15px;
+        }
+        .card-title { font-size: 15px; font-weight: bold; color: var(--accent-gold); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 9px 12px;
+            margin-bottom: 8px;
+            background: #0f141c;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            outline: none;
+        }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent-gold); }
+
+        .btn {
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-green { background: var(--btn-green); color: #fff; }
+        .btn-red { background: var(--btn-red); color: #fff; }
+        .btn-yellow { background: var(--accent-gold); color: #111; }
+        .btn-blue { background: #1e3a8a; color: #fff; }
+        .btn-purple { background: #4c1d95; color: #fff; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+
+        .item-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .item-row {
+            background: #121822;
+            border: 1px solid var(--card-border);
+            padding: 8px 12px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+        .actions { display: flex; gap: 4px; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 5px; }
+        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
+        th { background: #121822; color: var(--accent-gold); }
+
+        /* ALINAN ÜRÜNLER KUTUSU (TAM 3 SATIR & BEYAZ/GRİ SCROLLBAR) */
+        .urun-chip-container {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 4px !important;
+            max-height: 125px !important; /* Tam 3 ürünlük yükseklik */
+            overflow-y: scroll !important;
+            overflow-x: hidden !important;
+            padding-right: 6px !important;
+            scroll-behavior: smooth;
+        }
+
+        .urun-chip-container::-webkit-scrollbar {
+            width: 6px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-track {
+            background: #1e293b !important;
+            border-radius: 3px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-thumb {
+            background: #94a3b8 !important;
+            border-radius: 3px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-thumb:hover {
+            background: #cbd5e1 !important;
+        }
+
+        .urun-chip {
+            background: #0d121a;
+            border: 1px solid #233044;
+            padding: 6px 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            transition: border-color 0.2s;
+        }
+        .urun-chip:hover { border-color: var(--accent-gold); }
+        .btn-chip-sil {
+            background: #7f1d1d;
+            color: #fecaca;
+            border: 1px solid #991b1b;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .btn-chip-sil:hover { background: #dc2626; color: #fff; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        .modal-content {
+            background: var(--card-bg);
+            border: 1.5px solid var(--accent-gold);
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 480px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .medya-kapsayici {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+            margin-bottom: 8px;
+            min-height: 38px;
+            background: #0b0f16;
+            border: 1px dashed var(--card-border);
+            padding: 6px;
+            border-radius: 6px;
+        }
+        .medya-etiket {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #e2e8f0;
+        }
+        .medya-etiket button {
+            background: transparent;
+            border: none;
+            color: #f87171;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .medya-etiket button:hover { color: #ef4444; }
+
+        .preview-media-box {
+            width: 100%;
+            height: 220px;
+            background: #080c13;
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .preview-media-box img, .preview-media-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* BAS-KONUŞ BUTON STİLİ */
+        .btn-bas-konus {
+            background: #1e293b;
+            border: 1.5px solid #38bdf8;
+            color: #38bdf8;
+            padding: 7px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            user-select: none;
+            transition: all 0.2s;
+        }
+        .btn-bas-konus.kayit-aktif {
+            background: #e11d48 !important;
+            border-color: #f43f5e !important;
+            color: #fff !important;
+            animation: pulseBasKonus 0.8s infinite alternate;
+        }
+        @keyframes pulseBasKonus {
+            from { transform: scale(1); }
+            to { transform: scale(1.05); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 13px; margin-right: 5px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
+            <button onclick="tumunuOtonomAyarla(true)" class="btn btn-yellow btn-sm" title="10 dükkanın tamamında otonom satışı başlatır">⚡ Tümünde Otonomu Başlat</button>
+            <button onclick="tumunuOtonomAyarla(false)" class="btn btn-red btn-sm" title="Tüm otonom mezatları durdurur">🛑 Hepsini Durdur</button>
+            <button onclick="sozlesmeModalAc()" class="btn btn-sm" style="background:#0d9488; color:#fff;">📜 Ürün Alım Sözleşmesi</button>
+            <button onclick="karekodModalAc()" class="btn btn-sm" style="background:#0284c7; color:#fff;">📱 Site Karekodu</button>
+            <a href="/admin/pazaryeri/" class="btn btn-yellow btn-sm" style="text-decoration: none; font-weight: bold;">📦 Tedarikçi & Kargo</a>
+            <a id="linkCanliEkran" href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
+            <a id="linkVitrin" href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
+            <a href="/excel-indir" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
+            <button onclick="copKutusunuAc()" class="btn btn-red btn-sm">🗑️ Çöp Kutusu (<span id="copSayisi">0</span>)</button>
+            <button onclick="sifreDegistirModalAc()" class="btn btn-yellow btn-sm">🔑 Şifre Değiştir</button>
+            <button onclick="adminCikisYap()" class="btn btn-sm" style="background:#334155; color:#fff;">Çıkış</button>
+        </div>
+    </div>
+
+    <!-- 10 DÜKKAN SEÇİM BARI -->
+    <div class="shop-selector-bar" id="shopBar"></div>
+
+    <!-- MÜZİK VE TOPLU ÜRÜN YÜKLEME -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">⚡ Toplu Ürün Yükleme (Excel / XML / Canlı Bağlantı)</div>
+            <form id="topluYukleForm" onsubmit="topluUrunYukle(event)" style="display: flex; flex-direction: column; gap: 8px;">
+                <input type="text" id="topluUrl" placeholder="Canlı XML Linki" style="margin: 0;">
+                <div style="text-align: center; font-size: 11px; color: #94a3b8;">- VEYA BİLGİSAYARDAN DOSYA SEÇİN -</div>
+                <input type="file" id="topluDosya" accept=".xlsx, .xls, .csv, .xml" style="margin: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <button type="submit" class="btn btn-green" style="width: auto;">📥 Ürünleri Sisteme Çek & Kaydet</button>
+                    <span id="topluDurum" style="font-size: 12px; color: var(--accent-blue);"></span>
+                </div>
+            </form>
+
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 11px; color: #94a3b8;">Mevcut Kataloğa KDV & Kâr Ekle:</span>
+                <button type="button" class="btn btn-yellow btn-sm" onclick="topluFiyatArtir(30)">📈 Tüm Ürünlere %30 Ekle</button>
+            </div>
+        </div>
+
+        <!-- 7/24 CANLI YAYIN MÜZİK YÖNETİMİ -->
+        <div class="card">
+            <div class="card-title">🎵 7/24 Canlı Müzik Yayını Yönetimi</div>
+            <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">
+                YouTube canlı yayın linkini veya Video ID'sini giriniz:
+            </p>
+            <div style="display: flex; gap: 6px;">
+                <input type="text" id="adminYtMusicInput" placeholder="Örn: j12l7mQANFU veya https://youtube.com/watch?v=..." 
+                       value="j12l7mQANFU" 
+                       style="flex: 1; margin: 0;">
+                <button type="button" class="btn btn-blue" onclick="adminCanliMuzikGuncelle()" style="white-space: nowrap;">
+                    💾 Müziği Güncelle
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CANLI SAHNE VE CANLI SOHBET AKIŞI -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">
+                <span>🎬 Canlı Sahne Kontrolü</span>
+                <span id="seciliDukkanRozet" style="background:var(--accent-gold); color:#000; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:bold;">GÜMÜŞ</span>
+            </div>
+
+            <div style="background: #111827; border: 1.5px dashed var(--accent-gold); padding: 10px; border-radius: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <b style="color: var(--accent-gold); font-size: 13px;" id="otonomBaslikMetni">🤖 7/24 Otonom Mezat (Gümüş)</b>
+                    <p style="font-size: 11px; color: #94a3b8; margin: 0;">Bu dükkanın ön tekliflerini ve kataloğunu sırayla otomatik satar.</p>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <button id="btnOtonomBaslat" type="button" class="btn btn-green" onclick="otonomAyarla(true)">▶️ Başlat</button>
+                    <button id="btnOtonomDurdur" type="button" class="btn btn-red" onclick="otonomAyarla(false)" style="display:none;">🛑 Durdur</button>
+                </div>
+            </div>
+
+            <div style="background: #121822; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
+                <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">Sahnede aktif ürün yok</span></p>
+                <p style="margin-top: 4px;"><b>Anlık Fiyat:</b> <span id="aktifFiyat" style="color: #34d399; font-weight: bold;">0 TL</span></p>
+                <p style="margin-top: 4px;"><b>Son Pey Veren:</b> <span id="aktifKazanan" style="color: var(--accent-gold); font-weight: bold;">Yok</span></p>
+                <p style="margin-top: 4px;"><b>Durum:</b> <span id="aktifDurum">Bekliyor</span></p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <button class="btn btn-yellow" onclick="mezatBaslat(180)">⏱️ 3 Dk Başlat</button>
+                <button class="btn btn-yellow" onclick="mezatBaslat(60)">⏱️ 60 Sn Karar</button>
+                <button class="btn btn-blue" onclick="mezatBaslat(15)">➕ 15 Sn Uzat</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button class="btn btn-red" onclick="sonPeyiIptalEt()">⚠️ Son Peyi İptal Et</button>
+                <button class="btn btn-green" onclick="satisBitir()">🔨 Satışı Bitir (Satıldı)</button>
+            </div>
+        </div>
+
+        <!-- ÇOKLU PLATFORM CANLI SOHBET & BAS-KONUŞ GELEN KUTUSU -->
+        <div class="card" style="display: flex; flex-direction: column;">
+            <div class="card-title">
+                <span>🔴 Canlı Akış & Ahmet Usta Cevapları</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button id="btnBasKonus" class="btn-bas-konus" title="Ahmet Usta'ya sesle soru sorun / talimat verin">
+                        🎙️ Bas-Konuş (AI Dinlesin)
+                    </button>
+                    <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
+                </div>
+            </div>
+            <div id="adminCanliSohbetAlani" style="flex: 1; min-height: 180px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; background: #0f141c; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px;">
+                <div style="color: #64748b; font-size: 12px; text-align: center; margin-top: 75px;" id="sohbetBosUyarisi">
+                    Yayındaki tüm yorumlar, sorular ve Ahmet Usta'nın yanıtları burada akar...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- YENİ TEK ÜRÜN EKLEME VE SOSYAL MEDYA KONTROLÜ -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">
+                <span id="urunEkleBaslik">➕ Manuel Tek Ürün Ekle (Gümüş)</span>
+            </div>
+            <form id="urunForm" onsubmit="urunYukle(event)">
+                <input type="hidden" id="formDukkan" value="gumus">
+                <label style="font-size: 11px; color: var(--accent-gold); font-weight: bold; display: block; margin-bottom: 2px;">
+                    Lot Numarası (Sıradaki Lot Otomatik Getirildi):
+                </label>
+                <input type="number" id="lot" placeholder="Lot Numarası" value="{{ siradaki_lot or '' }}" style="font-weight: bold; color: var(--accent-gold);" required>
+                <input type="text" id="ad" placeholder="Ürün Adı" required>
+                
+                <select id="tedarikci_id">
+                    <option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>
+                </select>
+
+                <input list="kategoriDatalist" id="kategori" placeholder="Kategori Seçin veya Yazın..." value="Hediyelik eşya">
+                <datalist id="kategoriDatalist"></datalist>
+                <input type="number" step="any" id="fiyat" placeholder="Açılış Fiyatı (TL)" required>
+                <input type="number" step="any" id="hemen_al_fiyat" placeholder="Hemen Al Fiyatı (TL)">
+                <textarea id="tanitim_yazisi" rows="2" placeholder="Ürün Tanıtım ve Hikayesi..."></textarea>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <label style="font-size: 11px; color: #cbd5e1; font-weight: bold;">
+                        📷 Görseller ve Medya (Maks 10 Bağımsız Dosya):
+                    </label>
+                    <span id="medyaSayisiMetni" style="font-size: 11px; color: var(--accent-blue);">0/10 Seçildi</span>
+                </div>
+                
+                <input type="file" id="dosyaSecici" multiple accept="image/*,video/*,audio/*" style="display: none;" onchange="dosyaSecildi(this)">
+                <button type="button" class="btn btn-blue btn-sm" onclick="document.getElementById('dosyaSecici').click()" style="width: 100%; margin-top: 4px;">
+                    📁 Dosya Ekle (Tek Tek veya Toplu)
+                </button>
+                <div id="secilenDosyalarListesi" class="medya-kapsayici">
+                    <span style="font-size: 11px; color: #64748b;">Henüz dosya eklenmedi.</span>
+                </div>
+
+                <button type="submit" class="btn btn-green" style="width: 100%; margin-top: 5px;">💾 Bu Dükkana Kaydet & Abonelere Bildir</button>
+            </form>
+        </div>
+
+        <div class="card" style="border-color: var(--accent-gold);">
+            <div class="card-title" style="color: var(--accent-gold);">📱 TikTok Canlı Chat Bağlantısı</div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <input type="text" id="tiktokUser" placeholder="TikTok Kullanıcı Adı" value="halicantikmezat34" style="flex:1; margin:0;">
+                <button onclick="tiktokBaglan()" class="btn btn-green" style="padding:9px 15px;">Yayına Bağlan</button>
+                <button onclick="tiktokDurdur()" class="btn btn-red" style="padding:9px 15px;">Durdur</button>
+            </div>
+            <div id="tiktokDurum" style="font-size:12px; margin-top:8px; color:#aaa;">Durum: Bağlantı Yok</div>
+        </div>
+    </div>
+
+    <!-- GELEN ÖN TEKLİFLER VE ONAY BEKLEYEN MÜŞTERİLER -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">📩 Gelen Ön Teklifler Arşivi (Seçili Dükkan)</div>
+            <div class="item-list" id="onTekliflerListesi">
+                <div style="color: #94a3b8; font-size: 12px;">Henüz gelen ön teklif yok...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                👥 Onay Bekleyen Müşteriler 
+                <span id="bekleyenSayisiRozet" style="background:var(--btn-red); font-size:11px; padding:2px 8px; border-radius:10px; color:#fff;">0 Bekleyen</span>
+            </div>
+            <div class="item-list" id="onayBekleyenlerListesi">
+                <div style="color: #94a3b8; font-size: 12px;">Onay bekleyen müşteri yok.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MÜŞTERİ DOSYALARI (GÜN SONU CİRO) -->
+    <div class="card">
+        <div class="card-title">
+            📦 Müşteri Dosyaları (Gün Sonu Ekstre & Ciro)
+            <span style="color: #34d399; font-size: 14px;">Toplam Ciro: <b id="toplamCiro">0 TL</b></span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 18%;">Müşteri Adı</th>
+                        <th style="width: 50%;">Aldığı Ürünler (Tek Tek İptal Edilebilir)</th>
+                        <th style="width: 14%;">Toplam Borç</th>
+                        <th style="width: 18%;">Dosya İşlemleri</th>
+                    </tr>
+                </thead>
+                <tbody id="musteriDosyalariTablo">
+                    <tr><td colspan="4" style="text-align: center; color: #94a3b8;">Henüz satılan ürün yok.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MÜŞTERİ CARİ & TÜM ÜRÜN HAVUZU -->
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">👥 Müşteri Puan & Cari Takip & Güvenlik</div>
+            <div style="overflow-x: auto; max-height: 320px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Müşteri</th>
+                            <th>Telefon / IP</th>
+                            <th>Puan Skoru</th>
+                            <th>Durum / İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody id="musteriPuanTablo"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span>📖 Ürün Havuzu (Seçili Dükkan Kataloğu)</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                <input type="text" id="adminAramaInput" placeholder="🔍 Lot No veya Ürün Adı Yazın..." style="margin:0; width:65%;" oninput="adminUrunAra()">
+                <select id="kategoriFiltre" onchange="adminUrunAra()" style="margin:0; width:35%;">
+                    <option value="">Tüm Kategoriler</option>
+                </select>
+            </div>
+            <div class="item-list" id="urunlerArsivListesi"></div>
+        </div>
+    </div>
+
+    <!-- MÜŞTERİ ŞİKAYET, GÖRÜŞ VE ÖNERİ ARŞİVİ -->
+    <div class="card">
+        <div class="card-title">📋 Müşteri Şikayet, Görüş ve Öneri Arşivi</div>
+        <div style="overflow-x: auto; max-height: 250px;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tarih</th>
+                        <th>Müşteri</th>
+                        <th>Tür</th>
+                        <th>Konu & Mesaj</th>
+                        <th>IP Adresi</th>
+                        <th>Durum / İşlem</th>
+                    </tr>
+                </thead>
+                <tbody id="sikayetOneriTablo">
+                    <tr><td colspan="6" style="text-align: center; color: #94a3b8;">Kayıtlı bildirim bulunmuyor.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- MINI KOMPAKT ÜRÜN ÖNİZLEME MODALI -->
+<div id="modalUrunOnizle" class="modal">
+    <div class="modal-content" style="max-width: 420px; text-align: left;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px; margin-bottom:10px;">
+            <h3 id="prevLotBaslik" style="color:var(--accent-gold); margin:0; font-size:14px; font-weight:800;">🔍 Ürün Önizleme</h3>
+            <button onclick="modalKapat('modalUrunOnizle')" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div class="preview-media-box" id="prevMedyaAlani">
+            <span style="color:#64748b; font-size:12px;">Görsel yükleniyor...</span>
+        </div>
+        <div style="background:#0f141c; padding:8px 10px; border-radius:6px; border:1px solid var(--card-border); margin-bottom:10px;">
+            <div id="prevUrunAdi" style="font-size:13px; font-weight:bold; color:#fff; margin-bottom:4px;">-</div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                <span>Dükkan: <b id="prevDukkan" style="color:var(--accent-gold);">-</b></span>
+                <span>Kategori: <b id="prevKategori" style="color:var(--accent-blue);">-</b></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                <span>Açılış: <b id="prevFiyat" style="color:#34d399;">0 TL</b></span>
+                <span id="prevHemenAlSatir" style="color:#f87171;">Hemen Al: <b id="prevHemenAl">0 TL</b></span>
+            </div>
+            <div style="font-size:11px; color:#cbd5e1; line-height:1.3; max-height:80px; overflow-y:auto; border-top:1px dashed var(--card-border); padding-top:4px;">
+                <b>Açıklama:</b> <span id="prevTanitim">-</span>
+            </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+            <button id="btnPrevSahneyeAl" class="btn btn-blue" style="flex:1;">🎬 Bu Ürünü Sahneye Al</button>
+            <button onclick="modalKapat('modalUrunOnizle')" class="btn btn-sm" style="background:#475569; color:#fff; padding:0 12px;">Kapat</button>
+        </div>
+    </div>
+</div>
+
+<!-- ÜRÜN ALIM & KONSİNYE SÖZLEŞMESİ YÖNETİM MODALI -->
+<div id="modalSozlesmeler" class="modal">
+    <div class="modal-content" style="max-width: 850px; text-align: left;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:8px; margin-bottom:12px;">
+            <h3 style="color:var(--accent-gold); margin:0; font-size:15px; font-weight:800;">📜 Yasal Ürün Alım & Konsinye Sözleşmesi Sayfası</h3>
+            <button onclick="modalKapat('modalSozlesmeler')" class="btn btn-red btn-sm">✕</button>
+        </div>
+
+        <div style="background:#0f141c; padding:12px; border-radius:6px; border:1px solid var(--card-border); margin-bottom:12px;">
+            <b style="color:var(--accent-blue); font-size:12px; display:block; margin-bottom:6px;">✍️ Yeni Ürün Alım / Teslim Belgesi Oluştur</b>
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+                <input type="text" id="soz_ad" placeholder="Teslim Eden Adı Soyadı *" required>
+                <input type="text" id="soz_tc" placeholder="T.C. Kimlik No *" maxlength="11" required>
+                <input type="text" id="soz_tel" placeholder="Telefon Numarası *" required>
+            </div>
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:8px;">
+                <input type="text" id="soz_iban" placeholder="Banka IBAN (TR...)">
+                <input type="text" id="soz_kat" placeholder="Kategori" value="Antika">
+            </div>
+            <input type="text" id="soz_urun" placeholder="Teslim Alınan Ürün Tanımı & Özellikleri *" required>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                <input type="number" step="any" id="soz_deger" placeholder="Ekspertiz / Başlangıç Değeri (TL)">
+                <input type="number" step="any" id="soz_komisyon" placeholder="Mezat Komisyon Oranı (%)" value="15">
+            </div>
+            <textarea id="soz_adres" rows="2" placeholder="Teslim Edenin İkametgah Adresi..."></textarea>
+            <textarea id="soz_ekspertiz" rows="2" placeholder="Ekspertiz Notu (Kondisyon, damga, hasarsızlık)..."></textarea>
+            
+            <div style="background:#18202c; padding:6px 10px; border-radius:4px; font-size:11px; color:#cbd5e1; margin-top:4px; border-left:3px solid var(--accent-gold);">
+                ⚖️ <b>Yasal Beyan:</b> Teslim eden şahıs; eserin yasal sahibi olduğunu, çalıntı/replika olmadığını ve 2863 sayılı kanun kapsamındaki tüm yasal sorumluluğun kendisine ait olduğunu kabul eder.
+            </div>
+
+            <button onclick="sozlesmeKaydet()" class="btn btn-green" style="width:100%; margin-top:8px;">💾 Yasal Sözleşmeyi Oluştur & Arşivle</button>
+        </div>
+
+        <h4 style="color:#e0e0e0; margin-bottom:6px; font-size:13px;">📋 Kayıtlı Hukuki Alım Belgeleri</h4>
+        <div style="max-height:220px; overflow-y:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Belge No</th>
+                        <th>Teslim Eden</th>
+                        <th>TC / Tel</th>
+                        <th>Ürün</th>
+                        <th>Değer</th>
+                        <th>Tarih</th>
+                        <th>Yazdır</th>
+                    </tr>
+                </thead>
+                <tbody id="sozlesmeTabloBody">
+                    <tr><td colspan="7" style="text-align:center; color:#94a3b8;">Yükleniyor...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- SÖZLEŞME RESMİ BASKI / PDF ÇIKTI MODALI -->
+<div id="modalSozlesmeBaski" class="modal">
+    <div class="modal-content" style="max-width: 720px; background:#fff; color:#000; text-align: left; padding:25px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:12px;">
+            <div>
+                <h2 style="font-size:16px; margin:0; text-transform:uppercase;">🏛️ HALİÇ ANTİK MEZAT</h2>
+                <small style="color:#555;">Balat / İstanbul | Yasal Konsinye & Ürün Teslim Tutanağı</small>
+            </div>
+            <div style="text-align:right;">
+                <b id="baskiBelgeNo" style="font-size:13px;">HLCS-XXXX</b><br>
+                <small id="baskiTarih">01.01.2026</small>
+            </div>
+        </div>
+
+        <div style="font-size:12px; line-height:1.6;">
+            <p><b>1. TARAFLAR:</b><br>
+            <b>Aracı Mezat:</b> Haliç Antik Mezat (Balat/İstanbul)<br>
+            <b>Teslim Eden / Mülk Sahibi:</b> <span id="baskiAd">-</span> | <b>T.C. No:</b> <span id="baskiTc">-</span> | <b>Tel:</b> <span id="baskiTel">-</span><br>
+            <b>Adres:</b> <span id="baskiAdres">-</span><br>
+            <b>IBAN:</b> <span id="baskiIban">-</span></p>
+
+            <p style="margin-top:8px;"><b>2. TESLİM EDİLEN ESER BİLGİLERİ:</b><br>
+            <b>Ürün / Lot Tanımı:</b> <span id="baskiUrun">-</span> (<span id="baskiKategori">-</span>)<br>
+            <b>Ekspertiz Notu:</b> <span id="baskiNot">-</span><br>
+            <b>Açılış / Tahmini Değer:</b> <span id="baskiDeger">0 TL</span> | <b>Komisyon Oranı:</b> %<span id="baskiKomisyon">15</span></p>
+
+            <p style="margin-top:8px; font-size:11px; text-align:justify; border:1px solid #ddd; padding:8px; background:#f9f9f9;">
+            <b>3. HUKUKİ VE YASAL ŞARTLAR:</b><br>
+            Teslim eden şahıs; eserin yasal sahibi olduğunu, üzerinde rehin bulunmadığını taahhüt eder. Satış gerçekleştikten sonra komisyon bedeli mahsup edilerek bakiye belirtilen IBAN'a aktarılır.
+            </p>
+
+            <div style="display:flex; justify-content:space-between; margin-top:35px; text-align:center;">
+                <div style="width:40%;">
+                    <b>TESLİM EDEN (MÜLK SAHİBİ)</b><br><br><br>
+                    <span>İmza: .................................</span>
+                </div>
+                <div style="width:40%;">
+                    <b>HALİÇ ANTİK MEZAT YÖNETİMİ</b><br><br><br>
+                    <span>İmza / Kaşe: .................................</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:20px;">
+            <button onclick="window.print()" class="btn btn-green" style="flex:1;">🖨️ Yazdır / PDF Olarak Kaydet</button>
+            <button onclick="modalKapat('modalSozlesmeBaski')" class="btn btn-red btn-sm" style="padding:0 15px;">Kapat</button>
+        </div>
+    </div>
+</div>
+
+<!-- SİTE KAREKOD & PWA İNDİRME MODALI -->
+<div id="modalKarekod" class="modal">
+    <div class="modal-content" style="max-width: 380px; text-align: center;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px; margin-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0; font-size:14px; font-weight:800;">📱 Canlı Mezat Karekodu</h3>
+            <button onclick="modalKapat('modalKarekod')" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div style="background:#fff; padding:12px; border-radius:8px; display:inline-block; margin:8px 0;">
+            <img id="karekodResim" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=https://halicantikcanli.com" alt="Haliç Antik QR Kod" style="width:180px; height:180px; display:block;">
+        </div>
+        <p style="font-size:12px; font-weight:bold; color:var(--accent-gold); margin-top:4px;" id="karekodUrlMetni">
+            halicantikcanli.com
+        </p>
+        <button onclick="karekodLinkKopyala()" class="btn btn-blue btn-sm" style="width:100%; margin-top:5px;">📋 Bağlantıyı Kopyala</button>
+        <button onclick="modalKapat('modalKarekod')" class="btn btn-yellow" style="width:100%; margin-top:8px;">Kapat</button>
+    </div>
+</div>
+
+<!-- ÇÖP KUTUSU MODAL -->
+<div id="modalCopKutusu" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0;">🗑️ Geri Dönüşüm Kutusu (Kurtarma Alanı)</h3>
+            <button onclick="copKutusunuKapat()" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <h4 style="color:#e0e0e0; margin-top:15px; margin-bottom:8px;">Silinen Ürünler</h4>
+        <div id="copUrunlerListesi" style="font-size:13px; max-height:200px; overflow-y:auto;">Yükleniyor...</div>
+        <h4 style="color:#e0e0e0; margin-top:20px; margin-bottom:8px;">Silinen Müşteriler</h4>
+        <div id="copMusterilerListesi" style="font-size:13px; max-height:200px; overflow-y:auto;">Yükleniyor...</div>
+    </div>
+</div>
+
+<!-- ŞİFRE DEĞİŞTİRME MODAL -->
+<div id="modalSifreDegistir" class="modal">
+    <div class="modal-content">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0;">🔑 Yönetici Şifresi Güncelle</h3>
+            <button onclick="sifreDegistirModalKapat()" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div style="margin-top:15px;">
+            <label style="display:block; font-size:12px; color:#ccc; margin-bottom:4px;">Mevcut Şifre</label>
+            <input type="password" id="txtEskiSifre" placeholder="Eski şifreniz">
+            <label style="display:block; font-size:12px; color:#ccc; margin-bottom:4px;">Yeni Şifre</label>
+            <input type="password" id="txtYeniSifre" placeholder="Yeni şifreniz (En az 6 karakter)">
+            <button onclick="sifreKaydet()" class="btn btn-yellow" style="width:100%; margin-top:5px;">Şifreyi Güncelle</button>
+        </div>
+    </div>
+</div>
+
+<!-- ÖN TEKLİF DÜZENLEME MODAL -->
+<div id="onTeklifDuzenleModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: var(--accent-gold); margin-bottom: 12px; font-size: 15px;">✏ Ön Teklifi Düzenle</h3>
+        <input type="hidden" id="edit_ot_id">
+        <label style="font-size:12px; font-weight:bold;">Müşteri Adı:</label>
+        <input type="text" id="edit_ot_musteri">
+        <label style="font-size:12px; font-weight:bold;">Ön Teklif Tutarı (TL):</label>
+        <input type="number" step="any" id="edit_ot_tutar">
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <button class="btn btn-green" style="width: 50%;" onclick="onTeklifGuncelleKaydet()">💾 Kaydet</button>
+            <button class="btn btn-red" style="width: 50%;" onclick="modalKapat('onTeklifDuzenleModal')">İptal</button>
+        </div>
+    </div>
+</div>
+
+<!-- ÜRÜN DÜZENLEME MODAL -->
+<div id="duzenleModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: var(--accent-gold); margin-bottom: 12px; font-size: 16px;">✏️ Ürün Bilgilerini Düzenle</h3>
+        <input type="hidden" id="edit_id">
+        
+        <label style="font-size:12px; font-weight:bold; color:var(--accent-gold);">Bulunduğu Dükkan:</label>
+        <select id="edit_dukkan" style="font-weight:bold;">
+            <option value="antika">🏛️ Antika</option>
+            <option value="gumus">✨ Gümüş</option>
+            <option value="bijuteri">💎 Bijuteri</option>
+            <option value="kozmetik">💄 Kozmetik</option>
+            <option value="hirdavat">🔧 Hırdavat & Nalburiye</option>
+            <option value="tasarim">🎨 Tasarım</option>
+            <option value="modelaraba">🚗 Model Araba</option>
+            <option value="karma">📦 Karma & Toplu Satış</option>
+            <option value="diger">🔮 Diğer Her Şey</option>
+            <option value="toptan">🏭 Toptan Satış</option>
+        </select>
+
+        <label style="font-size:12px; font-weight:bold;">Lot No:</label>
+        <input type="number" id="edit_lot">
+        <label style="font-size:12px; font-weight:bold;">Ürün Adı:</label>
+        <input type="text" id="edit_ad">
+        <label style="font-size:12px; font-weight:bold;">Tedarikçi / Satıcı:</label>
+        <select id="edit_tedarikci_id">
+            <option value="">-- Tedarikçi Yok --</option>
+        </select>
+        <label style="font-size:12px; font-weight:bold;">Kategori:</label>
+        <input list="kategoriDatalist" id="edit_kategori" placeholder="Kategori Girin...">
+        <label style="font-size:12px; font-weight:bold;">Açılış Fiyatı (TL):</label>
+        <input type="number" step="any" id="edit_fiyat">
+        <label style="font-size:12px; font-weight:bold;">Hemen Al Fiyatı (TL):</label>
+        <input type="number" step="any" id="edit_hemen_al_fiyat">
+        <label style="font-size:12px; font-weight:bold;">Tanıtım Yazısı / Hikaye:</label>
+        <textarea id="edit_tanitim" rows="4"></textarea>
+        
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <button class="btn btn-green" style="width: 50%;" onclick="urunGuncelleKaydet()">💾 Kaydet</button>
+            <button class="btn btn-red" style="width: 50%;" onclick="modalKapat('duzenleModal')">İptal</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const socket = io({
+        transports: ['websocket'],
+        upgrade: false
+    });
+
+    let seciliDukkan = 'gumus';
+    let dukkanlar = {};
+    let otonomDurumlari = {};
+
+    let tumOnTeklifler = [];
+    let tumArsivUrunleri = [];
+    let audioCtx = null;
+    let yukleniyorMu = false;
+    let sonVeriCekmeZamani = 0;
+    let adminAramaTimer = null;
+    let toplamYorumSayisi = 0;
+
+    const medyaDosyaHavuzu = new DataTransfer();
+
+    // BAS-KONUŞ (MEDIA RECORDER) DEĞİŞKENLERİ
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    async function dukkanlariYukleAdmin() {
+        try {
+            const res = await fetch('/api/dukkanlar');
+            const data = await res.json();
+            dukkanlar = data.dukkanlar || {};
+
+            const shopBar = document.getElementById('shopBar');
+            shopBar.innerHTML = '';
+
+            for (const [kod, d] of Object.entries(dukkanlar)) {
+                const btn = document.createElement('div');
+                btn.className = `shop-tab ${kod === seciliDukkan ? 'active' : ''}`;
+                btn.id = `tab_${kod}`;
+                btn.innerHTML = `<span class="dot"></span> ${d.ad}`;
+                btn.onclick = () => dukkanSec(kod);
+                shopBar.appendChild(btn);
+            }
+            dukkanSec(seciliDukkan);
+        } catch (e) {
+            console.error("Dükkanlar yüklenemedi:", e);
+        }
+    }
+
+    function dukkanSec(kod) {
+        playClickSound();
+        socket.emit('leave_dukkan', { dukkan: seciliDukkan });
+        seciliDukkan = kod;
+        socket.emit('join_dukkan', { dukkan: seciliDukkan });
+
+        document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+        const activeTab = document.getElementById(`tab_${kod}`);
+        if (activeTab) activeTab.classList.add('active');
+
+        const ad = dukkanlar[kod] ? dukkanlar[kod].ad : kod;
+        document.getElementById('seciliDukkanRozet').innerText = ad.toUpperCase();
+        document.getElementById('urunEkleBaslik').innerText = `➕ Manuel Tek Ürün Ekle (${ad})`;
+        document.getElementById('otonomBaslikMetni').innerText = `🤖 7/24 Otonom Mezat (${ad})`;
+        document.getElementById('formDukkan').value = kod;
+
+        document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
+        document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
+
+        veriCekAdmin();
+        adminUrunAra();
+    }
+
+    // BAS-KONUŞ MİKROFON KURULUMU
+    const btnBasKonus = document.getElementById('btnBasKonus');
+
+    async function basKonusBaslat() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const formData = new FormData();
+                formData.append('ses', audioBlob, 'admin_ses.webm');
+                formData.append('dukkan', seciliDukkan);
+
+                fetch('/api/admin/bas-konus-ses', {
+                    method: 'POST',
+                    body: formData
+                }).then(r => r.json()).then(res => {
+                    console.log("Ses iletildi:", res);
+                });
+
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            btnBasKonus.classList.add('kayit-aktif');
+            btnBasKonus.innerText = "🔴 Dinliyor... Bırakın!";
+        } catch (err) {
+            alert("Mikrofon erişim izni verilmedi: " + err);
+        }
+    }
+
+    function basKonusBitir() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        btnBasKonus.classList.remove('kayit-aktif');
+        btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+    }
+
+    btnBasKonus.addEventListener('mousedown', basKonusBaslat);
+    btnBasKonus.addEventListener('mouseup', basKonusBitir);
+    btnBasKonus.addEventListener('touchstart', (e) => { e.preventDefault(); basKonusBaslat(); });
+    btnBasKonus.addEventListener('touchend', (e) => { e.preventDefault(); basKonusBitir(); });
+
+    // CANLI SOHBET VE AHMET USTA AKIŞI
+    socket.on("yeni_canli_yorum", function(data) {
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+
+        toplamYorumSayisi++;
+        document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
+
+        let platformRenk = "#38bdf8";
+        let platformAd = data.platform || "Web";
+        let logoSvg = "💬";
+
+        if (platformAd === "Ahmet Usta AI") {
+            platformRenk = "var(--accent-gold)";
+            logoSvg = "🤖";
+        } else if (platformAd.includes("TikTok")) {
+            platformRenk = "#ef4444";
+            logoSvg = "🔴";
+        }
+
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        const yeniSatir = document.createElement("div");
+        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
+
+        yeniSatir.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: bold; color: ${platformRenk};">
+                    ${logoSvg} [${platformAd}] ${data.kullanici}
+                </span>
+                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
+            </div>
+            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
+                ${data.mesaj}
+            </div>
+        `;
+
+        sohbetKutusu.appendChild(yeniSatir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    });
+
+    // YASAL VE HUKUKİ SÖZLEŞME İŞLEMLERİ
+    function sozlesmeModalAc() {
+        playClickSound();
+        document.getElementById('modalSozlesmeler').style.display = 'flex';
+        sozlesmeleriGetir();
+    }
+
+    function sozlesmeKaydet() {
+        playClickSound();
+        const ad = document.getElementById('soz_ad').value.trim();
+        const tc = document.getElementById('soz_tc').value.trim();
+        const tel = document.getElementById('soz_tel').value.trim();
+        const urun = document.getElementById('soz_urun').value.trim();
+
+        if (!ad || !tc || !tel || !urun) {
+            return alert("Lütfen ad, TC, telefon ve ürün alanlarını doldurunuz!");
+        }
+
+        const veri = {
+            ad_soyad: ad,
+            tc: tc,
+            tel: tel,
+            iban: document.getElementById('soz_iban').value.trim(),
+            kategori: document.getElementById('soz_kat').value.trim(),
+            urun_adi: urun,
+            tahmini_deger: document.getElementById('soz_deger').value,
+            komisyon: document.getElementById('soz_komisyon').value,
+            adres: document.getElementById('soz_adres').value.trim(),
+            ekspertiz_notu: document.getElementById('soz_ekspertiz').value.trim()
+        };
+
+        fetch('/admin/sozlesme-ekle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(veri)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                alert("✅ Hukuki sözleşme oluşturuldu: " + res.sozlesme_no);
+                document.getElementById('soz_ad').value = '';
+                document.getElementById('soz_tc').value = '';
+                document.getElementById('soz_tel').value = '';
+                document.getElementById('soz_urun').value = '';
+                sozlesmeleriGetir();
+                sozlesmeBaskiAc(res.id);
+            } else {
+                alert("Hata: " + res.mesaj);
+            }
+        });
+    }
+
+    function sozlesmeleriGetir() {
+        fetch('/admin/sozlesmeler-listele')
+        .then(r => r.json())
+        .then(res => {
+            const tbody = document.getElementById('sozlesmeTabloBody');
+            tbody.innerHTML = '';
+            if (!res.sozlesmeler || res.sozlesmeler.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">Kayıtlı sözleşme yok.</td></tr>';
+                return;
+            }
+            res.sozlesmeler.forEach(s => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b style="color:var(--accent-gold);">${s.no}</b></td>
+                    <td><b>${s.ad}</b></td>
+                    <td>${s.tc} <br><small style="color:#94a3b8;">${s.tel}</small></td>
+                    <td>${s.urun}</td>
+                    <td style="color:#34d399; font-weight:bold;">${s.deger} TL</td>
+                    <td><small>${s.tarih}</small></td>
+                    <td>
+                        <button onclick="sozlesmeBaskiAc(${s.id})" class="btn btn-blue btn-sm">🖨️ Yazdır</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        });
+    }
+
+    function sozlesmeBaskiAc(id) {
+        playClickSound();
+        fetch(`/admin/sozlesme-detay/${id}`)
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) return alert("Belge alınamadı.");
+            const s = res.sozlesme;
+            document.getElementById('baskiBelgeNo').innerText = s.no;
+            document.getElementById('baskiTarih').innerText = s.tarih;
+            document.getElementById('baskiAd').innerText = s.ad;
+            document.getElementById('baskiTc').innerText = s.tc;
+            document.getElementById('baskiTel').innerText = s.tel;
+            document.getElementById('baskiAdres').innerText = s.adres || "-";
+            document.getElementById('baskiIban').innerText = s.iban || "-";
+            document.getElementById('baskiUrun').innerText = s.urun;
+            document.getElementById('baskiKategori').innerText = s.kategori || "Antika";
+            document.getElementById('baskiNot').innerText = s.ekspertiz_notu || "Kondisyon iyi, hasarsız.";
+            document.getElementById('baskiDeger').innerText = s.deger + " TL";
+            document.getElementById('baskiKomisyon').innerText = s.komisyon;
+
+            document.getElementById('modalSozlesmeBaski').style.display = 'flex';
+        });
+    }
+
+    function karekodModalAc() {
+        playClickSound();
+        const aktifUrl = `${window.location.origin}/?dukkan=${seciliDukkan}`;
+        document.getElementById('karekodResim').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(aktifUrl)}`;
+        document.getElementById('karekodUrlMetni').innerText = aktifUrl;
+        document.getElementById('modalKarekod').style.display = 'flex';
+    }
+
+    function karekodLinkKopyala() {
+        playClickSound();
+        const aktifUrl = `${window.location.origin}/?dukkan=${seciliDukkan}`;
+        navigator.clipboard.writeText(aktifUrl).then(() => {
+            alert("📋 Mezat linki panoya kopyalandı!");
+        });
+    }
+
+    function dosyaSecildi(input) {
+        if (!input.files || input.files.length === 0) return;
+        for (let i = 0; i < input.files.length; i++) {
+            if (medyaDosyaHavuzu.items.length >= 10) {
+                alert("En fazla 10 medya dosyası yükleyebilirsiniz!");
+                break;
+            }
+            medyaDosyaHavuzu.items.add(input.files[i]);
+        }
+        input.value = "";
+        medyaArayuzunuGuncelle();
+    }
+
+    function medyaDosyasiSil(index) {
+        playClickSound();
+        medyaDosyaHavuzu.items.remove(index);
+        medyaArayuzunuGuncelle();
+    }
+
+    function medyaArayuzunuGuncelle() {
+        const listeDiv = document.getElementById('secilenDosyalarListesi');
+        const sayiMetni = document.getElementById('medyaSayisiMetni');
+        const toplam = medyaDosyaHavuzu.files.length;
+
+        sayiMetni.innerText = `${toplam}/10 Seçildi`;
+
+        if (toplam === 0) {
+            listeDiv.innerHTML = '<span style="font-size: 11px; color: #64748b;">Henüz dosya eklenmedi.</span>';
+            return;
+        }
+
+        let html = '';
+        Array.from(medyaDosyaHavuzu.files).forEach((file, idx) => {
+            let kisaAd = file.name.length > 18 ? file.name.substring(0, 15) + '...' : file.name;
+            html += `
+                <div class="medya-etiket">
+                    <span>${kisaAd}</span>
+                    <button type="button" onclick="medyaDosyasiSil(${idx})" title="Kaldır">✕</button>
+                </div>
+            `;
+        });
+        listeDiv.innerHTML = html;
+    }
+
+    function playClickSound() {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.08);
+        } catch(e) {}
+    }
+
+    function copKutusunuAc() {
+        playClickSound();
+        document.getElementById('modalCopKutusu').style.display = 'flex';
+        copVerileriniGetir();
+    }
+
+    function copKutusunuKapat() {
+        playClickSound();
+        document.getElementById('modalCopKutusu').style.display = 'none';
+    }
+
+    function copVerileriniGetir() {
+        fetch('/cop-kutusu-listele')
+            .then(r => r.json())
+            .then(res => {
+                if (!res.success) return;
+                const urunDiv = document.getElementById('copUrunlerListesi');
+                if (res.urunler.length === 0) {
+                    urunDiv.innerHTML = '<p style="color:#888; padding:8px 0;">Çöp kutusunda ürün yok.</p>';
+                } else {
+                    let h = '<table><thead><tr><th>Lot</th><th>Ürün Adı</th><th>Fiyat</th><th>Silinme Tarihi</th><th>İşlem</th></tr></thead><tbody>';
+                    res.urunler.forEach(u => {
+                        h += `<tr>
+                            <td>#${u.lot}</td>
+                            <td>${u.ad}</td>
+                            <td>${u.fiyat} TL</td>
+                            <td>${u.silinme_tarihi}</td>
+                            <td>
+                                <button onclick="coptenGeriYukle('urun', ${u.id})" class="btn btn-green btn-sm">Geri Yükle</button>
+                                <button onclick="coptenKaliciSil('urun', ${u.id})" class="btn btn-red btn-sm" style="margin-left:4px;">Kalıcı Sil</button>
+                            </td>
+                        </tr>`;
+                    });
+                    h += '</tbody></table>';
+                    urunDiv.innerHTML = h;
+                }
+
+                const musDiv = document.getElementById('copMusterilerListesi');
+                if (res.musteriler.length === 0) {
+                    musDiv.innerHTML = '<p style="color:#888; padding:8px 0;">Çöp kutusunda müşteri yok.</p>';
+                } else {
+                    let mh = '<table><thead><tr><th>Ad Soyad</th><th>Telefon</th><th>Silinme Tarihi</th><th>İşlem</th></tr></thead><tbody>';
+                    res.musteriler.forEach(m => {
+                        mh += `<tr>
+                            <td>${m.ad}</td>
+                            <td>${m.tel}</td>
+                            <td>${m.silinme_tarihi}</td>
+                            <td>
+                                <button onclick="coptenGeriYukle('musteri', ${m.id})" class="btn btn-green btn-sm">Geri Yükle</button>
+                                <button onclick="coptenKaliciSil('musteri', ${m.id})" class="btn btn-red btn-sm" style="margin-left:4px;">Kalıcı Sil</button>
+                            </td>
+                        </tr>`;
+                    });
+                    mh += '</tbody></table>';
+                    musDiv.innerHTML = mh;
+                }
+
+                document.getElementById('copSayisi').innerText = (res.urunler.length + res.musteriler.length);
+            }).catch(() => {});
+    }
+
+    function coptenGeriYukle(tur, id) {
+        playClickSound();
+        if (!confirm('Bu kaydı geri yüklemek istediğinize emin misiniz?')) return;
+        fetch('/cop-kutusundan-geri-yukle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tur: tur, id: id })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            copVerileriniGetir();
+            adminUrunAra();
+        });
+    }
+
+    function coptenKaliciSil(tur, id) {
+        playClickSound();
+        if (!confirm('DİKKAT: Bu kayıt veritabanından tamamen silinecek! Onaylıyor musunuz?')) return;
+        fetch('/cop-kutusundan-kalici-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tur: tur, id: id })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            copVerileriniGetir();
+        });
+    }
+
+    function sifreDegistirModalAc() {
+        playClickSound();
+        document.getElementById('modalSifreDegistir').style.display = 'flex';
+    }
+
+    function sifreDegistirModalKapat() {
+        playClickSound();
+        document.getElementById('modalSifreDegistir').style.display = 'none';
+    }
+
+    function sifreKaydet() {
+        playClickSound();
+        const eski = document.getElementById('txtEskiSifre').value;
+        const yeni = document.getElementById('txtYeniSifre').value;
+        if (!eski || !yeni) return alert('Lütfen tüm alanları doldurun.');
+
+        fetch('/admin-sifre-degistir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ eski_sifre: eski, yeni_sifre: yeni })
+        }).then(r => r.json()).then(res => {
+            alert(res.mesaj);
+            if (res.success) sifreDegistirModalKapat();
+        });
+    }
+
+    function adminCikisYap() {
+        playClickSound();
+        fetch('/admin-cikis-yap').then(() => { window.location.href = '/'; });
+    }
+
+    function tiktokBaglan() {
+        playClickSound();
+        const user = document.getElementById('tiktokUser').value.trim();
+        if(!user) return alert('Lütfen TikTok kullanıcı adı girin!');
+        document.getElementById('tiktokDurum').innerText = "Bağlanıyor...";
+        fetch('/api/social/tiktok/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: user})
+        })
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('tiktokDurum').innerText = d.mesaj || "Bağlandı.";
+            document.getElementById('tiktokDurum').style.color = "#34d399";
+        })
+        .catch(() => {
+            document.getElementById('tiktokDurum').innerText = "Hata oluştu!";
+            document.getElementById('tiktokDurum').style.color = "#ef4444";
+        });
+    }
+
+    function tiktokDurdur() {
+        playClickSound();
+        fetch('/api/social/tiktok/stop', {method: 'POST'})
+        .then(r => r.json())
+        .then(() => {
+            document.getElementById('tiktokDurum').innerText = "Bağlantı kesildi.";
+            document.getElementById('tiktokDurum').style.color = "#aaa";
+        });
+    }
+
+    function otonomAyarla(durum) {
+        playClickSound();
+        fetch('/api/admin/otonom-mezat-kontrol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ dukkan: seciliDukkan, aktif: durum })
+        })
+        .then(r => r.json())
+        .then(res => {
+            alert(res.mesaj);
+            otonomDurumlari[seciliDukkan] = durum;
+            document.getElementById('btnOtonomBaslat').style.display = durum ? 'none' : 'inline-flex';
+            document.getElementById('btnOtonomDurdur').style.display = durum ? 'inline-flex' : 'none';
+        });
+    }
+
+    function tumunuOtonomAyarla(durum) {
+        playClickSound();
+        fetch('/api/admin/otonom-mezat-kontrol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ dukkan: 'tumu', aktif: durum })
+        })
+        .then(r => r.json())
+        .then(res => {
+            alert(res.mesaj);
+            for(let k in dukkanlar) { otonomDurumlari[k] = durum; }
+            document.getElementById('btnOtonomBaslat').style.display = durum ? 'none' : 'inline-flex';
+            document.getElementById('btnOtonomDurdur').style.display = durum ? 'inline-flex' : 'none';
+        });
+    }
+
+    socket.on('otonom_durum_degisti', function(data) {
+        if(data.dukkan === seciliDukkan) {
+            document.getElementById('btnOtonomBaslat').style.display = data.aktif ? 'none' : 'inline-flex';
+            document.getElementById('btnOtonomDurdur').style.display = data.aktif ? 'inline-flex' : 'none';
+        }
+    });
+
+    function topluFiyatArtir(oran = 30) {
+        playClickSound();
+        if (!confirm(`Veritabanındaki TÜM ürünlerin açılış fiyatına %${oran} artış uygulanacak. Onaylıyor musunuz?`)) return;
+
+        fetch('/fiyatlari-yuzde-artir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ oran: oran })
+        })
+        .then(res => res.json())
+        .then(data => {
+            alert(data.mesaj);
+            if (data.success) {
+                veriCekAdmin();
+                adminUrunAra();
+            }
+        });
+    }
+
+    function tedarikcileriYukleAdmin() {
+        fetch('/admin/pazaryeri/api/veriler')
+        .then(r => r.json())
+        .then(d => {
+            if(!d.tedarikciler) return;
+            const tSelect = document.getElementById('tedarikci_id');
+            const editTSelect = document.getElementById('edit_tedarikci_id');
+            let options = '<option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>';
+            d.tedarikciler.forEach(t => {
+                options += `<option value="${t.id}">${t.ad_soyad} (${t.telefon})</option>`;
+            });
+            if(tSelect) tSelect.innerHTML = options;
+            if(editTSelect) editTSelect.innerHTML = '<option value="">-- Tedarikçi Yok --</option>' + options.replace('<option value="">-- Tedarikçi / Satıcı Seçin (Opsiyonel) --</option>', '');
+        }).catch(()=>{});
+    }
+
+    function kategorileriDoldurAdmin() {
+        fetch('/kategoriler-listesi')
+        .then(res => res.json())
+        .then(data => {
+            if (!data || data.length === 0) return;
+            const filtreSelect = document.getElementById('kategoriFiltre');
+            const dataList = document.getElementById('kategoriDatalist');
+            let seciliFiltre = filtreSelect ? filtreSelect.value : '';
+            if (filtreSelect) {
+                filtreSelect.innerHTML = '<option value="">Tüm Kategoriler</option>';
+                data.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; opt.innerText = k; filtreSelect.appendChild(opt);
+                });
+                if (seciliFiltre) filtreSelect.value = seciliFiltre;
+            }
+            if (dataList) {
+                dataList.innerHTML = '';
+                data.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k; opt.innerText = k; dataList.appendChild(opt);
+                });
+            }
+        }).catch(() => {});
+    }
+
+    window.onload = async function() {
+        await dukkanlariYukleAdmin();
+        kategorileriDoldurAdmin();
+        tedarikcileriYukleAdmin();
+        setTimeout(sikayetleriGetir, 1200);
+    };
+
+    socket.on('veri_guncellendi', function() {
+        const simdi = Date.now();
+        if (simdi - sonVeriCekmeZamani > 1500) {
+            veriCekAdmin();
+            adminUrunAra();
+        }
+    });
+
+    socket.on('yeni_sahne_urunu', function(urun) {
+        if (urun && urun.dukkan === seciliDukkan) {
+            document.getElementById('aktifUrunAdi').innerText = `LOT #${urun.lot} - ${urun.ad}`;
+            document.getElementById('aktifFiyat').innerText = `${urun.fiyat} TL`;
+            document.getElementById('aktifKazanan').innerText = "Yok";
+            document.getElementById('aktifDurum').innerText = "Bekliyor";
+        }
+    });
+
+    socket.on('pey_guncellendi', function(data) {
+        if(data && data.dukkan === seciliDukkan) {
+            if(data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
+            if(data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
+        }
+    });
+
+    socket.on('sayac_guncelle', function(data) {
+        if(data && data.dukkan === seciliDukkan && data.kalan !== undefined) {
+            document.getElementById('aktifDurum').innerText = `Geri Sayım: ${data.kalan} sn`;
+        }
+    });
+
+    socket.on('sayac_bitti', function(data) {
+        if(data && data.dukkan === seciliDukkan) {
+            document.getElementById('aktifDurum').innerText = data.satildi_mi ? "Satıldı" : "Pas Geçildi";
+            setTimeout(() => {
+                veriCekAdmin();
+                adminUrunAra();
+            }, 1000);
+        }
+    });
+
+    socket.on('izleyici_sayisi_guncelle', function(data) {
+        if(data && data.dukkan === seciliDukkan && data.sayi !== undefined) {
+            document.getElementById('izleyiciSayisi').innerText = data.sayi;
+        }
+    });
+
+    function adminUrunAra() {
+        clearTimeout(adminAramaTimer);
+        adminAramaTimer = setTimeout(() => {
+            const arama = (document.getElementById('adminAramaInput').value || '').trim();
+            const seciliKategori = (document.getElementById('kategoriFiltre').value || '').trim();
+            const liste = document.getElementById('urunlerArsivListesi');
+
+            liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 6px;">Aranıyor...</div>';
+
+            fetch(`/admin/urun-ara?dukkan=${seciliDukkan}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(seciliKategori)}`)
+                .then(res => res.json())
+                .then(data => {
+                    liste.innerHTML = "";
+                    if (!data.urunler || data.urunler.length === 0) {
+                        liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 6px;">Bu dükkanda ürün bulunamadı.</div>';
+                        tumArsivUrunleri = [];
+                        return;
+                    }
+                    tumArsivUrunleri = data.urunler;
+
+                    data.urunler.forEach(u => {
+                        let div = document.createElement('div');
+                        div.className = 'item-row';
+                        div.innerHTML = `
+                            <span><b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${u.kategori || 'Genel'}]</small></span>
+                            <div class="actions">
+                                <button class="btn btn-sm" style="background:#0284c7; color:#fff;" onclick="urunOnizleModalAc(${u.id})">👁️ Gör</button>
+                                <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${u.id})">🎬 Sahneye Al</button>
+                                <button class="btn btn-yellow btn-sm" onclick="duzenleModalAc(${u.id})">✏️ Düzenle</button>
+                                <button class="btn btn-red btn-sm" onclick="urunSil(${u.id})">Sil</button>
+                            </div>
+                        `;
+                        liste.appendChild(div);
+                    });
+                })
+                .catch(() => {
+                    liste.innerHTML = '<div style="color: #ef4444; font-size: 12px; padding: 6px;">Arama hatası!</div>';
+                });
+        }, 250);
+    }
+
+    function urunOnizleModalAc(urunId) {
+        playClickSound();
+        const urun = tumArsivUrunleri.find(u => String(u.id) === String(urunId));
+        if (!urun) return alert("Ürün detayları alınamadı!");
+
+        document.getElementById('prevLotBaslik').innerText = `🔍 Lot #${urun.lot} Önizleme`;
+        document.getElementById('prevUrunAdi').innerText = urun.ad;
+        
+        let dukkanAdi = dukkanlar[urun.dukkan] ? dukkanlar[urun.dukkan].ad : (urun.dukkan || seciliDukkan);
+        document.getElementById('prevDukkan').innerText = dukkanAdi;
+        document.getElementById('prevKategori').innerText = urun.kategori || "Genel";
+        document.getElementById('prevFiyat').innerText = `${urun.fiyat} TL`;
+        
+        const hemenAl = (urun.hemen_al_fiyat !== undefined && urun.hemen_al_fiyat > 0) ? urun.hemen_al_fiyat : (urun.hemen_al_fiyati || 0);
+        if (hemenAl > 0) {
+            document.getElementById('prevHemenAl').innerText = `${hemenAl} TL`;
+            document.getElementById('prevHemenAlSatir').style.display = 'inline';
+        } else {
+            document.getElementById('prevHemenAlSatir').style.display = 'none';
+        }
+
+        document.getElementById('prevTanitim').innerText = urun.tanitim_yazisi || urun.aciklama || "Açıklama girilmemiş.";
+
+        const medyaAlani = document.getElementById('prevMedyaAlani');
+        medyaAlani.innerHTML = "";
+
+        if (urun.video) {
+            const v = document.createElement('video');
+            v.src = urun.video; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+            medyaAlani.appendChild(v);
+        } else if (urun.fotograflar && urun.fotograflar.length > 0 && urun.fotograflar[0].trim()) {
+            const img = document.createElement('img');
+            img.src = urun.fotograflar[0].trim();
+            medyaAlani.appendChild(img);
+        } else {
+            medyaAlani.innerHTML = '<span style="color:#64748b; font-size:12px;">📷 Bu ürüne ait görsel bulunmuyor.</span>';
+        }
+
+        const sahneBtn = document.getElementById('btnPrevSahneyeAl');
+        sahneBtn.onclick = function() {
+            sahneyeAl(urun.id);
+            modalKapat('modalUrunOnizle');
+        };
+
+        document.getElementById('modalUrunOnizle').style.display = 'flex';
+    }
+
+    function veriCekAdmin() {
+        if (yukleniyorMu) return Promise.resolve();
+        yukleniyorMu = true;
+        sonVeriCekmeZamani = Date.now();
+
+        return fetch(`/durum-getir?dukkan=${seciliDukkan}`)
+        .then(res => res.json())
+        .then(data => {
+            if(data.aktif_urun) {
+                document.getElementById('aktifUrunAdi').innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
+                document.getElementById('aktifFiyat').innerText = `${data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat} TL`;
+                document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
+                document.getElementById('aktifDurum').innerText = data.durum;
+            } else {
+                document.getElementById('aktifUrunAdi').innerText = "Sahnede aktif ürün yok";
+                document.getElementById('aktifFiyat').innerText = "0 TL";
+                document.getElementById('aktifKazanan').innerText = "Yok";
+                document.getElementById('aktifDurum').innerText = "Bekliyor";
+            }
+
+            if(data.on_teklifler) {
+                tumOnTeklifler = data.on_teklifler;
+                let liste = document.getElementById('onTekliflerListesi');
+                liste.innerHTML = "";
+                if(data.on_teklifler.length === 0) {
+                    liste.innerHTML = '<div style="color: #94a3b8; font-size: 12px;">Bu dükkanda henüz gelen ön teklif yok...</div>';
+                } else {
+                    data.on_teklifler.forEach((ot, index) => {
+                        let div = document.createElement('div');
+                        div.className = 'item-row';
+                        div.innerHTML = `
+                            <span><b>Lot #${ot.lot}</b> (${ot.urun_adi}) - <b>${ot.musteri_adi}</b>: <span style="color:#34d399; font-weight:bold;">${ot.teklif} TL</span></span>
+                            <div class="actions">
+                                <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${ot.urun_id})">🎬 Sahneye Al</button>
+                                <button class="btn btn-yellow btn-sm" onclick="onTeklifDuzenleModalAc(${ot.id || index})">✏️ Düzenle</button>
+                                <button class="btn btn-red btn-sm" onclick="onTeklifSil(${ot.id || index})">Sil</button>
+                            </div>
+                        `;
+                        liste.appendChild(div);
+                    });
+                }
+            }
+
+            if(data.musteriler) {
+                let onayListesi = document.getElementById('onayBekleyenlerListesi');
+                let puanTablo = document.getElementById('musteriPuanTablo');
+                onayListesi.innerHTML = "";
+                puanTablo.innerHTML = "";
+                let bekleyenSayisi = 0;
+
+                data.musteriler.forEach(m => {
+                    if(m.durum === 'bekliyor') {
+                        bekleyenSayisi++;
+                        let div = document.createElement('div');
+                        div.className = 'item-row';
+                        div.innerHTML = `
+                            <span><b>${m.ad}</b> (${m.tel}) <small style="color:#94a3b8;">IP: ${m.ip}</small></span>
+                            <div class="actions">
+                                <button class="btn btn-green btn-sm" onclick="musteriDurumDegistir(${m.id}, 'onayli')">Onayla</button>
+                                <button class="btn btn-red btn-sm" onclick="musteriDurumDegistir(${m.id}, 'engellendi')">Engelle</button>
+                                <button class="btn btn-red btn-sm" onclick="musteriSil(${m.id})">Sil</button>
+                            </div>
+                        `;
+                        onayListesi.appendChild(div);
+                    }
+
+                    let tr = document.createElement('tr');
+                    let durumRozet = m.durum === 'onayli' ? '<span style="color:#34d399; font-weight:bold;">Onaylı</span>' : (m.durum === 'engellendi' ? '<span style="color:#ef4444; font-weight:bold;">Engelli</span>' : '<span style="color:#d4af37; font-weight:bold;">Bekliyor</span>');
+                    tr.innerHTML = `
+                        <td><b>${m.ad}</b></td>
+                        <td>${m.tel} <br><small style="color:#94a3b8;">${m.ip}</small></td>
+                        <td style="color:#38bdf8; font-weight:bold;">%${m.puan}</td>
+                        <td>
+                            ${durumRozet}
+                            <button class="btn btn-yellow btn-sm" style="margin-left:4px;" onclick="musteriDurumDegistir(${m.id}, 'engellendi')">Banla</button>
+                            <button class="btn btn-red btn-sm" style="margin-left:4px;" onclick="musteriSil(${m.id})">Sil</button>
+                        </td>
+                    `;
+                    puanTablo.appendChild(tr);
+                });
+
+                document.getElementById('bekleyenSayisiRozet').innerText = `${bekleyenSayisi} Bekleyen`;
+                if(bekleyenSayisi === 0) {
+                    onayListesi.innerHTML = '<div style="color: #94a3b8; font-size: 12px;">Onay bekleyen müşteri yok.</div>';
+                }
+            }
+
+            if(data.gruplanmis_dosyalar) {
+                let tablo = document.getElementById('musteriDosyalariTablo');
+                tablo.innerHTML = "";
+                let genelCiro = 0;
+
+                if(data.gruplanmis_dosyalar.length === 0) {
+                    tablo.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Bu dükkanda henüz satılan ürün yok.</td></tr>';
+                } else {
+                    data.gruplanmis_dosyalar.forEach(dosya => {
+                        genelCiro += parseFloat(dosya.toplam_tutar || 0);
+                        let urunlerHtml = '<div class="urun-chip-container">';
+                        dosya.urunler.forEach(u => {
+                            urunlerHtml += `
+                                <div class="urun-chip">
+                                    <span><b>Lot #${u.lot}</b> - ${u.urun_adi} <span style="color:#34d399; font-weight:bold;">(${u.fiyat} TL)</span></span>
+                                    <button class="btn-chip-sil" onclick="tekilUrunuIptalEt(${u.urun_id}, '${dosya.musteri_adi}', '${encodeURIComponent(u.urun_adi)}')">✕ İptal Et</button>
+                                </div>
+                            `;
+                        });
+                        urunlerHtml += '</div>';
+
+                        let urunlerMetniDuz = dosya.urunler.map(u => `Lot #${u.lot} (${u.urun_adi} - ${u.fiyat} TL)`).join(', ');
+                        let telTemiz = (dosya.telefon && dosya.telefon !== "-") ? String(dosya.telefon).replace(/\D/g, '') : '';
+                        if (telTemiz.startsWith('0')) telTemiz = '90' + telTemiz.substring(1);
+                        else if (telTemiz.length === 10) telTemiz = '90' + telTemiz;
+
+                        let waMesaj = encodeURIComponent(`Sayın ${dosya.musteri_adi}, Haliç Antik Mezat'tan kazandığınız ürünler:\n${dosya.urunler.map(u => `• Lot #${u.lot} - ${u.urun_adi} (${u.fiyat} TL)`).join('\n')}\n\nToplam Borcunuz: ${dosya.toplam_tutar} TL'dir.`);
+                        
+                        let tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><b>${dosya.musteri_adi}</b><br><small style="color:#94a3b8;">${dosya.telefon || '-'}</small></td>
+                            <td>${urunlerHtml}</td>
+                            <td style="color:#34d399; font-weight:bold; font-size:14px;">${Number(dosya.toplam_tutar).toLocaleString('tr-TR')} TL</td>
+                            <td>
+                                <button class="btn btn-red btn-sm" onclick="musteriDosyasiSil('${dosya.musteri_adi}')" style="margin-bottom:4px; width:100%;">🗑️ Tüm Dosyayı Sil</button>
+                                <div style="display:flex; gap:3px;">
+                                    <a href="https://wa.me/${telTemiz}?text=${waMesaj}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none; flex:1;" onclick="playClickSound()">💬 WP</a>
+                                    <button class="btn btn-blue btn-sm" style="flex:1;" onclick="smsGonderDetayli('${dosya.musteri_adi}', '${dosya.toplam_tutar}', '${encodeURIComponent(urunlerMetniDuz)}')">📱 SMS</button>
+                                </div>
+                            </td>
+                        `;
+                        tablo.appendChild(tr);
+                    });
+                }
+                document.getElementById('toplamCiro').innerText = `${Number(genelCiro).toLocaleString('tr-TR')} TL`;
+            }
+        })
+        .catch(() => {})
+        .finally(() => { yukleniyorMu = false; });
+    }
+
+    function tekilUrunuIptalEt(urunId, musteriAdi, urunAdiEncoded) {
+        playClickSound();
+        let urunAdi = decodeURIComponent(urunAdiEncoded);
+        if(!confirm(`Sayın ${musteriAdi} dosyasından "${urunAdi}" ürününü çıkarmak ve tekrar satış havuzuna almak istediğinize emin misiniz?`)) return;
+
+        fetch('/tek-urun-iptal-et', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urun_id: urunId })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.success) {
+                alert(res.mesaj || "Ürün başarıyla iptal edildi.");
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert(res.mesaj || "İptal işlemi başarısız!");
+        });
+    }
+
+    function musteriDosyasiSil(musteriAdi) {
+        playClickSound();
+        if(!confirm(`${musteriAdi} isimli müşterinin kazandığı TÜM ürünleri iptal edip satış havuzuna geri almak ve ciroyu sıfırlamak istiyor musunuz?`)) return;
+        
+        fetch('/musteri-dosya-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ musteri_adi: musteriAdi })
+        })
+        .then(res => res.json())
+        .then(d => {
+            if(d.success) {
+                alert(d.mesaj || "Müşteri dosyası sıfırlandı.");
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert(d.error || d.mesaj || "Silme başarısız!");
+        });
+    }
+
+    function topluUrunYukle(e) {
+        e.preventDefault();
+        playClickSound();
+        const dosyaInput = document.getElementById('topluDosya');
+        const urlInput = document.getElementById('topluUrl');
+        const durum = document.getElementById('topluDurum');
+        
+        if (!dosyaInput.files[0] && !urlInput.value.trim()) {
+            return alert("Lütfen bir dosya seçin veya canlı XML bağlantı linki girin!");
+        }
+
+        const formData = new FormData();
+        formData.append('dukkan', seciliDukkan);
+        if(dosyaInput.files[0]) formData.append('dosya', dosyaInput.files[0]);
+        if(urlInput.value.trim()) formData.append('xml_url', urlInput.value.trim());
+
+        durum.innerText = "Ürünler dükkana kaydediliyor, lütfen bekleyin...";
+
+        fetch('/toplu-urun-yukle', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            durum.innerText = data.mesaj;
+            if(data.success) {
+                alert(data.mesaj);
+                dosyaInput.value = ""; urlInput.value = "";
+                kategorileriDoldurAdmin();
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert("Hata: " + data.mesaj);
+        });
+    }
+
+    function onTeklifDuzenleModalAc(otId) {
+        playClickSound();
+        let ot = tumOnTeklifler.find(x => x.id === otId) || tumOnTeklifler[otId];
+        if(!ot) return;
+        document.getElementById('edit_ot_id').value = ot.id || otId;
+        document.getElementById('edit_ot_musteri').value = ot.musteri_adi;
+        document.getElementById('edit_ot_tutar').value = ot.teklif;
+        document.getElementById('onTeklifDuzenleModal').style.display = 'flex';
+    }
+
+    function onTeklifGuncelleKaydet() {
+        playClickSound();
+        let id = document.getElementById('edit_ot_id').value;
+        let musteri = document.getElementById('edit_ot_musteri').value.trim();
+        let teklif = document.getElementById('edit_ot_tutar').value;
+        if(!musteri || !teklif) return alert("Lütfen alanları boş bırakmayınız!");
+
+        fetch('/on-teklif-guncelle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id, musteri_adi: musteri, teklif: teklif })
+        })
+        .then(res => res.json())
+        .then(d => {
+            if(d.success) {
+                modalKapat('onTeklifDuzenleModal');
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert(d.mesaj || "Güncelleme başarısız.");
+        });
+    }
+
+    function onTeklifSil(id) {
+        playClickSound();
+        if(!confirm("Bu ön teklifi silmek istediğinize emin misiniz?")) return;
+        fetch('/on-teklif-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).then(res => res.json()).then(d => {
+            if(d.success) { veriCekAdmin(); adminUrunAra(); }
+        });
+    }
+
+    function smsGonderDetayli(musteri, tutar, urunlerMetniEncoded) {
+        playClickSound();
+        let urunler = decodeURIComponent(urunlerMetniEncoded);
+        alert(`📱 [SMS Gönderildi]\n\nSayın ${musteri},\nHaliç Antik Mezat'tan kazandığınız ürünler:\n${urunler}\nToplam Tutar: ${tutar} TL.`);
+    }
+
+    function sikayetleriGetir() {
+        fetch('/sikayet-oneri-listele')
+        .then(res => res.json())
+        .then(data => {
+            let tablo = document.getElementById('sikayetOneriTablo');
+            tablo.innerHTML = "";
+            if(!data || data.length === 0) {
+                tablo.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Kayıtlı bildirim bulunmuyor.</td></tr>';
+                return;
+            }
+            data.forEach(k => {
+                let tr = document.createElement('tr');
+                let badge = k.durum === 'Yeni' ? '<span style="color:#d4af37; font-weight:bold;">Yeni</span>' : (k.durum === 'Düzeltildi' ? '<span style="color:#34d399; font-weight:bold;">Düzeltildi</span>' : '<span style="color:#38bdf8;">İncelendi</span>');
+                tr.innerHTML = `
+                    <td>${k.tarih}</td>
+                    <td><b>${k.musteri_adi}</b></td>
+                    <td><span style="color:#38bdf8;">${k.tur}</span></td>
+                    <td><b>${k.konu}:</b> ${k.mesaj}</td>
+                    <td><small>${k.ip || '-'}</small></td>
+                    <td>
+                        ${badge}
+                        <button class="btn btn-green btn-sm" style="margin-left:4px;" onclick="itirazDuzeltBildir(${k.id})">✅ Düzelt & Bildir</button>
+                        <button class="btn btn-red btn-sm" style="margin-left:2px;" onclick="sikayetSil(${k.id})">Sil</button>
+                    </td>
+                `;
+                tablo.appendChild(tr);
+            });
+        }).catch(() => {});
+    }
+
+    function itirazDuzeltBildir(id) {
+        playClickSound();
+        fetch('/itiraz-duzelt-bildir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).then(res => res.json()).then(d => {
+            if(d.success) {
+                alert("✅ İtiraz düzeltildi ve müşterinin ekranına anlık bildirim iletildi.");
+                sikayetleriGetir();
+            }
+        });
+    }
+
+    function sikayetSil(id) {
+        playClickSound();
+        if(!confirm("Bu itiraz/şikayet kaydını silmek istiyor musunuz?")) return;
+        fetch('/sikayet-oneri-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).then(res => res.json()).then(d => {
+            if(d.success) sikayetleriGetir();
+        });
+    }
+
+    function urunYukle(e) {
+        e.preventDefault();
+        playClickSound();
+        let formData = new FormData();
+        formData.append('dukkan', seciliDukkan);
+        formData.append('lot', document.getElementById('lot').value);
+        formData.append('ad', document.getElementById('ad').value);
+        formData.append('tedarikci_id', document.getElementById('tedarikci_id').value);
+        formData.append('kategori', document.getElementById('kategori').value);
+        formData.append('fiyat', document.getElementById('fiyat').value);
+        formData.append('hemen_al_fiyat', document.getElementById('hemen_al_fiyat').value);
+        formData.append('tanitim_yazisi', document.getElementById('tanitim_yazisi').value);
+        
+        Array.from(medyaDosyaHavuzu.files).forEach(file => { formData.append('dosyalar', file); });
+
+        fetch('/urun-ekle', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(d => {
+            if(d.success) {
+                alert(`✅ Ürün başarıyla [${dukkanlar[seciliDukkan] ? dukkanlar[seciliDukkan].ad : seciliDukkan}] dükkanına kaydedildi ve abonelere bildiri gönderildi.`);
+                document.getElementById('urunForm').reset();
+                document.getElementById('formDukkan').value = seciliDukkan;
+                medyaDosyaHavuzu.items.clear();
+                medyaArayuzunuGuncelle();
+                if (d.lot_no) document.getElementById('lot').value = parseInt(d.lot_no) + 1;
+                kategorileriDoldurAdmin();
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert("Hata: " + d.mesaj);
+        });
+    }
+
+    function duzenleModalAc(urunId) {
+        playClickSound();
+        let mevcutUrun = (tumArsivUrunleri || []).find(u => String(u.id) === String(urunId) || String(u.lot) === String(urunId));
+        if (mevcutUrun) return formDoldurVeAc(mevcutUrun);
+
+        fetch(`/admin/urun-ara?dukkan=${seciliDukkan}&arama=`)
+        .then(r => r.json())
+        .then(res => {
+            let urunler = res.urunler || [];
+            let urun = urunler.find(u => String(u.id) === String(urunId) || String(u.lot) === String(urunId));
+            if(!urun) return alert("Ürün bilgisi alınamadı!");
+            formDoldurVeAc(urun);
+        });
+
+        function formDoldurVeAc(urun) {
+            document.getElementById('edit_id').value = urun.id;
+            document.getElementById('edit_lot').value = urun.lot;
+            document.getElementById('edit_ad').value = urun.ad;
+            let dukkanVal = urun.dukkan || seciliDukkan;
+            let dukkanSelect = document.getElementById('edit_dukkan');
+            if (dukkanSelect) dukkanSelect.value = dukkanVal;
+            document.getElementById('edit_tedarikci_id').value = urun.tedarikci_id || "";
+            document.getElementById('edit_kategori').value = urun.kategori || "Hediyelik eşya";
+            document.getElementById('edit_fiyat').value = urun.fiyat;
+            document.getElementById('edit_hemen_al_fiyat').value = urun.hemen_al_fiyat || 0;
+            document.getElementById('edit_tanitim').value = urun.tanitim_yazisi || urun.aciklama || "";
+            document.getElementById('duzenleModal').style.display = 'flex';
+        }
+    }
+
+    function urunGuncelleKaydet() {
+        playClickSound();
+        let id = document.getElementById('edit_id').value;
+        let dukkan = document.getElementById('edit_dukkan').value;
+        let lot = document.getElementById('edit_lot').value;
+        let ad = document.getElementById('edit_ad').value;
+        let tedarikci_id = document.getElementById('edit_tedarikci_id').value;
+        let kategori = document.getElementById('edit_kategori').value;
+        let fiyat = document.getElementById('edit_fiyat').value;
+        let hemen_al_fiyat = document.getElementById('edit_hemen_al_fiyat').value;
+        let tanitim_yazisi = document.getElementById('edit_tanitim').value;
+
+        if(!ad || !fiyat) return alert("Lütfen ürün adı ve fiyat alanlarını doldurun!");
+
+        fetch('/urun-guncelle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: id, dukkan: dukkan, lot: lot, ad: ad, tedarikci_id: tedarikci_id, kategori: kategori,
+                fiyat: fiyat, hemen_al_fiyat: hemen_al_fiyat, tanitim_yazisi: tanitim_yazisi
+            })
+        })
+        .then(res => res.json())
+        .then(d => {
+            if(d.success) {
+                alert("✅ Ürün güncellendi.");
+                modalKapat('duzenleModal');
+                kategorileriDoldurAdmin();
+                veriCekAdmin();
+                adminUrunAra();
+            } else alert(d.mesaj || "Güncelleme başarısız.");
+        });
+    }
+
+    function sahneyeAl(id) {
+        playClickSound();
+        fetch('/sahneye-al', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urun_id: id })
+        }).then(res => res.json()).then(d => {
+            if(!d.success) alert(d.mesaj || "Hata oluştu");
+            else veriCekAdmin();
+        });
+    }
+
+    function urunSil(id) {
+        playClickSound();
+        if(!confirm("Bu ürünü silip çöp kutusuna taşımak istediğinize emin misiniz?")) return;
+        fetch('/urun-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).then(res => res.json()).then(d => {
+            if(d.success) {
+                kategorileriDoldurAdmin();
+                veriCekAdmin();
+                adminUrunAra();
+            }
+        });
+    }
+
+    function musteriDurumDegistir(id, durum) {
+        playClickSound();
+        fetch('/musteri-durum-guncelle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kullanici_id: id, durum: durum })
+        }).then(res => res.json()).then(d => {
+            if(d.success) veriCekAdmin();
+        });
+    }
+
+    function musteriSil(id) {
+        playClickSound();
+        if(!confirm("Bu kullanıcıyı silip çöp kutusuna taşımak istediğinize emin misiniz?")) return;
+        fetch('/musteri-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kullanici_id: id })
+        }).then(res => res.json()).then(d => {
+            if(d.success) veriCekAdmin();
+        });
+    }
+
+    function mezatBaslat(sure) {
+        playClickSound();
+        fetch('/mezat-baslat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dukkan: seciliDukkan, sure: sure })
+        });
+    }
+
+    function sonPeyiIptalEt() {
+        playClickSound();
+        if (!confirm("Son verilen pey teklifini iptal etmek istiyor musunuz?")) return;
+        fetch('/son-peyi-iptal-et', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ dukkan: seciliDukkan })
+        });
+    }
+
+    function satisBitir() {
+        playClickSound();
+        if (!confirm("Bu ürünün satışını onaylayıp mezatı bitirmek istiyor musunuz?")) return;
+        fetch('/satis-bitir', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ dukkan: seciliDukkan })
+        });
+    }
+
+    function adminCanliMuzikGuncelle() {
+        playClickSound();
+        let inputVal = document.getElementById('adminYtMusicInput').value.trim();
+        if (!inputVal) return alert("Lütfen bir YouTube linki veya Video ID girin!");
+
+        let videoId = inputVal;
+        if (inputVal.includes("v=")) {
+            videoId = inputVal.split("v=")[1].split("&")[0];
+        } else if (inputVal.includes("youtu.be/")) {
+            videoId = inputVal.split("youtu.be/")[1].split("?")[0];
+        }
+
+        fetch('/api/admin/muzik-link-guncelle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ video_id: videoId })
+        }).then(r => r.json()).then(res => {
+            if(res.success) alert("✅ Canlı müzik güncellendi.");
+            else alert("Hata: " + res.mesaj);
+        });
+    }
+
+    function modalKapat(id) {
+        playClickSound();
+        document.getElementById(id).style.display = 'none';
+    }
+</script>
+</body>
+</html>

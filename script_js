@@ -1,0 +1,75 @@
+// ==========================================
+// SOCKET.IO VE CANLI BAĞLANTI KURULUMU
+// ==========================================
+const socket = io();
+
+// Anlık izleyici sayısı güncellendiğinde
+socket.on('izleyici_sayisi_guncelle', function(data) {
+    const izleyiciEl = document.getElementById('izleyici-sayisi');
+    if (izleyiciEl) {
+        izleyiciEl.innerText = data.sayi;
+    }
+});
+
+// Yeni pey geldiğinde anlık ekran güncelleme (Polling yok, sıfır kasma)
+socket.on('pey_guncellendi', function(data) {
+    const fiyatEl = document.getElementById('fiyat');
+    const kazananEl = document.getElementById('kazanan-adi');
+    
+    if (fiyatEl) fiyatEl.innerText = data.guncel_fiyat + ' TL';
+    if (kazananEl) kazananEl.innerText = data.kazanan_ad;
+});
+
+// Sayaç anlık geri sayım güncellemesi
+socket.on('sayac_guncelle', function(data) {
+    const sayacEl = document.getElementById('sayac');
+    if (sayacEl) {
+        sayacEl.innerText = data.kalan + " sn";
+    }
+});
+
+// ==========================================
+// SERVER.PY İLE %100 UYUMLU İŞLEVLER
+// ==========================================
+
+// Sunucuya yeni bir pey/teklif gönderen fonksiyon
+async function teklifVer(urunId, musteriAdi, miktar) {
+    try {
+        const response = await fetch('/pey-ver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                urun_id: urunId, 
+                musteri_adi: musteriAdi, 
+                miktar: miktar,
+                islem: 'pey'
+            })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            alert(result.mesaj || "Pey verilemedi!");
+        }
+    } catch (error) {
+        console.error("Teklif verilirken hata oluştu:", error);
+    }
+}
+
+// Sahnedeki ürünü ve genel durumu anlık güncelleyen fonksiyon
+async function sahneyiGuncelle() {
+    try {
+        const response = await fetch('/durum-getir');
+        const data = await response.json();
+        
+        if (data.aktif_urun) {
+            const urunAdiEl = document.getElementById('urun-adi');
+            const fiyatEl = document.getElementById('fiyat');
+            const kazananEl = document.getElementById('kazanan-adi');
+
+            if (urunAdiEl) urunAdiEl.innerText = data.aktif_urun.ad;
+            if (fiyatEl) fiyatEl.innerText = (data.pey || data.aktif_urun.fiyat) + ' TL';
+            if (kazananEl) kazananEl.innerText = data.kazanan || 'Yok';
+        }
+    } catch (error) {
+        console.error("Sahne güncellenirken hata oluştu:", error);
+    }
+}

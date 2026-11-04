@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Haliç Antik Mezat - Canlı Yayın Katmanı</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 12px;
+            background: transparent;
+            color: #ffffff;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .overlay-box {
+            background: linear-gradient(135deg, rgba(8, 14, 30, 0.95), rgba(4, 7, 18, 0.92));
+            border: 2px solid #ffb703;
+            border-radius: 10px;
+            padding: 10px 16px;
+            width: fit-content;
+            min-width: 290px;
+            max-width: 360px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9), 0 0 12px rgba(255, 183, 3, 0.25);
+            backdrop-filter: blur(6px);
+            transition: transform 0.2s ease, border-color 0.3s ease;
+        }
+
+        /* Yeni pey geldiğinde kutunun parlaması */
+        .overlay-box.pey-anim {
+            transform: scale(1.03);
+            border-color: #00f0ff;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.7);
+        }
+
+        .lot-title { 
+            font-size: 13px; 
+            font-weight: 800; 
+            color: #ffb703; 
+            text-transform: uppercase; 
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 4px;
+        }
+
+        .price-row { 
+            display: flex; 
+            align-items: baseline; 
+            justify-content: space-between;
+            gap: 12px; 
+            margin: 6px 0; 
+        }
+
+        .price-val { 
+            font-size: 26px; 
+            font-weight: 900; 
+            color: #00f0ff; 
+            line-height: 1.1;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+        }
+
+        .bidder { 
+            font-size: 13px; 
+            color: #f1f5f9; 
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+            text-align: right;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .timer { 
+            font-size: 13px; 
+            font-weight: 800; 
+            color: #ffb703; 
+            margin-top: 2px; 
+            letter-spacing: 0.8px; 
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Son 10 saniyede yanıp sönen alarm animasyonu */
+        .timer.alarm {
+            color: #ef4444 !important;
+            animation: pulse-red 0.8s infinite alternate;
+        }
+
+        @keyframes pulse-red {
+            from { opacity: 0.7; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1.02); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="overlay-box" id="overlayBox">
+    <div class="lot-title" id="overlayLot">LOT #000 - MEZAT BEKLENİYOR</div>
+    <div class="price-row">
+        <span class="price-val" id="overlayFiyat">0 TL</span>
+        <span class="bidder" id="overlayKazanan">Son Teklif: Yok</span>
+    </div>
+    <div class="timer" id="overlaySayac">⏱️ MEZAT BEKLENİYOR</div>
+</div>
+
+<script>
+    // DÜKKAN / ODA ALGISI (Örn: /overlay?dukkan=gumus veya /overlay?dukkan=antika)
+    const urlParams = new URLSearchParams(window.location.search);
+    const aktifDukkan = urlParams.get('dukkan') || 'gumus';
+
+    const socket = io({ 
+        transports: ['websocket'], 
+        upgrade: false,
+        reconnection: true,
+        reconnectionDelay: 1000
+    });
+
+    const box = document.getElementById('overlayBox');
+    const lotEl = document.getElementById('overlayLot');
+    const fiyatEl = document.getElementById('overlayFiyat');
+    const kazananEl = document.getElementById('overlayKazanan');
+    const sayacEl = document.getElementById('overlaySayac');
+
+    let animZamanlayici = null;
+
+    function paraFormatla(val) {
+        return Number(val || 0).toLocaleString('tr-TR') + ' TL';
+    }
+
+    function peyEfektiVer() {
+        box.classList.add('pey-anim');
+        clearTimeout(animZamanlayici);
+        animZamanlayici = setTimeout(() => box.classList.remove('pey-anim'), 350);
+    }
+
+    // Odaya Katılma
+    socket.on('connect', () => {
+        socket.emit('join_dukkan', { dukkan: aktifDukkan });
+    });
+
+    window.addEventListener('beforeunload', () => {
+        socket.emit('leave_dukkan', { dukkan: aktifDukkan });
+    });
+
+    // 1. Yeni Pey Geldiğinde
+    socket.on('pey_guncellendi', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        let fiyat = data.pey || data.guncel_fiyat || 0;
+        let kazanan = data.kazanan || data.kazanan_ad || "Yok";
+
+        fiyatEl.innerText = paraFormatla(fiyat);
+        kazananEl.innerText = kazanan;
+        peyEfektiVer();
+    });
+
+    // 2. Yeni Sahne Ürünü Geldiğinde
+    socket.on('yeni_sahne_urunu', function(urun) {
+        if (!urun || (urun.dukkan && urun.dukkan !== aktifDukkan)) return;
+        lotEl.innerText = `LOT #${urun.lot} - ${urun.ad}`;
+        fiyatEl.innerText = paraFormatla(urun.guncel_fiyat || urun.fiyat || 0);
+        kazananEl.innerText = "Teklif: Yok";
+        
+        sayacEl.className = "timer";
+        sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
+        sayacEl.style.color = "#ffb703";
+    });
+
+    // 3. Geri Sayım Sayacı
+    socket.on('sayac_guncelle', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (data.kalan !== undefined) {
+            sayacEl.innerText = `⏱️ KALAN SÜRE: ${data.kalan} SN`;
+            
+            if (data.kalan <= 10) {
+                sayacEl.classList.add('alarm');
+            } else {
+                sayacEl.classList.remove('alarm');
+                sayacEl.style.color = "#38bdf8";
+            }
+        }
+    });
+
+    // 4. Son Saniye Teklifinde Süre Uzatıldığında
+    socket.on('sayac_uzatildi', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        sayacEl.classList.remove('alarm');
+        sayacEl.innerText = `🔥 15 SN UZATILDI!`;
+        sayacEl.style.color = "#f59e0b";
+        peyEfektiVer();
+    });
+
+    // 5. Satış Bittiğinde
+    socket.on('sayac_bitti', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        sayacEl.classList.remove('alarm');
+        let kazanan = (data && data.kazanan && data.kazanan !== "Yok") ? ` (${data.kazanan})` : '';
+        sayacEl.innerText = `🔨 SATILDI!${kazanan}`;
+        sayacEl.style.color = "#10b981";
+        
+        if (data && data.fiyat) {
+            fiyatEl.innerText = paraFormatla(data.fiyat);
+        }
+    });
+
+    // Sayfa açıldığında seçili dükkanın güncel durumunu sunucudan al
+    function ilkDurumuGetir() {
+        fetch(`/canli-durum?dukkan=${aktifDukkan}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.aktif_urun) {
+                lotEl.innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
+                let aktifPey = data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0;
+                fiyatEl.innerText = paraFormatla(aktifPey);
+                kazananEl.innerText = data.kazanan || "Yok";
+                
+                if (data.durum === "Satıldı") {
+                    sayacEl.innerText = "🔨 SATILDI!";
+                    sayacEl.style.color = "#10b981";
+                } else if (data.durum === "Sayim") {
+                    sayacEl.innerText = "⏱️ MEZAT SÜRÜYOR";
+                    sayacEl.style.color = "#38bdf8";
+                } else {
+                    sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
+                    sayacEl.style.color = "#ffb703";
+                }
+            } else {
+                lotEl.innerText = "LOT #000 - MEZAT BEKLENİYOR";
+                fiyatEl.innerText = "0 TL";
+                kazananEl.innerText = "Son Teklif: Yok";
+                sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
+                sayacEl.style.color = "#ffb703";
+            }
+        })
+        .catch(() => {});
+    }
+
+    window.onload = ilkDurumuGetir;
+</script>
+</body>
+</html>
