@@ -272,7 +272,25 @@
             justify-content: center; 
             background: #000; 
             overflow: hidden; 
-            position: relative; 
+            position: relative;
+            touch-action: none;
+        }
+        .sahne-zoom-katman {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center;
+            will-change: transform;
+        }
+        .stage-wrapper:fullscreen,
+        .stage-wrapper:-webkit-full-screen {
+            width: 100%;
+            height: 100%;
+            max-height: none;
+            border-radius: 0;
+            background: #000;
         }
         
         .stage-media-box img, .stage-media-box video {
@@ -1049,6 +1067,17 @@
     let sahnedekiUrunSatildiMi = false;
     let sonBulunanUrunler = [];
     let audioCtx = null;
+    window.audioCtx = null;
+    document.addEventListener('pointerdown', () => {
+        if (!window.audioCtx) {
+            try {
+                window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtx = window.audioCtx;
+            } catch (e) {}
+        }
+    }, { once: true });
+    document.addEventListener('click', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true });
+    document.addEventListener('touchstart', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true, passive: true });
     let hlsInstance = null;
     let sonYuklenenSahneMedyaUrl = null;
     let sonGorulenPey = 0;
@@ -1438,6 +1467,7 @@
 
     function sesKilidiAc() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        window.audioCtx = audioCtx;
         if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
             audioCtx.resume().catch(e => console.warn("AudioContext resume engeli:", e));
         }
@@ -1495,7 +1525,141 @@
         setTimeout(() => { toast.style.display = 'none'; }, 4500);
     }
 
-    function toggleFullscreen() { playUserClickSound(); document.getElementById('stageWrapper').classList.toggle('fullscreen'); }
+    function toggleFullscreen() {
+        playUserClickSound();
+        sahneTamEkranToggle();
+    }
+
+    let sonTamEkranAni = 0;
+    function sahneTamEkranToggle() {
+        const simdi = Date.now();
+        if (simdi - sonTamEkranAni < 450) return;
+        sonTamEkranAni = simdi;
+        const el = document.getElementById('stageWrapper');
+        if (!el) return;
+        const aktif = document.fullscreenElement || document.webkitFullscreenElement;
+        if (aktif === el) {
+            const cik = document.exitFullscreen || document.webkitExitFullscreen;
+            if (cik) cik.call(document);
+            el.classList.remove('fullscreen');
+            return;
+        }
+        const gir = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (gir) {
+            const sonuc = gir.call(el);
+            if (sonuc && sonuc.catch) sonuc.catch(() => el.classList.toggle('fullscreen'));
+        } else {
+            el.classList.toggle('fullscreen');
+        }
+    }
+
+    let sahneOlcek = 1;
+    let sahneX = 0;
+    let sahneY = 0;
+    let sahnePinch = null;
+    let sahneTekParmak = null;
+
+    function sahneZoomSifirla() {
+        sahneOlcek = 1;
+        sahneX = 0;
+        sahneY = 0;
+        sahnePinch = null;
+        sahneTekParmak = null;
+        const katman = document.getElementById('sahneZoomKatman');
+        if (katman) katman.style.transform = 'translate(0px, 0px) scale(1)';
+    }
+
+    function sahneZoomUygula() {
+        const kutu = document.getElementById('medyaKapsayici');
+        const katman = document.getElementById('sahneZoomKatman');
+        if (!kutu || !katman) return;
+        if (sahneOlcek <= 1) {
+            sahneOlcek = 1;
+            sahneX = 0;
+            sahneY = 0;
+        } else {
+            const maxX = ((sahneOlcek - 1) * kutu.clientWidth) / 2;
+            const maxY = ((sahneOlcek - 1) * kutu.clientHeight) / 2;
+            sahneX = Math.max(-maxX, Math.min(maxX, sahneX));
+            sahneY = Math.max(-maxY, Math.min(maxY, sahneY));
+        }
+        katman.style.transform = `translate(${sahneX}px, ${sahneY}px) scale(${sahneOlcek})`;
+    }
+
+    function sahneEtkilesiminiBagla() {
+        const sahne = document.getElementById('stageWrapper');
+        const kutu = document.getElementById('medyaKapsayici');
+        if (!sahne || !kutu || sahne.dataset.etkilesim === '1') return;
+        sahne.dataset.etkilesim = '1';
+        let sonDokunus = 0;
+
+        function kontrolMu(hedef) {
+            return hedef && hedef.closest && hedef.closest('button, a, input, select, textarea');
+        }
+
+        sahne.addEventListener('dblclick', (e) => {
+            if (kontrolMu(e.target)) return;
+            e.preventDefault();
+            sahneTamEkranToggle();
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            const aktif = document.fullscreenElement || document.webkitFullscreenElement;
+            sahne.classList.toggle('fullscreen', aktif === sahne);
+        });
+
+        kutu.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const a = e.touches[0];
+                const b = e.touches[1];
+                sahnePinch = {
+                    dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1,
+                    olcek: sahneOlcek,
+                    x: sahneX,
+                    y: sahneY,
+                    mx: (a.clientX + b.clientX) / 2,
+                    my: (a.clientY + b.clientY) / 2
+                };
+                sahneTekParmak = null;
+                sonDokunus = 0;
+            } else if (e.touches.length === 1 && sahneOlcek > 1) {
+                sahneTekParmak = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: sahneX, oy: sahneY };
+            }
+        }, { passive: true });
+
+        kutu.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && sahnePinch) {
+                e.preventDefault();
+                const a = e.touches[0];
+                const b = e.touches[1];
+                const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+                sahneOlcek = Math.min(4, Math.max(1, sahnePinch.olcek * (dist / sahnePinch.dist)));
+                sahneX = sahnePinch.x + ((a.clientX + b.clientX) / 2 - sahnePinch.mx);
+                sahneY = sahnePinch.y + ((a.clientY + b.clientY) / 2 - sahnePinch.my);
+                sahneZoomUygula();
+            } else if (e.touches.length === 1 && sahneTekParmak && sahneOlcek > 1) {
+                e.preventDefault();
+                sahneX = sahneTekParmak.ox + (e.touches[0].clientX - sahneTekParmak.x);
+                sahneY = sahneTekParmak.oy + (e.touches[0].clientY - sahneTekParmak.y);
+                sahneZoomUygula();
+            }
+        }, { passive: false });
+
+        kutu.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) sahnePinch = null;
+            if (e.touches.length === 0) sahneTekParmak = null;
+            if (sahnePinch || e.touches.length > 0 || e.changedTouches.length !== 1) return;
+            if (kontrolMu(e.target)) return;
+            const now = Date.now();
+            if (now - sonDokunus < 320) {
+                sonDokunus = 0;
+                sahneTamEkranToggle();
+            } else {
+                sonDokunus = now;
+            }
+        });
+    }
+    sahneEtkilesiminiBagla();
 
     function toggleCatalogDrawer() {
         playUserClickSound();
@@ -1918,6 +2082,11 @@
         }
 
         medyaDiv.innerHTML = "";
+        const katman = document.createElement('div');
+        katman.id = 'sahneZoomKatman';
+        katman.className = 'sahne-zoom-katman';
+        medyaDiv.appendChild(katman);
+        sahneZoomSifirla();
 
         if (medya.tip === 'hls' || (typeof medya.url === 'string' && medya.url.endsWith('.m3u8'))) {
             let v = document.createElement('video');
@@ -1926,7 +2095,7 @@
             v.muted = true;
             v.playsInline = true;
             v.controls = false;
-            medyaDiv.appendChild(v);
+            katman.appendChild(v);
 
             if (Hls.isSupported()) {
                 hlsInstance = new Hls({ 
@@ -1949,13 +2118,13 @@
             v.loop = true; 
             v.muted = true;
             v.playsInline = true;
-            medyaDiv.appendChild(v);
+            katman.appendChild(v);
             v.play().catch(e=>{});
         } else {
             let img = document.createElement('img');
             img.src = medya.url;
             img.className = "zoom-genel-plan";
-            medyaDiv.appendChild(img);
+            katman.appendChild(img);
         }
     }
 

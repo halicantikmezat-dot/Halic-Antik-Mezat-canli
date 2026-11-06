@@ -792,6 +792,17 @@
     let tumOnTeklifler = [];
     let tumArsivUrunleri = [];
     let audioCtx = null;
+    window.audioCtx = null;
+    document.addEventListener('pointerdown', () => {
+        if (!window.audioCtx) {
+            try {
+                window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtx = window.audioCtx;
+            } catch (e) {}
+        }
+    }, { once: true });
+    document.addEventListener('click', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true });
+    document.addEventListener('touchstart', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true, passive: true });
     let yukleniyorMu = false;
     let sonVeriCekmeZamani = 0;
     let adminAramaTimer = null;
@@ -805,10 +816,16 @@
         upgrade: true
     });
 
+    function yoneticiOdayaGir() {
+        const currentDukkan = seciliDukkan || 'gumus';
+        socket.emit('join_dukkan', { dukkan: currentDukkan });
+    }
+
     socket.on('connect', function() {
         console.log("Admin Socket bağlandı, odaya giriliyor:", seciliDukkan);
-        socket.emit('join_dukkan', { dukkan: seciliDukkan });
+        yoneticiOdayaGir();
     });
+    socket.on('reconnect', yoneticiOdayaGir);
 
     // Canlı yorum akışı dinleyicisi
     const gorulenCanliYorumlar = [];
@@ -864,6 +881,35 @@
         sohbetKutusu.appendChild(yeniSatir);
         sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     });
+
+    function adminAkisaSatirEkle(baslik, metin, renk) {
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+        toplamYorumSayisi++;
+        const sayac = document.getElementById("yorumSayaci");
+        if (sayac) sayac.innerText = toplamYorumSayisi + " Mesaj";
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        if (!sohbetKutusu) return;
+        const yeniSatir = document.createElement("div");
+        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${renk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px; margin-bottom: 4px;`;
+        const ust = document.createElement("div");
+        ust.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;";
+        const ad = document.createElement("span");
+        ad.style.cssText = `font-weight:bold; color:${renk};`;
+        ad.textContent = baslik;
+        const saat = document.createElement("span");
+        saat.style.cssText = "font-size:10px; color:#94a3b8;";
+        saat.textContent = new Date().toLocaleTimeString("tr-TR");
+        ust.appendChild(ad);
+        ust.appendChild(saat);
+        const govde = document.createElement("div");
+        govde.style.cssText = "color:#f8fafc; font-size:12px; word-break:break-word;";
+        govde.textContent = metin;
+        yeniSatir.appendChild(ust);
+        yeniSatir.appendChild(govde);
+        sohbetKutusu.appendChild(yeniSatir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    }
 
     // BAS-KONUŞ (MEDIA RECORDER)
     let mediaRecorder = null;
@@ -944,7 +990,7 @@
         playClickSound();
         socket.emit('leave_dukkan', { dukkan: seciliDukkan });
         seciliDukkan = kod;
-        socket.emit('join_dukkan', { dukkan: seciliDukkan });
+        yoneticiOdayaGir();
 
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         const activeTab = document.getElementById(`tab_${kod}`);
@@ -1130,6 +1176,7 @@
     function playClickSound() {
         try {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            window.audioCtx = audioCtx;
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -1422,6 +1469,12 @@
         if(data && data.dukkan === seciliDukkan) {
             if(data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
             if(data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
+            const peyImza = ["pey", data.kazanan, data.pey, data.urun_id].join("|");
+            if (gorulenCanliYorumlar.indexOf(peyImza) === -1) {
+                gorulenCanliYorumlar.push(peyImza);
+                if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
+                adminAkisaSatirEkle("🔨 Pey", `${data.kazanan || "İzleyici"} → ${data.pey} TL`, "#34d399");
+            }
         }
     });
 
