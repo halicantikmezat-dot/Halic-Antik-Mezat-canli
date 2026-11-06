@@ -37,7 +37,6 @@
         }
         .header h2 { color: var(--accent-gold); font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* 10 DÜKKAN SEÇİM BARI */
         .shop-selector-bar {
             background: #141b24;
             border: 1px solid var(--card-border);
@@ -129,32 +128,20 @@
         th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
         th { background: #121822; color: var(--accent-gold); }
 
-        /* ALINAN ÜRÜNLER KUTUSU (TAM 3 SATIR & BEYAZ/GRİ SCROLLBAR) */
         .urun-chip-container {
             display: flex !important;
             flex-direction: column !important;
             gap: 4px !important;
-            max-height: 125px !important; /* Tam 3 ürünlük yükseklik */
+            max-height: 125px !important;
             overflow-y: scroll !important;
             overflow-x: hidden !important;
             padding-right: 6px !important;
             scroll-behavior: smooth;
         }
-
-        .urun-chip-container::-webkit-scrollbar {
-            width: 6px !important;
-        }
-        .urun-chip-container::-webkit-scrollbar-track {
-            background: #1e293b !important;
-            border-radius: 3px !important;
-        }
-        .urun-chip-container::-webkit-scrollbar-thumb {
-            background: #94a3b8 !important;
-            border-radius: 3px !important;
-        }
-        .urun-chip-container::-webkit-scrollbar-thumb:hover {
-            background: #cbd5e1 !important;
-        }
+        .urun-chip-container::-webkit-scrollbar { width: 6px !important; }
+        .urun-chip-container::-webkit-scrollbar-track { background: #1e293b !important; border-radius: 3px !important; }
+        .urun-chip-container::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 3px !important; }
+        .urun-chip-container::-webkit-scrollbar-thumb:hover { background: #cbd5e1 !important; }
 
         .urun-chip {
             background: #0d121a;
@@ -255,7 +242,6 @@
             object-fit: contain;
         }
 
-        /* BAS-KONUŞ BUTON STİLİ */
         .btn-bas-konus {
             background: #1e293b;
             border: 1.5px solid #38bdf8;
@@ -327,7 +313,6 @@
             </div>
         </div>
 
-        <!-- 7/24 CANLI YAYIN MÜZİK YÖNETİMİ -->
         <div class="card">
             <div class="card-title">🎵 7/24 Canlı Müzik Yayını Yönetimi</div>
             <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">
@@ -800,11 +785,6 @@
 </div>
 
 <script>
-    const socket = io({
-        transports: ['websocket'],
-        upgrade: false
-    });
-
     let seciliDukkan = 'gumus';
     let dukkanlar = {};
     let otonomDurumlari = {};
@@ -819,57 +799,75 @@
 
     const medyaDosyaHavuzu = new DataTransfer();
 
-    // BAS-KONUŞ (MEDIA RECORDER) DEĞİŞKENLERİ
+    // Socket bağlantısı kurulumu
+    const socket = io({
+        transports: ['websocket', 'polling'],
+        upgrade: true
+    });
+
+    socket.on('connect', function() {
+        console.log("Admin Socket bağlandı, odaya giriliyor:", seciliDukkan);
+        socket.emit('join_dukkan', { dukkan: seciliDukkan });
+    });
+
+    // Canlı yorum akışı dinleyicisi
+    const gorulenCanliYorumlar = [];
+
+    socket.on("yeni_canli_yorum", function(data) {
+        if (data.dukkan && data.dukkan !== seciliDukkan) {
+            return;
+        }
+
+        const yorumImzasi = [data.platform, data.kullanici, data.mesaj, data.zaman].join("|");
+        if (gorulenCanliYorumlar.indexOf(yorumImzasi) !== -1) return;
+        gorulenCanliYorumlar.push(yorumImzasi);
+        if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
+
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+
+        toplamYorumSayisi++;
+        document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
+
+        let platformRenk = "#38bdf8";
+        let platformAd = data.platform || "Web";
+        let logoSvg = "💬";
+
+        let baslikEtiketi = "";
+        if (platformAd === "Ahmet Usta AI" || /Ahmet Usta/i.test(data.kullanici || "")) {
+            platformRenk = "var(--accent-gold)";
+            baslikEtiketi = "🤖 [Ahmet Usta]";
+        } else if (platformAd.includes("TikTok")) {
+            platformRenk = "#ef4444";
+            logoSvg = "🔴";
+            baslikEtiketi = `${logoSvg} [${platformAd}] ${data.kullanici || ""}`;
+        } else {
+            baslikEtiketi = `${logoSvg} [${platformAd}] ${data.kullanici || ""}`;
+        }
+
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        const yeniSatir = document.createElement("div");
+        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px; margin-bottom: 4px;`;
+
+        yeniSatir.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: bold; color: ${platformRenk};">
+                    ${baslikEtiketi}
+                </span>
+                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
+            </div>
+            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
+                ${data.mesaj}
+            </div>
+        `;
+
+        sohbetKutusu.appendChild(yeniSatir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    });
+
+    // BAS-KONUŞ (MEDIA RECORDER)
     let mediaRecorder = null;
     let audioChunks = [];
-
-    async function dukkanlariYukleAdmin() {
-        try {
-            const res = await fetch('/api/dukkanlar');
-            const data = await res.json();
-            dukkanlar = data.dukkanlar || {};
-
-            const shopBar = document.getElementById('shopBar');
-            shopBar.innerHTML = '';
-
-            for (const [kod, d] of Object.entries(dukkanlar)) {
-                const btn = document.createElement('div');
-                btn.className = `shop-tab ${kod === seciliDukkan ? 'active' : ''}`;
-                btn.id = `tab_${kod}`;
-                btn.innerHTML = `<span class="dot"></span> ${d.ad}`;
-                btn.onclick = () => dukkanSec(kod);
-                shopBar.appendChild(btn);
-            }
-            dukkanSec(seciliDukkan);
-        } catch (e) {
-            console.error("Dükkanlar yüklenemedi:", e);
-        }
-    }
-
-    function dukkanSec(kod) {
-        playClickSound();
-        socket.emit('leave_dukkan', { dukkan: seciliDukkan });
-        seciliDukkan = kod;
-        socket.emit('join_dukkan', { dukkan: seciliDukkan });
-
-        document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
-        const activeTab = document.getElementById(`tab_${kod}`);
-        if (activeTab) activeTab.classList.add('active');
-
-        const ad = dukkanlar[kod] ? dukkanlar[kod].ad : kod;
-        document.getElementById('seciliDukkanRozet').innerText = ad.toUpperCase();
-        document.getElementById('urunEkleBaslik').innerText = `➕ Manuel Tek Ürün Ekle (${ad})`;
-        document.getElementById('otonomBaslikMetni').innerText = `🤖 7/24 Otonom Mezat (${ad})`;
-        document.getElementById('formDukkan').value = kod;
-
-        document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
-        document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
-
-        veriCekAdmin();
-        adminUrunAra();
-    }
-
-    // BAS-KONUŞ MİKROFON KURULUMU
     const btnBasKonus = document.getElementById('btnBasKonus');
 
     async function basKonusBaslat() {
@@ -919,45 +917,51 @@
     btnBasKonus.addEventListener('touchstart', (e) => { e.preventDefault(); basKonusBaslat(); });
     btnBasKonus.addEventListener('touchend', (e) => { e.preventDefault(); basKonusBitir(); });
 
-    // CANLI SOHBET VE AHMET USTA AKIŞI
-    socket.on("yeni_canli_yorum", function(data) {
-        const bosUyari = document.getElementById("sohbetBosUyarisi");
-        if (bosUyari) bosUyari.remove();
+    async function dukkanlariYukleAdmin() {
+        try {
+            const res = await fetch('/api/dukkanlar');
+            const data = await res.json();
+            dukkanlar = data.dukkanlar || {};
 
-        toplamYorumSayisi++;
-        document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
+            const shopBar = document.getElementById('shopBar');
+            shopBar.innerHTML = '';
 
-        let platformRenk = "#38bdf8";
-        let platformAd = data.platform || "Web";
-        let logoSvg = "💬";
-
-        if (platformAd === "Ahmet Usta AI") {
-            platformRenk = "var(--accent-gold)";
-            logoSvg = "🤖";
-        } else if (platformAd.includes("TikTok")) {
-            platformRenk = "#ef4444";
-            logoSvg = "🔴";
+            for (const [kod, d] of Object.entries(dukkanlar)) {
+                const btn = document.createElement('div');
+                btn.className = `shop-tab ${kod === seciliDukkan ? 'active' : ''}`;
+                btn.id = `tab_${kod}`;
+                btn.innerHTML = `<span class="dot"></span> ${d.ad}`;
+                btn.onclick = () => dukkanSec(kod);
+                shopBar.appendChild(btn);
+            }
+            dukkanSec(seciliDukkan);
+        } catch (e) {
+            console.error("Dükkanlar yüklenemedi:", e);
         }
+    }
 
-        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
-        const yeniSatir = document.createElement("div");
-        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
+    function dukkanSec(kod) {
+        playClickSound();
+        socket.emit('leave_dukkan', { dukkan: seciliDukkan });
+        seciliDukkan = kod;
+        socket.emit('join_dukkan', { dukkan: seciliDukkan });
 
-        yeniSatir.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <span style="font-weight: bold; color: ${platformRenk};">
-                    ${logoSvg} [${platformAd}] ${data.kullanici}
-                </span>
-                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
-            </div>
-            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
-                ${data.mesaj}
-            </div>
-        `;
+        document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+        const activeTab = document.getElementById(`tab_${kod}`);
+        if (activeTab) activeTab.classList.add('active');
 
-        sohbetKutusu.appendChild(yeniSatir);
-        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
-    });
+        const ad = dukkanlar[kod] ? dukkanlar[kod].ad : kod;
+        document.getElementById('seciliDukkanRozet').innerText = ad.toUpperCase();
+        document.getElementById('urunEkleBaslik').innerText = `➕ Manuel Tek Ürün Ekle (${ad})`;
+        document.getElementById('otonomBaslikMetni').innerText = `🤖 7/24 Otonom Mezat (${ad})`;
+        document.getElementById('formDukkan').value = kod;
+
+        document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
+        document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
+
+        veriCekAdmin();
+        adminUrunAra();
+    }
 
     // YASAL VE HUKUKİ SÖZLEŞME İŞLEMLERİ
     function sozlesmeModalAc() {

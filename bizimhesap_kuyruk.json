@@ -304,5 +304,68 @@
     "telefon": "5322755345",
     "tutar": 2340.0,
     "bizimhesap_durum": "Kuyrukta (Bekliyor)"
+  },
+  {
+    "tarih": "05.11.2026 17:57",
+    "lot_no": 19,
+    "urun_adi": "Ahşap Satranç Taşı G632A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 7260.0,
+    "bizimhesap_durum": "Kuyrukta (Bekliyor)"
+  },
+  {
+    "tarih": "05.11.2026 18:11",
+    "lot_no": 20,
+    "urun_adi": "Ahşap Satranç Taşı G530A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 2000.0,
+    "bizimhesap_durum": "Kuyrukta (Bekliyor)"
+  },
+  {
+    "tarih": "05.11.2026 18:38",
+    "lot_no": 21,
+    "urun_adi": "Ahşap Satranç Taşı G482",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 77000.0,
+    "bizimhesap_durum": "Kuyrukta (Bekliyor)"
+  },
+  {
+    "tarih": "05.11.2026 19:06",
+    "lot_no": 19,
+    "urun_adi": "Ahşap Satranç Taşı G632A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 5500.0,
+    "bizimhesap_durum": "Aktarıldı"
+  },
+  {
+    "tarih": "05.11.2026 21:00",
+    "lot_no": 20,
+    "urun_adi": "Ahşap Satranç Taşı G530A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 6600.0,
+    "bizimhesap_durum": "Aktarıldı"
+  },
+  {
+    "tarih": "05.11.2026 21:12",
+    "lot_no": 19,
+    "urun_adi": "Ahşap Satranç Taşı G632A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 8000.0,
+    "bizimhesap_durum": "Aktarıldı"
+  },
+  {
+    "tarih": "05.11.2026 22:08",
+    "lot_no": 19,
+    "urun_adi": "Ahşap Satranç Taşı G632A",
+    "alici": "Hamdullah Bulut",
+    "telefon": "5322755345",
+    "tutar": 6600.0,
+    "bizimhesap_durum": "Aktarıldı"
   }
 ]

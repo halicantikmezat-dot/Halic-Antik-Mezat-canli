@@ -311,7 +311,7 @@ def init_pazaryeri(app, db, admin_required_decorator):
         ]
         t_dict = {t["id"]: t for t in tedarikciler}
 
-        # PostgreSQL ve SQLite ile %100 uyumlu filtreleme
+        # PostgreSQL ve SQLite ile tam uyumlu filtreleme (silindi_mi = 0 kaldırıldı)
         u_rows = (
             db.session.execute(
                 text("""
@@ -319,7 +319,7 @@ def init_pazaryeri(app, db, admin_required_decorator):
                        tedarikci_id, siparis_durumu, kargo_takip_no
                 FROM urun 
                 WHERE (durum = 'Satıldı' OR durum = 'satildi') 
-                  AND (silindi_mi = FALSE OR silindi_mi = 0 OR silindi_mi IS NULL)
+                  AND (silindi_mi = FALSE OR silindi_mi IS NULL)
                 ORDER BY id DESC LIMIT 100
             """)
             )

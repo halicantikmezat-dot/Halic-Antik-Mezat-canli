@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haliç Antik Mezat - Ürün Vitrini</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f17;
+            --card-bg: #141b24;
+            --card-border: #222d3d;
+            --accent-gold: #d4af37;
+            --accent-gold-dark: #aa8622;
+            --text-light: #f1f5f9;
+            --text-muted: #94a3b8;
+            --btn-green: #059669;
+            --btn-red: #881337;
+            --btn-red-bright: #e11d48;
+            --btn-cart: #10b981;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: var(--bg-color); color: var(--text-light); padding: 15px; }
+        
+        .vitrin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--accent-gold); padding-bottom: 10px; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
+        .vitrin-header h2 { color: var(--accent-gold); font-size: 18px; }
+        .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        
+        .currency-select {
+            background: #080c13;
+            color: var(--accent-gold);
+            border: 1px solid var(--accent-gold);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .btn-live { background: var(--btn-green); color: #fff; padding: 7px 14px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; }
+        .btn-sepet-goruntule { background: #2563eb; color: #fff; padding: 7px 14px; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 12px; border: none; cursor: pointer; }
+        .btn-sepet-goruntule:hover { background: #1d4ed8; }
+        
+        /* 10 DÜKKAN HIZLI GEÇİŞ BARI */
+        .shop-nav-bar {
+            background: #141b24;
+            border: 1px solid var(--card-border);
+            padding: 8px 10px;
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            white-space: nowrap;
+            margin-bottom: 15px;
+            border-radius: 6px;
+        }
+        .shop-nav-btn {
+            background: #0b0f17;
+            color: #94a3b8;
+            border: 1px solid var(--card-border);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            transition: 0.2s;
+        }
+        .shop-nav-btn:hover { border-color: var(--accent-gold); color: #fff; }
+        .shop-nav-btn.active {
+            background: var(--accent-gold);
+            color: #000;
+            border-color: var(--accent-gold);
+        }
+
+        .filter-row { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .filter-row input, .filter-row select { background: #080c13; border: 1px solid var(--card-border); color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+        .filter-row input { flex: 1; min-width: 220px; }
+        .filter-row select { min-width: 180px; }
+        
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+        .item-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; transition: all 0.2s; position: relative; }
+        .item-card:hover { transform: translateY(-3px); border-color: var(--accent-gold); box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        
+        .item-img-box { width: 100%; height: 170px; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+        .item-img-box img, .item-img-box video { width: 100%; height: 100%; object-fit: contain; }
+        
+        .btn-kiyasla-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(15, 20, 28, 0.85);
+            border: 1px solid var(--accent-gold);
+            color: #fff;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .btn-kiyasla-badge.active {
+            background: var(--accent-gold);
+            color: #111;
+        }
+
+        .item-content { padding: 10px; display: flex; flex-direction: column; flex: 1; gap: 4px; }
+        .item-lot { font-size: 11px; color: var(--accent-gold); font-weight: bold; }
+        .item-title { font-size: 12px; font-weight: bold; color: #fff; line-height: 1.3; height: 32px; overflow: hidden; }
+        
+        .price-badge-row { display: flex; justify-content: space-between; align-items: center; background: #080c13; padding: 5px 8px; border-radius: 4px; margin: 4px 0; }
+        .item-price { font-size: 13px; font-weight: 800; color: #34d399; }
+        .item-buy-now { font-size: 11px; font-weight: bold; color: #f87171; }
+        
+        .btn-group { display: flex; gap: 4px; margin-top: auto; }
+        .btn-on-teklif { flex: 1; background: var(--accent-gold); color: #111; border: none; padding: 7px 4px; border-radius: 4px; font-weight: 800; font-size: 11px; cursor: pointer; text-align: center; }
+        .btn-hemen-al { flex: 1; background: var(--btn-red-bright); color: #fff; border: 1px solid #be123c; padding: 7px 4px; border-radius: 4px; font-weight: 800; font-size: 11px; cursor: pointer; text-align: center; }
+        .btn-hemen-al:hover { background: #be123c; }
+        
+        .btn-direkt-sepet { width: 100%; background: var(--btn-cart); color: #fff; border: none; padding: 8px 4px; border-radius: 4px; font-weight: bold; font-size: 11px; cursor: pointer; text-align: center; margin-top: 5px; transition: 0.2s; }
+        .btn-direkt-sepet:hover { background: #059669; }
+
+        .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 25px; padding: 10px; }
+        .btn-page { background: #1e293b; color: #fff; border: 1px solid var(--card-border); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; }
+        .btn-page:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-page:not(:disabled):hover { background: var(--accent-gold); color: #000; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 9999; }
+        .modal-content { background: var(--card-bg); padding: 16px; border-radius: 8px; width: 90%; max-width: 380px; text-align: left; border: 1.5px solid var(--accent-gold); max-height: 90vh; overflow-y: auto; }
+        .modal-content input, .modal-content textarea { width: 100%; padding: 8px; margin: 5px 0; background: #080c13; border: 1px solid var(--card-border); color: #fff; border-radius: 4px; font-size: 12px; outline: none; }
+        .modal-content button { width: 100%; padding: 8px; margin-top: 6px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
+
+        .btn-sepet-sil { background: #ef4444; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; font-weight: bold; transition: 0.2s; }
+        .btn-sepet-sil:hover { background: #dc2626; }
+
+        #floatingCompareBar {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #182230;
+            border: 1.5px solid var(--accent-gold);
+            padding: 10px 16px;
+            border-radius: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+            z-index: 8000;
+            align-items: center;
+            gap: 12px;
+        }
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-top: 8px;
+        }
+        .compare-table th, .compare-table td {
+            border: 1px solid var(--card-border);
+            padding: 8px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .compare-table th {
+            background: #080c13;
+            color: var(--accent-gold);
+            font-weight: 800;
+        }
+    </style>
+</head>
+<body>
+
+<div class="vitrin-header">
+    <h2>🏛️ HALİÇ ANTİK MEZAT - <span id="vitrinDukkanAd">GÜMÜŞ VİTRİNİ</span></h2>
+    <div class="header-actions">
+        <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
+            <option value="TRY">₺ TL</option>
+            <option value="USD">$ USD</option>
+            <option value="EUR">€ EUR</option>
+        </select>
+        <button onclick="sepetModalGoster()" class="btn-sepet-goruntule" id="vitrinSepetSayac">🛒 Sepetim (0)</button>
+        <a id="btnCanliMezatGit" href="/" class="btn-live">🔴 Canlı Mezata Git</a>
+    </div>
+</div>
+
+<!-- 10 DÜKKAN HIZLI GEÇİŞ BARI -->
+<div class="shop-nav-bar" id="shopNavBar"></div>
+
+<div class="filter-row">
+    <input type="text" id="vitrinArama" placeholder="🔍 Lot No veya Ürün Adı Yazın..." oninput="debounceArama()">
+    <select id="vitrinKategori" onchange="yeniFiltreUygula()">
+        <option value="">Tüm Kategoriler</option>
+    </select>
+</div>
+
+<div id="vitrinGrid" class="grid-container">
+    <div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-muted);">Ürünler yükleniyor...</div>
+</div>
+
+<div class="pagination-bar" id="paginationBar" style="display:none;">
+    <button class="btn-page" id="btnOnceki" onclick="sayfaDegistir(-1)">⬅️ Önceki Sayfa</button>
+    <span id="sayfaBilgisi" style="font-size:12px; color:var(--text-muted);">Sayfa 1 / 1</span>
+    <button class="btn-page" id="btnSonraki" onclick="sayfaDegistir(1)">Sonraki Sayfa ➡️</button>
+</div>
+
+<!-- SAĞ ALT YÜZEN KARŞILAŞTIR BUTONU -->
+<div id="floatingCompareBar">
+    <span style="font-size:12px; font-weight:bold; color:#fff;">⚖️ <span id="compareCount">0</span> Ürün Seçildi</span>
+    <button onclick="karsilastirModalAc()" style="background:var(--accent-gold); color:#111; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer;">Kıyasla</button>
+    <button onclick="karsilastirmaTemizle()" style="background:transparent; color:#94a3b8; border:none; font-size:14px; cursor:pointer;" title="Temizle">✕</button>
+</div>
+
+<!-- TEKLİF & KAYIT MODALI -->
+<div id="vitrinOnTeklifModal" class="modal">
+    <div class="modal-content">
+        <h3 id="modalUrunBaslik" style="color:var(--accent-gold); font-size:13px; font-weight:800; margin-bottom:6px;">Ön Teklif Ver</h3>
+        <p style="font-size:11px; color:#94a3b8; margin-bottom:8px;">Açılış Fiyatı: <b id="modalAcilisFiyat" style="color:#34d399;">0 TL</b></p>
+        
+        <label style="font-size:10px; font-weight:bold;">Adınız Soyadınız (* Zorunlu):</label>
+        <input type="text" id="vitrinAd" placeholder="Adınız Soyadınız" required>
+        
+        <label style="font-size:10px; font-weight:bold;">Telefon Numaranız (* Zorunlu):</label>
+        <input type="text" id="vitrinTel" placeholder="05XX XXX XX XX" required>
+
+        <label style="font-size:10px; font-weight:bold; color:var(--accent-gold);">E-posta Adresiniz (* Zorunlu):</label>
+        <input type="email" id="vitrinMail" placeholder="ornek@mail.com" required>
+        
+        <div id="tutarAlaniKutusu">
+            <label style="font-size:10px; font-weight:bold;">Teklif Ettiğiniz Tutar (TL):</label>
+            <input type="number" id="vitrinTutar" placeholder="Örn: 500">
+        </div>
+        
+        <button id="modalOnayBtn" style="background:var(--accent-gold); color:#111;" onclick="onTeklifGonderVitrin()">🚀 Teklifi Kaydet</button>
+        <button style="background:#475569; color:#fff;" onclick="modalKapat()">Vazgeç</button>
+    </div>
+</div>
+
+<!-- SEPET MODALI -->
+<div id="vitrinSepetModal" class="modal">
+    <div class="modal-content" style="max-width: 490px;">
+        <h3 style="color:var(--accent-gold); font-size:15px; font-weight:bold; margin-bottom:10px;">🛒 Alışveriş Sepetiniz</h3>
+        <div id="vitrinSepetIcerik" style="max-height: 220px; overflow-y: auto; margin-bottom: 10px; font-size: 13px;">
+            Yükleniyor...
+        </div>
+        <div id="vitrinSepetOzet" style="border-top: 1px solid var(--card-border); padding-top: 8px; font-size: 12px;"></div>
+        
+        <button id="btnSepetOdemeyeGec" style="background:var(--btn-green); color:#fff; font-size:13px; font-weight:800; padding:10px; margin-top:8px;" onclick="sepettenOdemeyeGec()">💳 Siparişi Tamamla / Ödemeye Geç</button>
+        <button style="background:#475569; color:#fff; margin-top:5px;" onclick="document.getElementById('vitrinSepetModal').style.display='none'">Alışverişe Devam Et</button>
+    </div>
+</div>
+
+<!-- ÜRÜN KARŞILAŞTIRMA MODALI -->
+<div id="modalKarsilastir" class="modal">
+    <div class="modal-content" style="max-width: 780px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px; margin-bottom:10px;">
+            <h3 style="color:var(--accent-gold); font-size:14px; font-weight:bold; margin:0;">⚖️ Ürün Karşılaştırma Tablosu</h3>
+            <button onclick="document.getElementById('modalKarsilastir').style.display='none'" style="background:#881337; color:#fff; border:none; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; width:auto; margin:0;">✕</button>
+        </div>
+        <div style="overflow-x:auto;">
+            <div id="compareTableContainer"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const socket = io({ transports: ['websocket'], upgrade: false });
+
+    // DÜKKAN YÖNETİMİ
+    const urlParams = new URLSearchParams(window.location.search);
+    let aktifDukkan = urlParams.get('dukkan') || 'gumus';
+    let dukkanlar = {};
+
+    let seciliModalUrunId = null;
+    let seciliModalMinFiyat = 0;
+    let modalModu = 'on_teklif';
+    let seciliHemenAlFiyati = 0;
+    let aramaTimer = null;
+    let aktifAbortController = null;
+
+    let aktifSayfa = 1;
+    let toplamSayfa = 1;
+    const sayfaLimiti = 48;
+
+    let tumGetirilenUrunler = [];
+    let karsilastirmaListesi = [];
+
+    let aktifParaBirimi = "TRY";
+    const kurlar = { "TRY": 1.0, "USD": 34.20, "EUR": 37.50 };
+
+    async function dukkanMenuYukle() {
+        try {
+            const res = await fetch('/api/dukkanlar');
+            const data = await res.json();
+            dukkanlar = data.dukkanlar || {};
+
+            const navBar = document.getElementById('shopNavBar');
+            navBar.innerHTML = '';
+
+            for (const [kod, d] of Object.entries(dukkanlar)) {
+                const btn = document.createElement('a');
+                btn.className = `shop-nav-btn ${kod === aktifDukkan ? 'active' : ''}`;
+                btn.href = `/vitrin?dukkan=${kod}`;
+                btn.innerHTML = `<span>🏛️</span> ${d.ad}`;
+                navBar.appendChild(btn);
+            }
+
+            const ad = dukkanlar[aktifDukkan] ? dukkanlar[aktifDukkan].ad : aktifDukkan.toUpperCase();
+            document.getElementById('vitrinDukkanAd').innerText = `${ad.toUpperCase()} VİTRİNİ`;
+            document.getElementById('btnCanliMezatGit').href = `/?dukkan=${aktifDukkan}`;
+        } catch(e) {}
+    }
+
+    function formatFiyat(tlTutari) {
+        let t = parseFloat(tlTutari) || 0;
+        if (aktifParaBirimi === "USD") return `$${(t / kurlar.USD).toFixed(2)}`;
+        if (aktifParaBirimi === "EUR") return `€${(t / kurlar.EUR).toFixed(2)}`;
+        return `${Math.round(t).toLocaleString('tr-TR')} TL`;
+    }
+
+    function paraBirimiDegistir() {
+        aktifParaBirimi = document.getElementById('currencySelector').value;
+        vitrinYukle();
+        sepetSayaciniGuncelle();
+    }
+
+    function temizKategoriAdi(kat) {
+        if (!kat) return 'Genel';
+        return kat.replace(/^kategorilerimiz\s*[»>]\s*/i, '')
+                  .replace(/^kategoriler\s*[»>]\s*/i, '')
+                  .trim();
+    }
+
+    function debounceArama() {
+        clearTimeout(aramaTimer);
+        aramaTimer = setTimeout(() => {
+            aktifSayfa = 1;
+            vitrinYukle();
+        }, 300);
+    }
+
+    function yeniFiltreUygula() {
+        aktifSayfa = 1;
+        vitrinYukle();
+    }
+
+    function sayfaDegistir(yon) {
+        let yeniHedef = aktifSayfa + yon;
+        if (yeniHedef >= 1 && yeniHedef <= toplamSayfa) {
+            aktifSayfa = yeniHedef;
+            vitrinYukle();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }
+
+    function sepetSayaciniGuncelle() {
+        const musteriId = localStorage.getItem('halic_antik_id') || 0;
+        const musteriAd = localStorage.getItem('halic_antik_ad') || '';
+        const istekUrl = musteriId > 0 ? `/sepet-getir/${musteriId}` : `/sepet-getir/0?ad=${encodeURIComponent(musteriAd)}`;
+
+        fetch(istekUrl)
+            .then(r => r.json())
+            .then(res => {
+                const btn = document.getElementById('vitrinSepetSayac');
+                if (btn && res.success && res.urunler) {
+                    btn.innerText = `🛒 Sepetim (${res.urunler.length})`;
+                }
+            })
+            .catch(() => {});
+    }
+
+    function kategorileriYukle() {
+        fetch('/kategoriler-listesi')
+            .then(r => r.json())
+            .then(list => {
+                const sel = document.getElementById('vitrinKategori');
+                sel.innerHTML = '<option value="">Tüm Kategoriler</option>';
+                if (Array.isArray(list)) {
+                    list.forEach(k => {
+                        if (k && k.trim()) {
+                            let opt = document.createElement('option');
+                            opt.value = k;
+                            opt.innerText = temizKategoriAdi(k);
+                            sel.appendChild(opt);
+                        }
+                    });
+                }
+            })
+            .catch(() => {});
+    }
+
+    function karsilastirmaEkleCikar(urunId, lot, adEncoded, event) {
+        if (event) event.stopPropagation();
+        const idx = karsilastirmaListesi.findIndex(x => x.id === urunId);
+        if (idx > -1) {
+            karsilastirmaListesi.splice(idx, 1);
+        } else {
+            if (karsilastirmaListesi.length >= 4) {
+                return alert("En fazla 4 ürünü aynı anda karşılaştırabilirsiniz.");
+            }
+            const urun = tumGetirilenUrunler.find(u => u.id === urunId);
+            if (urun) {
+                karsilastirmaListesi.push(urun);
+            }
+        }
+        karsilastirmaBariniGuncelle();
+        vitrinArayuzKarsilastirmaGuncelle();
+    }
+
+    function karsilastirmaBariniGuncelle() {
+        const bar = document.getElementById('floatingCompareBar');
+        const count = document.getElementById('compareCount');
+        count.innerText = karsilastirmaListesi.length;
+        bar.style.display = karsilastirmaListesi.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    function karsilastirmaTemizle() {
+        karsilastirmaListesi = [];
+        karsilastirmaBariniGuncelle();
+        vitrinArayuzKarsilastirmaGuncelle();
+    }
+
+    function vitrinArayuzKarsilastirmaGuncelle() {
+        document.querySelectorAll('.btn-kiyasla-badge').forEach(btn => {
+            const uid = parseInt(btn.getAttribute('data-id'));
+            const seciliMi = karsilastirmaListesi.some(x => x.id === uid);
+            btn.classList.toggle('active', seciliMi);
+            btn.innerHTML = seciliMi ? '✓ Kıyasta' : '⚖️ Kıyasla';
+        });
+    }
+
+    function karsilastirModalAc() {
+        if (karsilastirmaListesi.length === 0) return;
+        const container = document.getElementById('compareTableContainer');
+
+        let html = '<table class="compare-table"><thead><tr><th>Özellik</th>';
+        karsilastirmaListesi.forEach(u => {
+            html += `<th>LOT #${u.lot}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        html += '<tr><td><b>Görsel</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            let gorsel = (u.fotograflar && u.fotograflar.length > 0) ? u.fotograflar[0] : (u.video || '');
+            html += `<td><img src="${gorsel}" style="width:70px; height:70px; object-fit:contain; border-radius:4px; background:#000;"></td>`;
+        });
+        html += '</tr>';
+
+        html += '<tr><td><b>Ürün Adı</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            html += `<td style="font-weight:bold; color:#fff;">${u.ad}</td>`;
+        });
+        html += '</tr>';
+
+        html += '<tr><td><b>Kategori</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            html += `<td>${temizKategoriAdi(u.kategori)}</td>`;
+        });
+        html += '</tr>';
+
+        html += '<tr><td><b>Açılış Fiyatı</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            html += `<td style="color:#34d399; font-weight:800;">${formatFiyat(u.fiyat)}</td>`;
+        });
+        html += '</tr>';
+
+        html += '<tr><td><b>Hemen Al</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            let h = u.hemen_al_fiyati || u.hemen_al_fiyat || 0;
+            html += `<td style="color:#f87171; font-weight:bold;">${h > 0 ? formatFiyat(h) : '-'}</td>`;
+        });
+        html += '</tr>';
+
+        html += '<tr><td><b>İşlem</b></td>';
+        karsilastirmaListesi.forEach(u => {
+            let safeAd = encodeURIComponent(u.ad);
+            html += `<td><button onclick="vitrindenSepeteEkle(${u.id}, '${safeAd}'); document.getElementById('modalKarsilastir').style.display='none';" style="background:var(--btn-cart); color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:10px; font-weight:bold;">Sepete Ekle</button></td>`;
+        });
+        html += '</tr>';
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        document.getElementById('modalKarsilastir').style.display = 'flex';
+    }
+
+    function vitrinYukle() {
+        const arama = document.getElementById('vitrinArama').value.trim();
+        const kat = document.getElementById('vitrinKategori').value;
+        const grid = document.getElementById('vitrinGrid');
+        const pagBar = document.getElementById('paginationBar');
+
+        if (aktifAbortController) {
+            aktifAbortController.abort();
+        }
+        aktifAbortController = new AbortController();
+
+        fetch(`/vitrin-urunler?dukkan=${aktifDukkan}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}&sayfa=${aktifSayfa}&limit=${sayfaLimiti}`, {
+            signal: aktifAbortController.signal
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.urunler || data.urunler.length === 0) {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-muted);">Bu dükkanda henüz sergilenen ürün bulunamadı.</div>';
+                    pagBar.style.display = 'none';
+                    return;
+                }
+
+                tumGetirilenUrunler = data.urunler;
+                toplamSayfa = data.toplam_sayfa || 1;
+                aktifSayfa = data.sayfa || 1;
+
+                document.getElementById('sayfaBilgisi').innerText = `Sayfa ${aktifSayfa} / ${toplamSayfa} (Toplam ${data.toplam_kayit || 0} Eser)`;
+                document.getElementById('btnOnceki').disabled = (aktifSayfa <= 1);
+                document.getElementById('btnSonraki').disabled = (aktifSayfa >= toplamSayfa);
+                pagBar.style.display = toplamSayfa > 1 ? 'flex' : 'none';
+
+                grid.innerHTML = data.urunler.map(u => {
+                    let gorsel = '';
+                    if (Array.isArray(u.fotograflar) && u.fotograflar.length > 0) {
+                        gorsel = u.fotograflar[0];
+                    } else if (typeof u.fotograflar === 'string' && u.fotograflar.trim() !== '') {
+                        try {
+                            let p = JSON.parse(u.fotograflar);
+                            gorsel = Array.isArray(p) ? p[0] : u.fotograflar;
+                        } catch(e) {
+                            gorsel = u.fotograflar.split(',')[0].replace(/[\[\]"']/g, '').trim();
+                        }
+                    } else if (u.gorsel) {
+                        gorsel = u.gorsel;
+                    } else if (u.video) {
+                        gorsel = u.video;
+                    }
+
+                    let medyaHtml = `<span style="color:#666; font-size:11px;">Görsel Yok</span>`;
+                    if (gorsel) {
+                        let linkTemiz = gorsel.toLowerCase().split('?')[0];
+                        let isVideo = linkTemiz.endsWith('.mp4') || linkTemiz.endsWith('.webm') || 
+                                      linkTemiz.endsWith('.mov') || linkTemiz.endsWith('.3gp') || 
+                                      linkTemiz.endsWith('.m4v');
+
+                        if (isVideo) {
+                            medyaHtml = `
+                                <video src="${gorsel}" 
+                                       autoplay loop muted playsinline 
+                                       preload="none" 
+                                       style="width:100%; height:100%; object-fit:contain; background:#000;">
+                                </video>`;
+                        } else {
+                            medyaHtml = `<img src="${gorsel}" alt="${u.ad}" loading="lazy" style="width:100%; height:100%; object-fit:contain;">`;
+                        }
+                    }
+
+                    let hemenAl = u.hemen_al_fiyati || u.hemen_al_fiyat || 0;
+                    let acilisFiyat = Number(u.fiyat || 0);
+                    let sadeKategori = temizKategoriAdi(u.kategori);
+                    let safeAd = encodeURIComponent(u.ad);
+
+                    let seciliKiyas = karsilastirmaListesi.some(x => x.id === u.id);
+
+                    return `
+                        <div class="item-card">
+                            <button class="btn-kiyasla-badge ${seciliKiyas ? 'active' : ''}" data-id="${u.id}" onclick="karsilastirmaEkleCikar(${u.id}, '${u.lot}', '${safeAd}', event)">
+                                ${seciliKiyas ? '✓ Kıyasta' : '⚖️ Kıyasla'}
+                            </button>
+                            <div class="item-img-box">
+                                ${medyaHtml}
+                            </div>
+                            <div class="item-content">
+                                <span class="item-lot">LOT #${u.lot} • ${sadeKategori}</span>
+                                <div class="item-title" title="${u.ad}">${u.ad}</div>
+                                
+                                <div class="price-badge-row">
+                                    <div>
+                                        <div style="font-size:9px; color:#94a3b8;">AÇILIŞ</div>
+                                        <div class="item-price">${formatFiyat(acilisFiyat)}</div>
+                                    </div>
+                                    ${hemenAl > 0 ? `
+                                    <div style="text-align:right;">
+                                        <div style="font-size:9px; color:#94a3b8;">HEMEN AL</div>
+                                        <div class="item-buy-now">${formatFiyat(hemenAl)}</div>
+                                    </div>` : ''}
+                                </div>
+                                
+                                <div class="btn-group">
+                                    <button class="btn-on-teklif" onclick="modalAc(${u.id}, '${u.lot}', '${safeAd}', ${acilisFiyat})">📝 Ön Teklif</button>
+                                    <button class="btn-hemen-al" onclick="vitrindenHemenAl(${u.id}, '${u.lot}', '${safeAd}', ${hemenAl > 0 ? hemenAl : acilisFiyat})">⚡ Hemen Al</button>
+                                </div>
+                                <button class="btn-direkt-sepet" onclick="vitrindenSepeteEkle(${u.id}, '${safeAd}')">🛒 Sepete Ekle</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            })
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#94a3b8;">Ürünler listelenemedi veya henüz kayıtlı ürün yok.</div>';
+                }
+            });
+    }
+
+    async function vitrindenSepeteEkle(urunId, urunAdiEncoded) {
+        let kayitliId = localStorage.getItem('halic_antik_id');
+        let kayitliAd = (localStorage.getItem('halic_antik_ad') || '').trim();
+        let kayitliTel = localStorage.getItem('halic_antik_tel') || '';
+        let kayitliMail = localStorage.getItem('halic_antik_mail') || '';
+        let urunAdi = decodeURIComponent(urunAdiEncoded);
+
+        if (!kayitliId || !kayitliAd) {
+            const ad = prompt("Sepete ürün eklemek için lütfen Adınızı ve Soyadınızı giriniz:");
+            if (!ad || !ad.trim()) return;
+            const tel = prompt("Lütfen Telefon Numaranızı giriniz:") || "05550000000";
+            const mail = prompt("Lütfen E-posta Adresinizi giriniz:") || "musteri@halicantik.com";
+
+            try {
+                const kRes = await fetch('/kayit-ol', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ad: ad.trim(), tel: tel.trim(), mail: mail.trim(), sozlesme: true })
+                });
+                const kData = await kRes.json();
+                if (kData.success && kData.musteri_id) {
+                    kayitliId = kData.musteri_id;
+                    kayitliAd = ad.trim();
+                    kayitliTel = tel.trim();
+                    kayitliMail = mail.trim();
+                    localStorage.setItem('halic_antik_id', kayitliId);
+                    localStorage.setItem('halic_antik_ad', kayitliAd);
+                    localStorage.setItem('halic_antik_tel', kayitliTel);
+                    localStorage.setItem('halic_antik_mail', kayitliMail);
+                } else {
+                    alert("Kayıt oluşturulamadı: " + kData.mesaj);
+                    return;
+                }
+            } catch (e) {
+                alert("Bağlantı hatası.");
+                return;
+            }
+        }
+
+        try {
+            const res = await fetch('/sepete-ekle', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    musteri_id: parseInt(kayitliId),
+                    urun_id: parseInt(urunId)
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(`✅ "${urunAdi}" başarıyla sepetinize eklendi!`);
+                sepetSayaciniGuncelle();
+            } else {
+                alert("⚠️ " + data.mesaj);
+            }
+        } catch (err) {
+            alert("Ürün sepete eklenirken hata oluştu.");
+        }
+    }
+
+    function sepetModalGoster() {
+        const musteriId = localStorage.getItem('halic_antik_id');
+        const musteriAd = localStorage.getItem('halic_antik_ad');
+        const modal = document.getElementById('vitrinSepetModal');
+        const icerik = document.getElementById('vitrinSepetIcerik');
+        const ozet = document.getElementById('vitrinSepetOzet');
+        const btnOdeme = document.getElementById('btnSepetOdemeyeGec');
+
+        if (!musteriId && !musteriAd) {
+            alert("Sepetinizi görüntülemek için önce sepete bir ürün eklemelisiniz.");
+            return;
+        }
+
+        icerik.innerHTML = "Sepet yükleniyor...";
+        ozet.innerHTML = "";
+        modal.style.display = 'flex';
+
+        const istekUrl = musteriId ? `/sepet-getir/${musteriId}` : `/sepet-getir/0?ad=${encodeURIComponent(musteriAd)}`;
+
+        fetch(istekUrl)
+            .then(r => r.json())
+            .then(res => {
+                if (!res.urunler || res.urunler.length === 0) {
+                    icerik.innerHTML = "<p style='color:#94a3b8; text-align:center;'>Sepetinizde ürün bulunmamaktadır.</p>";
+                    if (btnOdeme) btnOdeme.style.display = 'none';
+                    sepetSayaciniGuncelle();
+                    return;
+                }
+
+                if (btnOdeme) btnOdeme.style.display = 'block';
+
+                icerik.innerHTML = res.urunler.map(it => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid #1e293b;">
+                        <div style="flex:1; padding-right:10px;">
+                            <span><b>Lot #${it.lot}</b> - ${it.ad}</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#34d399; font-weight:bold;">${formatFiyat(it.fiyat)}</span>
+                            <button onclick="sepettenUrunCikar(${it.urun_id}, ${it.sepet_id})" class="btn-sepet-sil" title="Sepetten Çıkar">❌ Çıkar</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                ozet.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Ara Toplam:</span> <b>${formatFiyat(res.ara_toplam)}</b></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>KDV (%20):</span> <b>${formatFiyat(res.kdv_tutari)}</b></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>Kargo:</span> <b>${formatFiyat(res.kargo_ucreti)}</b></div>
+                    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:14px; color:var(--accent-gold); font-weight:bold;"><span>GENEL TOPLAM:</span> <span>${formatFiyat(res.genel_toplam)}</span></div>
+                `;
+                sepetSayaciniGuncelle();
+            })
+            .catch(() => {
+                icerik.innerHTML = "Sepet bilgisi alınamadı.";
+            });
+    }
+
+    function sepettenOdemeyeGec() {
+        let musteriId = localStorage.getItem('halic_antik_id');
+        let ad = localStorage.getItem('halic_antik_ad');
+        let tel = localStorage.getItem('halic_antik_tel');
+        let mail = localStorage.getItem('halic_antik_mail');
+
+        if (!musteriId || !ad || !tel) {
+            ad = prompt("Siparişi tamamlamak için Adınızı ve Soyadınızı giriniz:");
+            if (!ad) return;
+            tel = prompt("Telefon numaranızı giriniz:");
+            if (!tel) return;
+            mail = prompt("E-posta adresinizi giriniz (Zorunlu):");
+            if (!mail) return;
+        }
+
+        fetch('/odeme-baslat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                musteri_id: musteriId ? parseInt(musteriId) : null,
+                ad: ad,
+                tel: tel,
+                mail: mail
+            })
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                alert("💳 " + res.mesaj);
+                window.location.href = res.yonlendir || '/';
+            } else {
+                alert("⚠️ " + res.mesaj);
+            }
+        });
+    }
+
+    async function sepettenUrunCikar(urunId, sepetId) {
+        const musteriId = localStorage.getItem('halic_antik_id');
+        if (!confirm("Bu ürünü sepetinizden çıkarmak istediğinize emin misiniz?")) return;
+
+        try {
+            const res = await fetch('/sepetten-cikar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    musteri_id: musteriId ? parseInt(musteriId) : null,
+                    urun_id: parseInt(urunId),
+                    sepet_id: sepetId || 0
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                sepetModalGoster();
+            } else {
+                alert("⚠️ " + (data.mesaj || "Ürün sepetten çıkarılamadı."));
+            }
+        } catch (e) {
+            alert("İşlem sırasında hata oluştu.");
+        }
+    }
+
+    function vitrindenHemenAl(id, lot, adEncoded, hemenAlBedeli) {
+        let kayitliAd = (localStorage.getItem('halic_antik_ad') || '').replace(/^\[.*?\]\s*/, '').trim();
+        let kayitliTel = localStorage.getItem('halic_antik_tel') || '';
+        let kayitliMail = localStorage.getItem('halic_antik_mail') || '';
+        let kayitliId = localStorage.getItem('halic_antik_id');
+        let ad = decodeURIComponent(adEncoded);
+
+        if (!kayitliAd || !kayitliTel || !kayitliMail) {
+            modalModu = 'hemen_al';
+            seciliModalUrunId = id;
+            seciliHemenAlFiyati = hemenAlBedeli;
+            document.getElementById('modalUrunBaslik').innerText = `⚡ HEMEN AL: LOT #${lot} - ${ad}`;
+            document.getElementById('modalAcilisFiyat').innerText = formatFiyat(hemenAlBedeli);
+            document.getElementById('tutarAlaniKutusu').style.display = 'none';
+            document.getElementById('modalOnayBtn').innerText = "💳 Hemen Satın Al";
+            document.getElementById('modalOnayBtn').style.background = "#e11d48";
+            document.getElementById('modalOnayBtn').style.color = "#fff";
+            document.getElementById('vitrinAd').value = kayitliAd;
+            document.getElementById('vitrinTel').value = kayitliTel;
+            document.getElementById('vitrinMail').value = kayitliMail;
+            document.getElementById('vitrinOnTeklifModal').style.display = 'flex';
+            return;
+        }
+
+        if (!confirm(`LOT #${lot} - ${ad} ürününü ${formatFiyat(hemenAlBedeli)} bedelle hemen satın alıp sepetinize eklemek istiyor musunuz?`)) {
+            return;
+        }
+
+        fetch('/pey-ver', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                dukkan: aktifDukkan,
+                urun_id: id,
+                musteri_id: kayitliId ? parseInt(kayitliId) : null,
+                musteri_adi: kayitliAd,
+                telefon: kayitliTel,
+                islem: 'hemen_al'
+            })
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                alert(`🎉 Tebrikler! Ürün sepetinize eklendi.`);
+                sepetSayaciniGuncelle();
+                vitrinYukle();
+            } else {
+                alert(res.mesaj || "Satın alma işlemi gerçekleştirilemedi.");
+            }
+        });
+    }
+
+    function modalAc(id, lot, adEncoded, acilis) {
+        modalModu = 'on_teklif';
+        seciliModalUrunId = id;
+        seciliModalMinFiyat = acilis;
+        let ad = decodeURIComponent(adEncoded);
+
+        document.getElementById('modalUrunBaslik').innerText = `LOT #${lot} - ${ad}`;
+        document.getElementById('modalAcilisFiyat').innerText = formatFiyat(acilis);
+        document.getElementById('tutarAlaniKutusu').style.display = 'block';
+        document.getElementById('modalOnayBtn').innerText = "🚀 Teklifi Kaydet";
+        document.getElementById('modalOnayBtn').style.background = "var(--accent-gold)";
+        document.getElementById('modalOnayBtn').style.color = "#111";
+        
+        let kayitliAd = (localStorage.getItem('halic_antik_ad') || '').replace(/^\[.*?\]\s*/, '').trim();
+        let kayitliTel = localStorage.getItem('halic_antik_tel') || '';
+        let kayitliMail = localStorage.getItem('halic_antik_mail') || '';
+        document.getElementById('vitrinAd').value = kayitliAd;
+        document.getElementById('vitrinTel').value = kayitliTel;
+        document.getElementById('vitrinMail').value = kayitliMail;
+        document.getElementById('vitrinTutar').value = '';
+        
+        document.getElementById('vitrinOnTeklifModal').style.display = 'flex';
+    }
+
+    function modalKapat() {
+        document.getElementById('vitrinOnTeklifModal').style.display = 'none';
+        seciliModalUrunId = null;
+    }
+
+    function onTeklifGonderVitrin() {
+        let ad = document.getElementById('vitrinAd').value.trim();
+        let tel = document.getElementById('vitrinTel').value.trim();
+        let mail = document.getElementById('vitrinMail').value.trim();
+
+        if (!ad) return alert("Lütfen Adınızı ve Soyadınızı yazınız!");
+        if (!tel) return alert("Lütfen Telefon Numaranızı yazınız!");
+        if (!mail || !mail.includes('@') || !mail.includes('.')) {
+            return alert("Lütfen geçerli bir E-posta adresi giriniz!");
+        }
+
+        fetch('/kayit-ol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ad: ad, tel: tel, mail: mail, sozlesme: true })
+        }).then(r => r.json()).then(kayitRes => {
+            if (!kayitRes.success) {
+                return alert(kayitRes.mesaj);
+            }
+            localStorage.setItem('halic_antik_ad', ad);
+            localStorage.setItem('halic_antik_tel', tel);
+            localStorage.setItem('halic_antik_mail', mail);
+            if (kayitRes.musteri_id) localStorage.setItem('halic_antik_id', kayitRes.musteri_id);
+
+            if (modalModu === 'hemen_al') {
+                fetch('/pey-ver', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        dukkan: aktifDukkan,
+                        urun_id: seciliModalUrunId,
+                        musteri_id: kayitRes.musteri_id || null,
+                        musteri_adi: ad,
+                        telefon: tel,
+                        islem: 'hemen_al'
+                    })
+                }).then(r2 => r2.json()).then(d => {
+                    if (d.success) {
+                        alert(`🎉 Tebrikler! Ürün sepetinize eklendi.`);
+                        modalKapat();
+                        sepetSayaciniGuncelle();
+                        vitrinYukle();
+                    } else {
+                        alert(d.mesaj || "Satın alma yapılamadı.");
+                    }
+                });
+            } else {
+                let tutar = parseFloat(document.getElementById('vitrinTutar').value);
+                if (isNaN(tutar) || tutar < seciliModalMinFiyat) {
+                    return alert(`Ön teklif açılış fiyatından (${formatFiyat(seciliModalMinFiyat)}) düşük olamaz!`);
+                }
+
+                fetch('/on-teklif-ver', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        dukkan: aktifDukkan,
+                        urun_id: seciliModalUrunId,
+                        musteri_id: kayitRes.musteri_id || null,
+                        musteri_adi: ad,
+                        teklif: tutar
+                    })
+                }).then(r3 => r3.json()).then(d => {
+                    if (d.success) {
+                        alert(d.mesaj || "Ön teklif başarıyla kaydedildi.");
+                        modalKapat();
+                        vitrinYukle();
+                    } else {
+                        alert(d.mesaj);
+                    }
+                });
+            }
+        });
+    }
+
+    socket.on('sayac_bitti', function(data) {
+        if (!data || data.dukkan === aktifDukkan) {
+            vitrinYukle();
+        }
+    });
+
+    window.onload = function() {
+        dukkanMenuYukle();
+        kategorileriYukle();
+        vitrinYukle();
+        sepetSayaciniGuncelle();
+    };
+</script>
+</body>
+</html>

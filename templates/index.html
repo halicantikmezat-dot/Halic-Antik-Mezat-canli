@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Haliç Antik Mezat - Canlı Mezat</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         :root {
             --bg-color: #0b0f17;
@@ -41,7 +42,6 @@
             overflow-y: auto;
         }
 
-        /* MOBİL UYUM: Genişlik tam duyarlı (responsive) yapıldı */
         .mobile-container {
             width: 100% !important;
             max-width: 480px !important;
@@ -82,9 +82,9 @@
             letter-spacing: 0.5px; 
             font-weight: 800; 
             white-space: nowrap; 
-            margin: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            margin: 0; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
         }
 
         .header-lokasyon-rozet {
@@ -128,7 +128,6 @@
         }
         .live-badge { background: var(--btn-red); color: white; padding: 2px 5px; border-radius: 6px; font-size: 8px; font-weight: bold; white-space: nowrap; }
 
-        /* 10 DÜKKAN HIZLI GEÇİŞ BARI */
         .shop-nav-bar {
             background: #090e16;
             padding: 4px;
@@ -200,8 +199,8 @@
             display: inline-flex; 
             align-items: center; 
             gap: 2px; 
-            white-space: nowrap;
-            flex-shrink: 0;
+            white-space: nowrap; 
+            flex-shrink: 0; 
         }
         .user-bar-profile-box {
             display: flex;
@@ -229,7 +228,30 @@
             text-align: center;
         }
 
-        /* SAHNE: Mobilde tam uyumlu oran */
+        #audioUnlockPrompt {
+            position: absolute;
+            top: 35px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(212, 175, 55, 0.95);
+            color: #000;
+            font-size: 8.5px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 12px;
+            z-index: 90;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            animation: pulseUnlock 1.2s infinite alternate;
+        }
+        @keyframes pulseUnlock {
+            from { transform: translateX(-50%) scale(0.96); }
+            to { transform: translateX(-50%) scale(1.04); }
+        }
+
         .stage-wrapper {
             position: relative;
             width: 100%;
@@ -250,7 +272,7 @@
             justify-content: center; 
             background: #000; 
             overflow: hidden; 
-            position: relative;
+            position: relative; 
         }
         
         .stage-media-box img, .stage-media-box video {
@@ -348,7 +370,6 @@
         .drawer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-weight: bold; color: var(--accent-gold); font-size: 9px; }
         .btn-close-drawer { background: #475569; color: white; border: none; padding: 2px 5px; border-radius: 2px; cursor: pointer; font-weight: bold; font-size: 8px; }
 
-        /* GÜNCEL PEY VE GERİ SAYIM ALANI */
         .auction-status-compact {
             background: #0f151e;
             padding: 6px 8px;
@@ -373,13 +394,13 @@
             display: flex; 
             flex-direction: column; 
             justify-content: center; 
-            gap: 1px;
+            gap: 1px; 
         }
         .price-label { 
             font-size: 8px; 
             color: var(--accent-gold); 
             font-weight: 800; 
-            letter-spacing: 0.5px;
+            letter-spacing: 0.5px; 
         }
         .price-val { 
             font-size: 19px !important; 
@@ -387,14 +408,14 @@
             color: #fef08a !important; 
             line-height: 1.05; 
             text-shadow: 0 0 10px rgba(212, 175, 55, 0.4); 
-            white-space: nowrap;
+            white-space: nowrap; 
         }
         .urgent .price-val { color: #f43f5e !important; text-shadow: 0 0 10px rgba(244, 63, 94, 0.5); }
         .bidder-val { 
             font-size: 8px; 
             color: #94a3b8; 
             white-space: nowrap; 
-            margin-top: 1px;
+            margin-top: 1px; 
         }
         .bidder-val b { color: #ffffff; font-weight: 700; }
 
@@ -427,7 +448,6 @@
             pointer-events: none !important;
         }
 
-        /* CANLI YAYIN KAYAN BANTI */
         .kayan-bant-kapsayici {
             display: flex;
             align-items: center;
@@ -474,7 +494,6 @@
             100% { transform: translateX(-100%); }
         }
 
-        /* MÜZİK VE PEY GEÇMİŞİ SATIRI */
         .muzik-ve-pey-satiri {
             display: flex;
             align-items: center;
@@ -556,7 +575,6 @@
             100% { transform: translateX(-100%); }
         }
 
-        /* İZLEYİCİ CANLI CHAT ÇEKMECESİ */
         .chat-drawer {
             display: none;
             background: #0f151e;
@@ -583,6 +601,7 @@
             border-radius: 3px;
             background: #141b24;
             color: #f1f5f9;
+            word-break: break-word;
         }
         .chat-item.ahmet {
             background: #2a2007;
@@ -617,7 +636,6 @@
             to { transform: scale(1.05); }
         }
 
-        /* Footer */
         .footer { 
             padding: 6px 4px; 
             text-align: center; 
@@ -627,12 +645,11 @@
             background: #080c13; 
             border-top: 1px solid var(--card-border); 
             border-radius: 3px; 
-            width: 100%;
+            width: 100%; 
         }
         .footer-btns { display: flex; justify-content: center; gap: 3px; margin-bottom: 3px; flex-wrap: wrap; }
         .btn-footer { background: #141b24; color: #fff; border: 1px solid var(--card-border); padding: 3px 5px; border-radius: 2px; font-size: 7.5px; cursor: pointer; text-decoration: none; }
 
-        /* Ortak Giriş ve Form Elemanları */
         input[type="text"], input[type="number"], input[type="email"], select, textarea {
             width: 100%;
             background: #080c13;
@@ -657,9 +674,14 @@
 </head>
 <body onclick="sesKilidiAc()">
 
+<audio id="ahmetAudioPlayer" preload="auto" style="display:none;"></audio>
 <div id="liveToast"></div>
 
 <div class="mobile-container">
+    <div id="audioUnlockPrompt" onclick="sesKilidiManuelAc()">
+        🔊 Canlı Yayını Sesli Dinlemek İçin Dokunun
+    </div>
+
     <div class="header">
         <div class="logo-box">
             <span style="font-size: 13px;">🏛️</span>
@@ -679,7 +701,6 @@
         </div>
     </div>
 
-    <!-- 10 DÜKKAN HIZLI GEÇİŞ BARI -->
     <div class="shop-nav-bar" id="shopNavBar"></div>
 
     <div class="user-bar-compact">
@@ -696,9 +717,8 @@
         </div>
     </div>
 
-    <!-- MEZAT ALANI -->
     <div id="mezatAlani">
-        <div class="stage-wrapper" id="stageWrapper" ondblclick="toggleFullscreen()">
+        <div class="stage-wrapper" id="stageWrapper">
             <div class="stage-media-box" id="medyaKapsayici">
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
             </div>
@@ -734,7 +754,6 @@
             <div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>
         </div>
 
-        <!-- İZLEYİCİ CANLI SOHBET & BAS-KONUŞ ÇEKMECESİ -->
         <div class="chat-drawer" id="chatDrawer">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                 <span style="font-size:9px; font-weight:bold; color:var(--accent-gold);">💬 Canlı Sohbet Odası & Sesli İletişim</span>
@@ -750,7 +769,6 @@
             </div>
         </div>
 
-        <!-- SAHNE ALTI CANLI ARAMA VE KATALOG ÇEKMECESİ -->
         <div class="catalog-drawer-inline" id="catalogDrawer">
             <div class="drawer-header">
                 <span>📖 Ürün Kataloğu & Hızlı Arama</span>
@@ -805,11 +823,10 @@
             </div>
         </div>
 
-        <!-- COCKPIT: GÜNCEL PEY & GERİ SAYIM -->
         <div class="auction-status-compact" id="auctionCockpit">
             <div class="price-compact-box">
                 <div class="price-label">GÜNCEL PEY</div>
-                <div class="price-val" id="aktif_fiyat"><span id="currentBid">0</span> TL</div>
+                <div class="price-val" id="aktif_fiyat"><span id="currentBid">0</span> <span id="currentBidCurrency">TL</span></div>
                 <div class="bidder-val">Son Teklif: <b id="aktif_kazanan">Yok</b></div>
             </div>
 
@@ -825,7 +842,6 @@
             </div>
         </div>
 
-        <!-- PEY VE SATIN ALMA BUTONLARI -->
         <div class="pey-butonlari-konteyner">
             <div class="bid-btn-row">
                 <button id="btnYuzdeOn" class="btn-bid btn-action-green" onclick="yuzdeOnPeyVer()">⚡ %10 ARTIR</button>
@@ -834,7 +850,6 @@
             <button id="btnHemenAl" class="btn-buy-now" onclick="hemenAl()">⚡ HEMEN AL (Satın Al)</button>
         </div>
 
-        <!-- CANLI YAYIN KAYAN BANTI -->
         <div class="kayan-bant-kapsayici">
             <div class="kayan-bant-baslik">CANLI YAYIN</div>
             <div class="kayan-bant-metin" id="izleyiciKayanMetin">
@@ -842,7 +857,6 @@
             </div>
         </div>
 
-        <!-- MÜZİK VE PEY GEÇMİŞİ SATIRI -->
         <div class="muzik-ve-pey-satiri">
             <div class="muzik-mini-panel">
                 <button type="button" id="btnCanliMuzikToggle" onclick="canliMuzikAcKapa()" class="btn-mini-play">
@@ -864,19 +878,18 @@
         </div>
     </div>
 
-    <!-- ALT BÖLÜM VE LİNKLER -->
     <div class="footer">
         <div class="footer-btns">
             <button class="btn-footer" onclick="kurallariAc()">ℹ️ Hakkımızda & Kurallar</button>
             <button class="btn-footer" onclick="openFeedbackModal()">📩 Şikayet / Görüş İlet</button>
-            <button class="btn-footer" onclick="openPosModal()">💳 POS</button>
+            <button class="btn-footer" onclick="openPosModalDirect()">💳 POS</button>
             <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:#34d399;">💬 WhatsApp</a>
         </div>
         <p>© 2026 🏛️ Haliç Antik Mezat Sistemi - Balat / İstanbul</p>
     </div>
 </div>
 
-<!-- KAREKOD PAYLAŞIM MODALI -->
+<!-- MODALLAR -->
 <div id="modalUrunQr" class="modal">
     <div class="modal-content">
         <h3 style="color:var(--accent-gold); font-size:12px; margin-bottom:6px;">📱 Lot Karekodu Paylaş</h3>
@@ -889,7 +902,6 @@
     </div>
 </div>
 
-<!-- HAKKIMIZDA & GÜVENLİK KURALLARI PENCERESİ -->
 <div id="modalKurallar" class="modal">
     <div class="modal-content" style="text-align: left;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px; margin-bottom:8px;">
@@ -912,7 +924,6 @@
     </div>
 </div>
 
-<!-- SEPET MODALI -->
 <div id="sepetModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 6px; font-size:12px; font-weight:800;">🛒 Alışveriş Sepetim</h3>
@@ -933,12 +944,11 @@
             </div>
         </div>
         
-        <button class="btn-bid btn-action-green" style="width:100%;" onclick="openPosModal(); closeModal('sepetModal');">💳 Ödemeye Geç</button>
+        <button class="btn-bid btn-action-green" style="width:100%;" onclick="sepettenOdemeyeGec()">💳 Ödemeye Geç</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;" onclick="closeModal('sepetModal')">Kapat</button>
     </div>
 </div>
 
-<!-- GEÇMİŞ MODALI -->
 <div id="gecmisModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:12px; font-weight:800;">📜 Satın Alma & Mezat Geçmişim</h3>
@@ -951,20 +961,18 @@
     </div>
 </div>
 
-<!-- KAYIT MODALI -->
 <div id="authRegisterModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:11px; font-weight:800;">📝 Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
-        <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız" required>
-        <input type="text" id="k_tel" placeholder="05XX XXX XX XX" required>
-        <input type="email" id="k_mail" placeholder="ornek@mail.com">
+        <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız (* Zorunlu)" required>
+        <input type="text" id="k_tel" placeholder="05XX XXX XX XX (* Zorunlu)" required>
+        <input type="email" id="k_mail" placeholder="ornek@mail.com (* Zorunlu)" required>
         <textarea id="k_adres" rows="2" placeholder="Teslimat Adresiniz..."></textarea>
         <button onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%; margin-top:4px;">💾 Onayla & Kaydol</button>
         <button onclick="closeModal('authRegisterModal')" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;">Kapat</button>
     </div>
 </div>
 
-<!-- GERİ BİLDİRİM / ŞİKAYET MODALI -->
 <div id="feedbackModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:11px; font-weight:800;">📩 Yöneticiye Görüş / Şikayet İlet</h3>
@@ -981,7 +989,6 @@
     </div>
 </div>
 
-<!-- PROFİL MODALI -->
 <div id="profileModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 5px; font-size:11px; font-weight:800;">👤 Profil Yönetimi</h3>
@@ -995,16 +1002,16 @@
     </div>
 </div>
 
-<!-- POS MODALI -->
 <div id="posModal" class="modal">
-    <div class="modal-content" style="text-align: center;">
-        <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:12px; font-weight:800;">💳 Online Güvenli Ödeme</h3>
-        <p style="font-size:9px; color:#cbd5e1; margin-bottom:6px;">3D Secure ile güvenli ödeme alanı.</p>
-        <button class="btn-bid" style="width:100%; background:#475569; color:#fff;" onclick="closeModal('posModal')">Kapat</button>
+    <div class="modal-content" style="text-align: center; max-width: 420px;">
+        <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:12px; font-weight:800;">💳 Online 3D Güvenli Ödeme</h3>
+        <div id="posIframeContainer" style="min-height: 220px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted); background: #080c13; border-radius: 4px; border: 1px solid var(--card-border);">
+            Ödeme ekranı yükleniyor...
+        </div>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:6px;" onclick="closeModal('posModal')">Kapat</button>
     </div>
 </div>
 
-<!-- TEBRİKLER MODALI -->
 <div id="congratsModal" class="modal">
     <div class="modal-content">
         <h2 style="color: var(--accent-gold); margin-bottom: 5px; font-size:13px; font-weight:900;">🏆 TEBRİKLER!</h2>
@@ -1014,21 +1021,35 @@
 </div>
 
 <script>
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     const socket = io({ 
-        transports: ['websocket'], 
-        upgrade: false 
+        transports: ['websocket', 'polling'], 
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        upgrade: true
     });
 
     const urlParams = new URLSearchParams(window.location.search);
     let aktifDukkan = urlParams.get('dukkan') || 'gumus';
     let dukkanlar = {};
 
-    let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "";
+    let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "", kullaniciMail = "";
     let secilenArsivUrunId = null;
     let aktifSahneUrunId = null;
     let sahnedekiUrunSatildiMi = false;
     let sonBulunanUrunler = [];
     let audioCtx = null;
+    let hlsInstance = null;
     let sonYuklenenSahneMedyaUrl = null;
     let sonGorulenPey = 0;
     let aktifUrunMedyalari = [];
@@ -1043,7 +1064,49 @@
     const kurlar = { "TRY": 1.0, "USD": 34.20, "EUR": 37.50 };
 
     let izleyiciRecorder = null;
+    let izleyiciStream = null;
     let izleyiciChunks = [];
+
+    let anonsKuyrugu = [];
+    let anonsOynuyor = false;
+
+    function anonsEkle(oge) {
+        if (!oge) return;
+        anonsKuyrugu.push(oge);
+        if (!anonsOynuyor) sonrakiAnonsuCal();
+    }
+
+    function sonrakiAnonsuCal() {
+        if (anonsKuyrugu.length === 0) {
+            anonsOynuyor = false;
+            return;
+        }
+        anonsOynuyor = true;
+        const oge = anonsKuyrugu.shift();
+        if (oge.ses) yerelSesiCal(oge);
+        else sonrakiAnonsuCal();
+    }
+
+    function yerelSesiCal(oge) {
+        const player = document.getElementById("ahmetAudioPlayer");
+        function siradaki() {
+            try { player.pause(); } catch (e) {}
+            sonrakiAnonsuCal();
+        }
+        try {
+            sesKilidiAc();
+            player.src = "data:" + (oge.mime || "audio/wav") + ";base64," + oge.ses;
+            player.volume = 1.0;
+            player.onended = sonrakiAnonsuCal;
+            player.onerror = siradaki;
+            const playPromise = player.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(siradaki);
+            }
+        } catch (err) {
+            siradaki();
+        }
+    }
 
     async function dukkanMenuYukle() {
         try {
@@ -1057,20 +1120,28 @@
             for (const [kod, d] of Object.entries(dukkanlar)) {
                 const btn = document.createElement('a');
                 btn.className = `shop-nav-btn ${kod === aktifDukkan ? 'active' : ''}`;
-                btn.href = `/?dukkan=${kod}`;
-                btn.innerHTML = `<span>🏛️</span> ${d.ad}`;
+                btn.href = `/?dukkan=${encodeURIComponent(kod)}`;
+                btn.innerHTML = `<span>🏛️</span> ${escapeHtml(d.ad)}`;
                 navBar.appendChild(btn);
             }
 
             const ad = dukkanlar[aktifDukkan] ? dukkanlar[aktifDukkan].ad : aktifDukkan.toUpperCase();
             document.getElementById('aktifDukkanRozet').innerText = ad.toUpperCase();
-            document.getElementById('linkVitrin').href = `/vitrin?dukkan=${aktifDukkan}`;
+            document.getElementById('linkVitrin').href = `/vitrin?dukkan=${encodeURIComponent(aktifDukkan)}`;
         } catch(e) {}
     }
 
-    socket.on('connect', () => {
+    function odayaKatil() {
         socket.emit('join_dukkan', { dukkan: aktifDukkan });
-    });
+    }
+
+    socket.on('connect', odayaKatil);
+    if (socket.io) {
+        socket.io.on('reconnect', () => {
+            odayaKatil();
+            canliDurumuGetirHafif();
+        });
+    }
 
     window.addEventListener('beforeunload', () => {
         socket.emit('leave_dukkan', { dukkan: aktifDukkan });
@@ -1089,15 +1160,10 @@
             if (!aktifImg) return;
 
             adim = (adim + 1) % 4;
-            if (adim === 1) {
-                aktifImg.className = 'zoom-ust-detay';
-            } else if (adim === 2) {
-                aktifImg.className = 'zoom-govde-isilik';
-            } else if (adim === 3) {
-                aktifImg.className = 'zoom-damga-kaide';
-            } else {
-                aktifImg.className = 'zoom-genel-plan';
-            }
+            if (adim === 1) aktifImg.className = 'zoom-ust-detay';
+            else if (adim === 2) aktifImg.className = 'zoom-govde-isilik';
+            else if (adim === 3) aktifImg.className = 'zoom-damga-kaide';
+            else aktifImg.className = 'zoom-genel-plan';
         }, 8000);
     }
 
@@ -1153,11 +1219,12 @@
 
     function izleyiciMesajGonder() {
         playUserClickSound();
-        if (!kullaniciGirisKontrol()) return;
 
         const input = document.getElementById('chatMesajGirdi');
-        const mesaj = (input.value || '').trim();
+        const mesaj = (input ? input.value : '').trim();
         if (!mesaj) return;
+
+        let gonderen = kullaniciAdi || "Ziyaretçi";
 
         fetch('/api/chat/mesaj-gonder', {
             method: 'POST',
@@ -1165,15 +1232,22 @@
             body: JSON.stringify({
                 dukkan: aktifDukkan,
                 kullanici_id: kullaniciId,
-                kullanici: kullaniciAdi,
+                kullanici: gonderen,
                 mesaj: mesaj,
                 platform: 'Web'
             })
-        }).then(r => r.json()).then(res => {
-            if (!res.success) alert(res.mesaj);
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (!res.success) {
+                alert("Uyarı: " + (res.mesaj || "Mesaj iletilemedi"));
+            }
+        })
+        .catch(err => {
+            alert("Bağlantı hatası: Sunucuya ulaşılamadı!");
         });
 
-        input.value = "";
+        if (input) input.value = "";
     }
 
     const btnIzleyiciSes = document.getElementById('btnIzleyiciSes');
@@ -1181,8 +1255,8 @@
     async function izleyiciSesBaslat() {
         if (!kullaniciGirisKontrol()) return;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            izleyiciRecorder = new MediaRecorder(stream);
+            izleyiciStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            izleyiciRecorder = new MediaRecorder(izleyiciStream);
             izleyiciChunks = [];
 
             izleyiciRecorder.ondataavailable = e => {
@@ -1194,23 +1268,27 @@
                 const formData = new FormData();
                 formData.append('ses', audioBlob, 'izleyici_ses.webm');
                 formData.append('dukkan', aktifDukkan);
-                formData.append('kullanici_id', kullaniciId);
-                formData.append('kullanici_adi', kullaniciAdi);
+                if (kullaniciId) formData.append('kullanici_id', kullaniciId);
 
                 fetch('/api/izleyici/bas-konus-ses', {
                     method: 'POST',
                     body: formData
                 }).then(r => r.json()).then(res => {
                     if (!res.success) alert(res.mesaj);
-                });
+                }).catch(err => console.error("Ses aktarım hatası:", err));
 
-                stream.getTracks().forEach(track => track.stop());
+                if (izleyiciStream) {
+                    izleyiciStream.getTracks().forEach(track => track.stop());
+                    izleyiciStream = null;
+                }
             };
 
             izleyiciRecorder.start();
             btnIzleyiciSes.classList.add('kayit-aktif');
             btnIzleyiciSes.innerText = "🔴 Dinliyor...";
         } catch (err) {
+            btnIzleyiciSes.classList.remove('kayit-aktif');
+            btnIzleyiciSes.innerText = "🎙️ Bas-Konuş";
             alert("Mikrofon erişim izni verilmedi: " + err);
         }
     }
@@ -1235,14 +1313,21 @@
         }
     });
 
+    const gorulenCanliYorumlar = [];
+
     socket.on("yeni_canli_yorum", function(data) {
         if (!data || data.dukkan !== aktifDukkan) return;
+
+        const yorumImzasi = [data.platform, data.kullanici, data.mesaj, data.zaman].join("|");
+        if (gorulenCanliYorumlar.indexOf(yorumImzasi) !== -1) return;
+        gorulenCanliYorumlar.push(yorumImzasi);
+        if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
 
         const chatBox = document.getElementById('izleyiciChatKutusu');
         if (chatBox) {
             const item = document.createElement('div');
             item.className = data.platform === 'Ahmet Usta AI' ? 'chat-item ahmet' : 'chat-item';
-            item.innerHTML = `<b>${data.kullanici}:</b> ${data.mesaj}`;
+            item.innerHTML = `<b>${escapeHtml(data.kullanici)}:</b> ${escapeHtml(data.mesaj)}`;
             chatBox.appendChild(item);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
@@ -1251,12 +1336,12 @@
         if (bant) {
             const oge = document.createElement("span");
             oge.className = "bant-oge";
-            let platformLogo = data.platform === 'Ahmet Usta AI' ? '🤖 [Ahmet Usta]' : `💬 [${data.kullanici}]`;
-            oge.innerHTML = `<strong>${platformLogo}:</strong> ${data.mesaj} • `;
+            let platformLogo = data.platform === 'Ahmet Usta AI' ? '🤖 [Ahmet Usta]' : `💬 [${escapeHtml(data.kullanici)}]`;
+            oge.innerHTML = `<strong>${platformLogo}:</strong> ${escapeHtml(data.mesaj)} • `;
             bant.appendChild(oge);
 
             const tumOgeler = bant.getElementsByClassName("bant-oge");
-            while (tumOgeler.length > 2) {
+            if (tumOgeler.length > 5) {
                 bant.removeChild(tumOgeler[0]);
             }
         }
@@ -1269,15 +1354,24 @@
                 const oge = document.createElement("span");
                 oge.className = "bant-oge";
                 oge.style.color = "var(--accent-gold)";
-                oge.innerHTML = `<strong>🤖 Ahmet Usta:</strong> ${data.metin} • `;
-                bant.prepend(oge);
+                oge.innerHTML = `<strong>🤖 Ahmet Usta:</strong> ${escapeHtml(data.metin)} • `;
+                bant.appendChild(oge);
 
                 const tumOgeler = bant.getElementsByClassName("bant-oge");
-                while (tumOgeler.length > 2) {
-                    bant.removeChild(tumOgeler[tumOgeler.length - 1]);
+                if (tumOgeler.length > 5) {
+                    bant.removeChild(tumOgeler[0]);
                 }
             }
         }
+    });
+
+    socket.on("ahmet_ses_cal", function(data) {
+        if (!data || data.dukkan !== aktifDukkan) return;
+        anonsEkle({
+            ses: data.ses_base64 || "",
+            mime: data.ses_mime || "audio/wav",
+            metin: data.metin || ""
+        });
     });
 
     socket.on("pey_gecildi_uyarisi", function(data) {
@@ -1294,14 +1388,14 @@
 
     function aktifUrunKarekodAc() {
         playUserClickSound();
-        const aktifUrl = `${window.location.origin}/?dukkan=${aktifDukkan}`;
+        const aktifUrl = `${window.location.origin}/?dukkan=${encodeURIComponent(aktifDukkan)}`;
         document.getElementById('qrUrunGorsel').src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(aktifUrl)}`;
         document.getElementById('modalUrunQr').style.display = 'flex';
     }
 
     function qrLinkiKopyala() {
         playUserClickSound();
-        const aktifUrl = `${window.location.origin}/?dukkan=${aktifDukkan}`;
+        const aktifUrl = `${window.location.origin}/?dukkan=${encodeURIComponent(aktifDukkan)}`;
         navigator.clipboard.writeText(aktifUrl).then(() => {
             alert("📋 Mezat bağlantısı panoya kopyalandı!");
         });
@@ -1327,21 +1421,36 @@
 
     function paraBirimiDegistir() {
         aktifParaBirimi = document.getElementById('currencySelector').value;
-        let cFiyat = parseFloat(document.getElementById('currentBid').innerText.replace(/\./g, '')) || 0;
-        document.getElementById('currentBid').innerText = Math.round(cFiyat).toLocaleString('tr-TR');
+        const curLabel = document.getElementById('currentBidCurrency');
+        if (curLabel) curLabel.innerText = aktifParaBirimi;
+        
+        let cFiyat = sonGorulenPey || 0;
+        document.getElementById('currentBid').innerText = Math.round(cFiyat / kurlar[aktifParaBirimi]).toLocaleString('tr-TR');
         if (document.getElementById('sepetModal').style.display === 'flex') sepetVerileriniGetir();
+    }
+
+    function sesKilidiManuelAc() {
+        sesKilidiAc();
+        const prompt = document.getElementById('audioUnlockPrompt');
+        if (prompt) prompt.style.display = 'none';
+        playUserClickSound();
     }
 
     function sesKilidiAc() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+            audioCtx.resume().catch(e => console.warn("AudioContext resume engeli:", e));
+        }
         const v = document.getElementById('stageVideo');
         if (v && v.paused) v.play().catch(e => {});
+        const prompt = document.getElementById('audioUnlockPrompt');
+        if (prompt) prompt.style.display = 'none';
     }
 
     function playTone(freq, duration, type = 'sine', gainVal = 0.2) {
         try {
             sesKilidiAc();
+            if (!audioCtx) return;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = type;
@@ -1363,6 +1472,7 @@
     function mekanikTikTakSesiCal(acilMi = false) {
         try {
             sesKilidiAc();
+            if (!audioCtx) return;
             const now = audioCtx.currentTime;
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -1412,7 +1522,7 @@
         listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Aranıyor...</div>';
 
         try {
-            const res = await fetch(`/admin/urun-ara?dukkan=${aktifDukkan}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
+            const res = await fetch(`/admin/urun-ara?dukkan=${encodeURIComponent(aktifDukkan)}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
             const data = await res.json();
             if (!data.urunler || data.urunler.length === 0) {
                 listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Bu dükkanda ürün bulunamadı.</div>';
@@ -1426,10 +1536,10 @@
                 div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#080c13; padding:4px 5px; border-radius:4px; border:1px solid #1c2541;";
                 div.innerHTML = `
                     <div style="font-size:9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:4px;">
-                        <b style="color:var(--accent-gold);">LOT #${u.lot}</b> - ${u.ad} 
+                        <b style="color:var(--accent-gold);">LOT #${escapeHtml(u.lot)}</b> - ${escapeHtml(u.ad)} 
                         <span style="color:#34d399; font-weight:bold;">(${formatFiyat(u.fiyat)})</span>
                     </div>
-                    <button class="btn-bid btn-action-green" style="padding:2px 5px; font-size:8px; white-space:nowrap; width:auto;" onclick="urunSecManuel(${u.id})">Teklif</button>
+                    <button class="btn-bid btn-action-green" style="padding:2px 5px; font-size:8px; white-space:nowrap; width:auto;" onclick="urunSecManuel(${encodeURIComponent(u.id)})">Teklif</button>
                 `;
                 listeDiv.appendChild(div);
             });
@@ -1464,7 +1574,10 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ musteri_id: kullaniciId, urun_id: secilenArsivUrunId })
-        }).then(r => r.json()).then(res => { alert(res.mesaj); sepetAdediGuncelle(); });
+        }).then(r => r.json()).then(res => { 
+            alert(res.mesaj); 
+            sepetAdediGuncelle(); 
+        });
     }
 
     function katalogUrununuTakipEt() {
@@ -1511,12 +1624,20 @@
     }
 
     function canliDurumuGetirHafif() {
-        fetch(`/canli-durum?dukkan=${aktifDukkan}`).then(res => res.json()).then(data => {
+        fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}`).then(res => res.json()).then(data => {
             if (!data) return;
             let gelenPey = parseFloat(data.pey || (data.aktif_urun ? data.aktif_urun.guncel_fiyat : 0));
             sonGorulenPey = gelenPey;
             document.getElementById('currentBid').innerText = Math.round(gelenPey).toLocaleString('tr-TR');
             document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
+            
+            if (data.kalan_sayac !== undefined && data.kalan_sayac > 0) {
+                const digits = document.getElementById('timerDigits');
+                const dial = document.getElementById('futuristicDial');
+                if (digits) digits.innerText = String(data.kalan_sayac).padStart(2, '0');
+                if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (data.kalan_sayac / 60));
+            }
+
             if (!secilenArsivUrunId) {
                 sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
             }
@@ -1528,10 +1649,12 @@
         let ad = localStorage.getItem('halic_antik_ad');
         let id = localStorage.getItem('halic_antik_id');
         let tel = localStorage.getItem('halic_antik_tel');
+        let mail = localStorage.getItem('halic_antik_mail');
         if(ad && ad !== "null" && ad !== "undefined") {
             kullaniciAdi = ad.replace(/^\[.*?\]\s*/, '').trim();
             kullaniciId = id ? parseInt(id) : null;
             kullaniciTel = tel || "";
+            kullaniciMail = mail || "";
             document.getElementById('aktifKullaniciGosterge').innerText = kullaniciAdi;
             sepetAdediGuncelle();
         }
@@ -1565,12 +1688,12 @@
                 if (tickerStream) {
                     const item = document.createElement('div');
                     item.className = 'pey-ticker-oge';
-                    item.innerHTML = `<b>${kisi}</b> <span>${formatFiyat(fiyat)}</span> •`;
-                    tickerStream.prepend(item);
+                    item.innerHTML = `<b>${escapeHtml(kisi)}</b> <span>${formatFiyat(fiyat)}</span> •`;
+                    tickerStream.appendChild(item);
 
                     const tumOgeler = tickerStream.getElementsByClassName('pey-ticker-oge');
-                    while (tumOgeler.length > 2) {
-                        tickerStream.removeChild(tumOgeler[tumOgeler.length - 1]);
+                    if (tumOgeler.length > 5) {
+                        tumOgeler[0].remove();
                     }
                 }
             }
@@ -1653,7 +1776,7 @@
                 soldBanner.style.display = 'block';
                 if (satildi) {
                     soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
-                    soldBanner.innerHTML = `🎉 SATILDI: <span>${data.kazanan}</span> (${formatFiyat(data.fiyat || 0)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
+                    soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(data.kazanan)}</span> (${formatFiyat(data.fiyat || 0)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
                     if (statusTitle) statusTitle.innerText = "🔨 SATILDI!";
                 } else {
                     soldBanner.style.background = 'linear-gradient(90deg, #334155, #475569, #334155)';
@@ -1697,6 +1820,12 @@
             if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
             if (btnSerbest) btnSerbest.classList.add('btn-disabled-sold');
             if (btnHemenAl) btnHemenAl.classList.add('btn-disabled-sold');
+            
+            if (hlsInstance) {
+                hlsInstance.detachMedia();
+                hlsInstance.destroy();
+                hlsInstance = null;
+            }
             let medyaDiv = document.getElementById('medyaKapsayici');
             medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
             sonYuklenenSahneMedyaUrl = null;
@@ -1717,7 +1846,7 @@
             sahnedekiUrunSatildiMi = true;
             soldBanner.style.display = 'block';
             soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
-            soldBanner.innerHTML = `🎉 SATILDI: <span>${kazananKisi || 'Alıcı'}</span> (${formatFiyat(aktifPey)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
+            soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(kazananKisi || 'Alıcı')}</span> (${formatFiyat(aktifPey)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
             document.getElementById('timerStatusTitle').innerText = "🔨 SATILDI";
             if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
             if (btnSerbest) btnSerbest.classList.add('btn-disabled-sold');
@@ -1739,6 +1868,7 @@
         }
 
         aktifUrunMedyalari = [];
+        if (urunObj.canli_yayin_hls) aktifUrunMedyalari.push({ tip: 'hls', url: urunObj.canli_yayin_hls });
         if (urunObj.video) aktifUrunMedyalari.push({ tip: 'video', url: urunObj.video });
         if (urunObj.fotograflar && Array.isArray(urunObj.fotograflar)) {
             urunObj.fotograflar.forEach(f => { if (f && f.trim()) aktifUrunMedyalari.push({ tip: 'foto', url: f.trim() }); });
@@ -1747,7 +1877,7 @@
         if (aktifUrunMedyalari.length > 1) {
             thumbsDiv.style.display = 'flex';
             thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => `
-                <img src="${m.tip === 'video' ? '/static/img/video-icon.png' : m.url}" class="thumb-item ${idx === 0 ? 'active' : ''}" onclick="medyaDegistir(${idx})">
+                <img src="${(m.tip === 'video' || m.tip === 'hls') ? '/static/img/video-icon.png' : m.url}" class="thumb-item ${idx === 0 ? 'active' : ''}" onclick="medyaDegistir(${idx})">
             `).join('');
         } else {
             thumbsDiv.style.display = 'none';
@@ -1756,6 +1886,11 @@
         if (aktifUrunMedyalari.length > 0) {
             medyaGoster(aktifUrunMedyalari[0]);
         } else {
+            if (hlsInstance) {
+                hlsInstance.detachMedia();
+                hlsInstance.destroy();
+                hlsInstance = null;
+            }
             let medyaDiv = document.getElementById('medyaKapsayici');
             medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📷 Görsel Eklenmemiş</p>';
             sonYuklenenSahneMedyaUrl = null;
@@ -1771,14 +1906,48 @@
     }
 
     function medyaGoster(medya) {
-        let medyaDiv = document.getElementById('medyaKapsayici');
         if (medya.url === sonYuklenenSahneMedyaUrl) return;
         sonYuklenenSahneMedyaUrl = medya.url;
+
+        let medyaDiv = document.getElementById('medyaKapsayici');
+
+        if (hlsInstance) {
+            hlsInstance.detachMedia();
+            hlsInstance.destroy();
+            hlsInstance = null;
+        }
+
         medyaDiv.innerHTML = "";
-        if (medya.tip === 'video') {
+
+        if (medya.tip === 'hls' || (typeof medya.url === 'string' && medya.url.endsWith('.m3u8'))) {
             let v = document.createElement('video');
-            v.id = "stageVideo"; v.src = medya.url;
-            v.autoplay = true; v.loop = true; v.muted = true;
+            v.id = "stageVideo";
+            v.autoplay = true;
+            v.muted = true;
+            v.playsInline = true;
+            v.controls = false;
+            medyaDiv.appendChild(v);
+
+            if (Hls.isSupported()) {
+                hlsInstance = new Hls({ 
+                    enableWorker: true, 
+                    lowLatencyMode: true,
+                    backBufferLength: 30
+                });
+                hlsInstance.loadSource(medya.url);
+                hlsInstance.attachMedia(v);
+                hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(e => {}));
+            } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+                v.src = medya.url;
+                v.addEventListener('loadedmetadata', () => v.play().catch(e => {}));
+            }
+        } else if (medya.tip === 'video') {
+            let v = document.createElement('video');
+            v.id = "stageVideo"; 
+            v.src = medya.url;
+            v.autoplay = true; 
+            v.loop = true; 
+            v.muted = true;
             v.playsInline = true;
             medyaDiv.appendChild(v);
             v.play().catch(e=>{});
@@ -1791,39 +1960,46 @@
     }
 
     function kullaniciGirisKontrol() {
-        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)" || kullaniciAdi === "Misafir") {
+        if (!kullaniciId || !kullaniciAdi || kullaniciAdi === "Misafir") {
             document.getElementById('authRegisterModal').style.display = 'flex';
             return false;
         }
         return true;
     }
 
-    function yuzdeOnPeyVer() {
-        playUserClickSound();
-        if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
-        peyGonder(0);
-    }
-
     function asgariArtisHesapla(mevcutFiyat) {
         if (mevcutFiyat < 1000) return 50;
         if (mevcutFiyat < 2000) return 100;
-        return 200;
+        if (mevcutFiyat < 5000) return 250;
+        return 500;
+    }
+
+    function yuzdeOnPeyVer() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
+        
+        let current = sonGorulenPey || 0;
+        let yuzdeOnArtis = Math.round(current * 0.10);
+        let minArtis = asgariArtisHesapla(current);
+        let gercekArtis = Math.max(yuzdeOnArtis, minArtis);
+        let yeniTeklif = current + gercekArtis;
+
+        peyGonder(yeniTeklif);
     }
 
     function serbestPeyVer() {
         playUserClickSound();
         if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         
-        let currentText = document.getElementById('currentBid').innerText;
-        let current = parseFloat(currentText.replace(/\./g, '').replace(/[^0-9]/g, '')) || 0;
+        let current = sonGorulenPey || 0;
         let gerekenArtis = asgariArtisHesapla(current);
         let minKabulFiyat = current + gerekenArtis;
         
-        let miktar = prompt(`Mevcut Fiyat: ${current.toLocaleString('tr-TR')} TL\nMinimum Teklif: ${minKabulFiyat.toLocaleString('tr-TR')} TL\n\nTeklifinizi yazın:`);
+        let miktar = prompt(`Mevcut Fiyat: ${current.toLocaleString('tr-TR')} TL\nMinimum Teklif: ${minKabulFiyat.toLocaleString('tr-TR')} TL\n\nTeklifinizi yazın (TL):`);
         if (!miktar) return;
         
         let tutar = parseFloat(miktar.replace(/\./g, '').replace(/,/g, '.'));
-        if (isNaN(tutar) || tutar < minKabulFiyat) return alert("Geçersiz teklif tutarı!");
+        if (isNaN(tutar) || tutar < minKabulFiyat) return alert("Geçersiz teklif tutarı! En az " + minKabulFiyat.toLocaleString('tr-TR') + " TL olmalıdır.");
 
         let fahisLimit = current > 0 ? (current * 5) : (minKabulFiyat * 5);
         if (tutar >= fahisLimit) {
@@ -1831,13 +2007,9 @@
                 `⚠️ DİKKAT: YÜKSEK BİR TEKLİF YAZDINIZ!\n\n` +
                 `Mevcut Teklif: ${current.toLocaleString('tr-TR')} TL\n` +
                 `Sizin Girdiğiniz: ${tutar.toLocaleString('tr-TR')} TL\n\n` +
-                `Bu teklif mevcut fiyatın 5 katından fazladır. Klavye veya sıfır hatası yapmış olabilirsiniz.\n\n` +
-                `Bu teklifi ONAYLIYOR MUSUNUZ?`
+                `Bu teklif mevcut fiyatın 5 katından fazladır. Onaylıyor musunuz?`
             );
-            if (!onay) {
-                alert("Teklif iptal edildi. Lütfen tutarı kontrol ederek tekrar deneyiniz.");
-                return;
-            }
+            if (!onay) return;
         }
 
         peyGonder(tutar);
@@ -1852,23 +2024,25 @@
             body: JSON.stringify({ 
                 dukkan: aktifDukkan,
                 urun_id: aktifSahneUrunId, 
-                musteri_id: kullaniciId, 
-                musteri_adi: kullaniciAdi, 
+                musteri_id: kullaniciId,
+                musteri_adi: kullaniciAdi,
                 telefon: kullaniciTel,
                 miktar: miktar, 
                 islem: 'pey' 
             })
         }).then(res => res.json()).then(d => {
             if(!d.success) alert(d.mesaj || "Pey verilemedi!");
-        }).finally(() => { setTimeout(() => { peyGonderiliyorMu = false; }, 800); });
+        }).catch(err => {
+            alert("Bağlantı hatası: Pey gönderilemedi.");
+        }).finally(() => { 
+            setTimeout(() => { peyGonderiliyorMu = false; }, 800); 
+        });
     }
 
     function hemenAl() {
         playUserClickSound();
         if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
-        let currentText = document.getElementById('currentBid').innerText;
-        let mevcutPey = parseFloat(currentText.replace(/\./g, '').replace(/[^0-9]/g, '')) || sonGorulenPey || 0;
-        let dinamikBedel = dinamikHemenAlFiyatiHesapla(mevcutPey, aktifHemenAlStatik);
+        let dinamikBedel = dinamikHemenAlFiyatiHesapla(sonGorulenPey, aktifHemenAlStatik);
         if (!confirm(`Bu ürünü ${dinamikBedel.toLocaleString('tr-TR')} TL bedelle HEMEN SATIN ALMAK istiyor musunuz?`)) return;
         fetch('/pey-ver', {
             method: 'POST',
@@ -1876,8 +2050,8 @@
             body: JSON.stringify({ 
                 dukkan: aktifDukkan,
                 urun_id: aktifSahneUrunId, 
-                musteri_id: kullaniciId, 
-                musteri_adi: kullaniciAdi, 
+                musteri_id: kullaniciId,
+                musteri_adi: kullaniciAdi,
                 telefon: kullaniciTel,
                 miktar: dinamikBedel, 
                 islem: 'hemen_al' 
@@ -1900,19 +2074,24 @@
         }).then(r => r.json()).then(res => alert(res.mesaj));
     }
 
-    function openSepetModal() { playUserClickSound(); if (!kullaniciGirisKontrol()) return; document.getElementById('sepetModal').style.display = 'flex'; sepetVerileriniGetir(); }
+    function openSepetModal() { 
+        playUserClickSound(); 
+        if (!kullaniciGirisKontrol()) return; 
+        document.getElementById('sepetModal').style.display = 'flex'; 
+        sepetVerileriniGetir(); 
+    }
+    
     function sepetAdediGuncelle() {
-        let hedefId = kullaniciId || 0;
-        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
-        fetch(`/sepet-getir/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+        if (!kullaniciId && !kullaniciAdi) return;
+        const targetUrl = kullaniciId ? `/sepet-getir/${kullaniciId}` : `/sepet-getir/0?ad=${encodeURIComponent(kullaniciAdi)}`;
+        fetch(targetUrl).then(r => r.json()).then(res => {
             if (res.success && res.urunler) document.getElementById('sepetAdet').innerText = res.urunler.length;
         }).catch(e=>{});
     }
 
     function sepetVerileriniGetir() {
-        let hedefId = kullaniciId || 0;
-        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
-        fetch(`/sepet-getir/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+        const targetUrl = kullaniciId ? `/sepet-getir/${kullaniciId}` : `/sepet-getir/0?ad=${encodeURIComponent(kullaniciAdi)}`;
+        fetch(targetUrl).then(r => r.json()).then(res => {
             const listDiv = document.getElementById('sepetUrunlerListesi');
             if (!res.success || !res.urunler || res.urunler.length === 0) {
                 listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:9px; padding:8px 0;">Sepetiniz boş.</p>';
@@ -1930,28 +2109,33 @@
             document.getElementById('sepetGenelToplam').innerText = formatFiyat(res.genel_toplam);
             let html = '<table class="table-custom"><thead><tr><th>Lot</th><th>Ürün Adı</th><th>Tutar</th></tr></thead><tbody>';
             res.urunler.forEach(item => {
-                html += `<tr><td><b>#${item.lot}</b></td><td>${item.ad}</td><td style="color:#34d399; font-weight:bold;">${formatFiyat(item.fiyat)}</td></tr>`;
+                html += `<tr><td><b>#${escapeHtml(item.lot)}</b></td><td>${escapeHtml(item.ad)}</td><td style="color:#34d399; font-weight:bold;">${formatFiyat(item.fiyat)}</td></tr>`;
             });
             html += '</tbody></table>';
             listDiv.innerHTML = html;
         });
     }
 
-    function openGecmisModal() { playUserClickSound(); if (!kullaniciGirisKontrol()) return; document.getElementById('gecmisModal').style.display = 'flex'; gecmisVerileriniGetir(); }
+    function openGecmisModal() { 
+        playUserClickSound(); 
+        if (!kullaniciGirisKontrol()) return; 
+        document.getElementById('gecmisModal').style.display = 'flex'; 
+        gecmisVerileriniGetir(); 
+    }
+    
     function gecmisVerileriniGetir() {
-        let hedefId = kullaniciId || 0;
-        let temizAd = (kullaniciAdi || '').replace(/^\[.*?\]\s*/, '').trim();
-        fetch(`/siparis-gecmisi/${hedefId}?ad=${encodeURIComponent(temizAd)}`).then(r => r.json()).then(res => {
+        const targetUrl = kullaniciId ? `/sepet-getir/${kullaniciId}` : `/sepet-getir/0?ad=${encodeURIComponent(kullaniciAdi)}`;
+        fetch(targetUrl).then(r => r.json()).then(res => {
             const listDiv = document.getElementById('gecmisUrunlerListesi');
-            if (!res.success || !res.gecmis || res.gecmis.length === 0) {
-                listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:9px; padding:8px 0;">Satın alma bulunmuyor.</p>';
+            if (!res.success || !res.urunler || res.urunler.length === 0) {
+                listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:9px; padding:8px 0;">Satın alma geçmişiniz bulunmuyor.</p>';
                 document.getElementById('gecmisToplamHarcama').innerText = formatFiyat(0);
                 return;
             }
-            document.getElementById('gecmisToplamHarcama').innerText = formatFiyat(res.toplam_harcama);
+            document.getElementById('gecmisToplamHarcama').innerText = formatFiyat(res.ara_toplam);
             let html = '<table class="table-custom"><thead><tr><th>Lot</th><th>Ürün</th><th>Fiyat</th></tr></thead><tbody>';
-            res.gecmis.forEach(item => {
-                html += `<tr><td>#${item.lot}</td><td>${item.ad}</td><td style="color:var(--accent-gold); font-weight:bold;">${formatFiyat(item.fiyat)}</td></tr>`;
+            res.urunler.forEach(item => {
+                html += `<tr><td>#${escapeHtml(item.lot)}</td><td>${escapeHtml(item.ad)}</td><td style="color:var(--accent-gold); font-weight:bold;">${formatFiyat(item.fiyat)}</td></tr>`;
             });
             html += '</tbody></table>';
             listDiv.innerHTML = html;
@@ -1983,13 +2167,18 @@
             body: JSON.stringify({ 
                 dukkan: aktifDukkan,
                 urun_id: urunId, 
-                musteri_id: kullaniciId, 
-                musteri_adi: kullaniciAdi, 
+                musteri_id: kullaniciId,
+                musteri_adi: kullaniciAdi,
                 teklif: teklifMiktari 
             })
         }).then(res => res.json()).then(d => {
-            if (d.success) { alert("Ön teklif kaydedildi."); document.getElementById('onTeklifMiktari').value = ""; katalogKapat(); }
-            else alert(d.mesaj);
+            if (d.success) { 
+                alert(d.mesaj || "Ön teklif başarıyla kaydedildi."); 
+                document.getElementById('onTeklifMiktari').value = ""; 
+                katalogKapat(); 
+            } else {
+                alert(d.mesaj);
+            }
         });
     }
 
@@ -1999,18 +2188,27 @@
         let tel = document.getElementById('k_tel').value.trim();
         let mail = document.getElementById('k_mail').value.trim();
         let adres = document.getElementById('k_adres').value.trim();
-        if(!ad || !tel) return alert("Ad ve Telefon zorunludur!");
+        
+        if(!ad) return alert("Ad Soyad alanı zorunludur!");
+        if(!tel) return alert("Telefon alanı zorunludur!");
+        if(!mail || !mail.includes('@') || !mail.includes('.')) return alert("Geçerli bir E-posta adresi zorunludur!");
+
         fetch('/kayit-ol', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ad, tel, mail, adres, sozlesme: true })
         }).then(res => res.json()).then(d => {
             alert(d.mesaj || "Kayıt tamamlandı.");
-            kullaniciAdi = ad; kullaniciTel = tel;
+            kullaniciAdi = ad; 
+            kullaniciTel = tel;
+            kullaniciMail = mail;
             if(d.musteri_id) kullaniciId = d.musteri_id;
+            
             localStorage.setItem('halic_antik_ad', ad);
             localStorage.setItem('halic_antik_tel', tel);
+            localStorage.setItem('halic_antik_mail', mail);
             if(d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
+            
             document.getElementById('aktifKullaniciGosterge').innerText = ad;
             closeModal('authRegisterModal');
             sepetAdediGuncelle();
@@ -2019,11 +2217,12 @@
 
     function openRegisterModal() {
         playUserClickSound();
-        if (!kullaniciAdi || kullaniciAdi === "Ziyaretçi (Gözlemci)" || kullaniciAdi === "Misafir") {
+        if (!kullaniciGirisKontrol()) {
             document.getElementById('authRegisterModal').style.display = 'flex';
         } else {
             document.getElementById('p_ad').value = kullaniciAdi;
             document.getElementById('p_tel').value = kullaniciTel || '';
+            document.getElementById('p_mail').value = kullaniciMail || '';
             document.getElementById('profileModal').style.display = 'flex';
         }
     }
@@ -2034,7 +2233,8 @@
         let tel = document.getElementById('p_tel').value.trim();
         let mail = document.getElementById('p_mail').value.trim();
         let adres = document.getElementById('p_adres').value.trim();
-        if (!yeniAd) return;
+        if (!yeniAd || !tel) return alert("Ad ve telefon zorunludur.");
+
         fetch('/kayit-ol', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -2042,19 +2242,23 @@
         }).then(res => res.json()).then(d => {
             localStorage.setItem('halic_antik_ad', yeniAd);
             localStorage.setItem('halic_antik_tel', tel);
-            kullaniciAdi = yeniAd; kullaniciTel = tel;
+            localStorage.setItem('halic_antik_mail', mail);
+            kullaniciAdi = yeniAd; 
+            kullaniciTel = tel;
+            kullaniciMail = mail;
             document.getElementById('aktifKullaniciGosterge').innerText = yeniAd;
             closeModal('profileModal');
-            alert("Profil güncellendi.");
+            alert("Profil başarıyla güncellendi.");
             sepetAdediGuncelle();
         });
     }
 
     function hesabiTamamenSil() {
-        if (!confirm("Hesabınızı sıfırlamak istiyor musunuz?")) return;
+        if (!confirm("Hesap ve tarayıcı oturum verilerinizi sıfırlamak istiyor musunuz?")) return;
         localStorage.removeItem('halic_antik_ad');
         localStorage.removeItem('halic_antik_id');
         localStorage.removeItem('halic_antik_tel');
+        localStorage.removeItem('halic_antik_mail');
         location.reload();
     }
 
@@ -2063,31 +2267,57 @@
         let tur = document.getElementById('fb_tur').value;
         let konu = document.getElementById('fb_konu').value.trim();
         let mesaj = document.getElementById('fb_mesaj').value.trim();
-        if(!konu || !mesaj) return alert("Lütfen alanları doldurun!");
-        fetch('/sikayet-oneri-gonder', {
+        if(!konu || !mesaj) return alert("Lütfen konu ve mesaj alanlarını doldurun!");
+
+        fetch('/api/chat/mesaj-gonder', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ musteri_adi: kullaniciAdi || 'Misafir', tur, konu, mesaj })
+            body: JSON.stringify({ 
+                dukkan: aktifDukkan, 
+                kullanici: kullaniciAdi || "Misafir", 
+                mesaj: `[${tur} - ${konu}]: ${mesaj}`,
+                platform: 'İtiraz/Görüş'
+            })
         }).then(res => res.json()).then(d => {
-            alert(d.mesaj || "İletildi.");
+            alert("Bildiriminiz mezat yönetimine iletildi.");
             closeModal('feedbackModal');
         });
     }
 
     function openFeedbackModal() { playUserClickSound(); document.getElementById('feedbackModal').style.display = 'flex'; }
-    function openPosModal() { playUserClickSound(); document.getElementById('posModal').style.display = 'flex'; }
+    
+    function sepettenOdemeyeGec() {
+        closeModal('sepetModal');
+        openPosModalDirect();
+    }
+
+    function openPosModalDirect() {
+        playUserClickSound();
+        if (!kullaniciGirisKontrol()) return;
+
+        fetch('/odeme-baslat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                musteri_id: kullaniciId,
+                ad: kullaniciAdi,
+                tel: kullaniciTel
+            })
+        }).then(r => r.json()).then(res => {
+            if (res.success && res.yonlendir) {
+                window.location.href = res.yonlendir;
+            } else {
+                alert(res.mesaj || "Ödeme başlatılamadı.");
+            }
+        }).catch(() => {
+            alert("Ödeme servisiyle bağlantı kurulamadı.");
+        });
+    }
+
     function closeModal(id) { playUserClickSound(); document.getElementById(id).style.display = 'none'; }
 
     function sesliDinle() {
         playUserClickSound();
-        let metin = document.getElementById('tanitimMetni').innerText;
-        if(!metin || metin.includes("bulunmamaktadır")) return;
-        if('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            let u = new SpeechSynthesisUtterance(metin);
-            u.lang = 'tr-TR';
-            window.speechSynthesis.speak(u);
-        }
     }
 
     var tag = document.createElement('script');

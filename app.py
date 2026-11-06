@@ -1,20 +1,29 @@
+from gevent import monkey
+monkey.patch_all(thread=False, ssl=False)
+
+try:
+    import psycogreen.gevent
+    psycogreen.gevent.patch_psycopg()
+except Exception:
+    pass
+
 # ==========================================
 # GEVENT VE ASENKRON MOTOR (EN BAŞTA OLMALI)
 # ==========================================
 from datetime import datetime, timezone
 import functools
-from gevent import monkey
 import hashlib
 import io
 import json
 import csv
 import logging
 import os
+import random
 from queue import Queue
 import re
-import subprocess
 import time
 import uuid
+import html
 
 from flask import (
     Flask,
@@ -40,19 +49,11 @@ from werkzeug.utils import secure_filename
 
 # Servis Katmanı
 from bizimhesap_service import bizimhesap_siparis_aktar
+from config import Config
 
 # Yükleme klasörünü garantiye al
 UPLOADS_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
-
-# Windows SSL uyarılarını ve kilitlenmeyi engellemek için:
-monkey.patch_all(thread=False, ssl=False)
-
-try:
-    import psycogreen.gevent
-    psycogreen.gevent.patch_psycopg()
-except Exception:
-    pass
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
@@ -139,6 +140,237 @@ socketio = SocketIO(
 
 totp = pyotp.TOTP(ADMIN_2FA_SECRET)
 BOT_API_URL = "http://127.0.0.1:5005"
+
+
+# ==========================================
+# SES: app.py üretmez. Anons 5005 canli_bot.py kuyruğuna gider.
+# ==========================================
+def get_server_synthesizer():
+    return None
+
+
+def _yerel_ahmet_sesi(metin):
+    return None
+
+
+def ahmet_usta_anons_yap(dukkan, metin, yedek_dene=True):
+    """Yerel sentez yok. Cümleyi 5005 portundaki bota okutur."""
+    temiz = str(metin or "").strip()
+    if not temiz:
+        return
+    bota_haber_ver("yorum_oku", {"anons": temiz, "dukkan": dukkan})
+
+
+AHMET_NIDALARI = (
+    "Aman efendim nefesler tutuldu, şu eserin güzelliğine bakın!",
+    "Peyler havada uçuşuyor, yetişen alıyor!",
+    "Durmayın beyler, bu güzellik kaçmaz, basan alır!",
+)
+_ahmet_nida_sirasi = 0
+
+
+def ahmet_nida_sec():
+    global _ahmet_nida_sirasi
+    metin = AHMET_NIDALARI[_ahmet_nida_sirasi % len(AHMET_NIDALARI)]
+    _ahmet_nida_sirasi += 1
+    return metin
+
+
+_TUTAR_BIRLER = {
+    "bir": 1, "iki": 2, "üç": 3, "uc": 3, "dört": 4, "dort": 4,
+    "beş": 5, "bes": 5, "altı": 6, "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9,
+    "sıfır": 0, "sifir": 0,
+}
+_TUTAR_ONLAR = {
+    "on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "kirk": 40, "elli": 50,
+    "altmış": 60, "altmis": 60, "yetmiş": 70, "yetmis": 70, "seksen": 80, "doksan": 90,
+}
+
+
+def turkce_tutar_coz(metin):
+    """Mesajın tamamı bir tutarsa rakama çevirir. 'yedi bin' -> 7000, '10 bin' -> 10000."""
+    if not metin:
+        return None
+    ham = str(metin).lower().replace("₺", " ")
+    for cop in ("liradır", "liradir", "lira", "tl", "peydir", "pey"):
+        ham = re.sub(rf"\b{cop}\b", " ", ham)
+    ham = ham.replace("yedibin", "yedi bin").replace("sekizyuz", "sekiz yüz").replace("sekizyüz", "sekiz yüz")
+    ham = re.sub(r"([a-zçğıöşü])(milyon|bin|yüz|yuz)\b", r"\1 \2", ham)
+    ham = re.sub(r"(\d+)\s*bin\b", lambda m: str(int(m.group(1)) * 1000), ham)
+    ham = re.sub(r"(\d+)\s*yüz\b", lambda m: str(int(m.group(1)) * 100), ham)
+    ham = re.sub(r"(\d+)\s*yuz\b", lambda m: str(int(m.group(1)) * 100), ham)
+    ham = re.sub(r"\s+", " ", ham).strip()
+    if not ham:
+        return None
+    if re.fullmatch(r"[\d.,\s]+", ham):
+        birlesik = re.sub(r"[^\d]", "", ham)
+        return float(birlesik) if birlesik else None
+
+    toplam, gecici = 0, 0
+    for k in re.findall(r"[a-zçğıöşü0-9]+", ham):
+        if k.isdigit():
+            gecici += int(k)
+        elif k in _TUTAR_BIRLER:
+            gecici += _TUTAR_BIRLER[k]
+        elif k in _TUTAR_ONLAR:
+            gecici += _TUTAR_ONLAR[k]
+        elif k in ("yüz", "yuz"):
+            gecici = (gecici or 1) * 100
+        elif k == "bin":
+            toplam += (gecici or 1) * 1000
+            gecici = 0
+        elif k == "milyon":
+            toplam += (gecici or 1) * 1_000_000
+            gecici = 0
+        else:
+            return None
+    sonuc = toplam + gecici
+    return float(sonuc) if sonuc > 0 else None
+
+
+def lira_okunusu(tutar):
+    n = int(round(float(tutar or 0)))
+    if n >= 1000:
+        binler, kalan = divmod(n, 1000)
+        if kalan:
+            return f"{binler} bin {kalan}"
+        return f"{binler} bin"
+    return str(n)
+
+
+def ahmet_hitap(isim):
+    temiz = re.sub(r"\[[^\]]*\]", "", str(isim or "")).strip() or "Bir beyefendi"
+    if re.search(r"\b(bey|hanım|hanim)\b", temiz, re.IGNORECASE):
+        return temiz
+    return f"{temiz} Bey"
+
+
+_son_pey_replik = ""
+PEY_KALIPLARI = (
+    "{hitap}'den harika bir hamle! {soz} lira geldi efendim, sahnede ateş yanıyor!",
+    "Bakıyorum salon hareketlendi, {hitap} çıtayı {soz} liraya koydu! Yok mu üzerine çıkan?",
+    "{soz} lira sesi geldi! {hitap} eseri gözüne kestirmiş görünüyor, kaptıracak mıyız beyler?",
+    "Münadimizden {soz} lira pey! Değerini bilen hemen yapıştırıyor, buyrunuz efendim!",
+    "{hitap} eli açık davrandı, {soz} liraya el bastı! Son saniyeler, kaçıran üzülür!",
+    "{eser} için {hitap} {soz} lirayı yapıştırdı! Tempo {tempo}, durmak yok!",
+    "Duydunuz mu, {soz} lira! {hitap} masayı ısıttı, haydi bir el daha!",
+    "{hitap} {tempo} geldi: {soz} lira! {eser} hâlâ sahnede!",
+    "Şu {eser} kıpırdadı! {hitap} {soz} lirayla öne geçti, var mı süren?",
+    "Aman diyeyim {soz} lirayı kaçırmayın! {hitap} niyeti belli, eser ona mı kalacak?",
+    "{hitap} cüzdanı açtı, {soz} lira dedi! {eser} bu fiyata gülüyor, artıran var mı?",
+    "Salon bir anda ısındı, {soz} lira! {hitap} rüzgarı kesti, peşinden gelen var mı?",
+    "{eser} için yeni ses: {soz} lira, sahibi {hitap}! Gitti gidiyor, vah vah demeyin!",
+    "{hitap} {tempo} bir pey bıraktı, tam {soz} lira! Kim tutacak bu eseri?",
+    "Bakın bakın, {soz} lira konuştu! {hitap} {eser} için dayandı, üstüne var mı?",
+)
+
+
+def _pey_temposu(tutar, onceki):
+    try:
+        simdi = float(tutar or 0)
+        eski = float(onceki or 0)
+    except (TypeError, ValueError):
+        return "taze taze"
+    if eski <= 0:
+        return "açılıştan"
+    oran = (simdi - eski) / eski
+    if oran >= 0.25:
+        return "bir anda sıçrayarak"
+    if oran >= 0.10:
+        return "peş peşe"
+    return "usul usul"
+
+
+def ahmet_pey_anonsu(kullanici, tutar, urun_adi="", onceki=None):
+    global _son_pey_replik
+    hitap = ahmet_hitap(kullanici)
+    soz = lira_okunusu(tutar)
+    eser = (urun_adi or "").strip() or "eser"
+    tempo = _pey_temposu(tutar, onceki)
+    adaylar = [
+        kalip.format(hitap=hitap, soz=soz, eser=eser, tempo=tempo)
+        for kalip in PEY_KALIPLARI
+    ]
+    havuz = [satir for satir in adaylar if satir != _son_pey_replik] or adaylar
+    secim = random.choice(havuz)
+    _son_pey_replik = secim
+    return secim
+
+
+def ahmet_usta_ekranda_yaz(dukkan, metin):
+    socketio.emit(
+        "yeni_canli_yorum",
+        {
+            "platform": "Ahmet Usta AI",
+            "kullanici": "[Ahmet Usta]",
+            "mesaj": metin,
+            "zaman": time.strftime("%H:%M:%S"),
+            "dukkan": dukkan,
+        },
+        room=dukkan,
+    )
+
+
+def ahmet_yanitini_yayinla(dukkan, metin):
+    """Yalnızca Ahmet'in kendi cümlesini yazar ve seslendirir. Ham izleyici metni okunmaz."""
+    temiz = re.sub(r"[\*#_]", "", str(metin or "")).strip().strip('"')
+    if not temiz:
+        temiz = ahmet_nida_sec()
+    ahmet_usta_ekranda_yaz(dukkan, temiz)
+    ahmet_usta_anons_yap(dukkan, temiz)
+
+
+# ==========================================
+# AHMET USTA AI YORUM CEVAPLAMA MOTORU (GEMINI)
+# ==========================================
+def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
+    def _cevapla():
+        try:
+            print(f"💬 Gelen yorum işleniyor [{dukkan}]: {kullanici} -> {mesaj}")
+            from google import genai
+            gemini_key = Config.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+            if not gemini_key:
+                print("❌ GEMINI_API_KEY ortam değişkeni bulunamadı.")
+                ahmet_yanitini_yayinla(dukkan, ahmet_nida_sec())
+                return
+
+            oda = odalar.get(dukkan, {})
+            aktif_urun_id = oda.get("aktif_urun_id")
+            urun_bilgi = "Şu an sahnede aktif ürün bulunmamaktadır."
+
+            with app.app_context():
+                if aktif_urun_id:
+                    u = db.session.get(Urun, aktif_urun_id)
+                    if u:
+                        anlik = oda.get("durum", {}).get("pey") or u.guncel_fiyat or u.acilis_fiyati or 0
+                        urun_bilgi = (
+                            f"Ürün adı: {u.urun_adi}. "
+                            f"Başlangıç fiyatı: {int(float(u.acilis_fiyati or 0))} TL. "
+                            f"Anlık pey: {int(float(anlik or 0))} TL. "
+                            f"Açıklama: {u.tanitim_yazisi or 'Belirtilmedi'}."
+                        )
+
+            client = genai.Client(api_key=gemini_key)
+            prompt = f"""Sen Kapalıçarşı ve Çukurcuma görmüş, ağzı iyi laf yapan, tatlı dilli, şirinlik yapan, izleyiciye hafiften takılan, esprili ve satış kapıcı bir halk mezatçısısın. Adın Ahmet Usta. Resmi ve soğuk bir spiker değilsin.
+Kullanıcının sorusuna doğrudan, içten ve esprili cevap ver. Ürün bilgisini lafın içine yedir. En fazla 1-2 cümle, tek nefeste söylenecek canlı nida. Nutuk atma. İzleyicinin cümlesini papağan gibi tekrarlama. Sorudan bağımsız ezber mezat lafı söyleme.
+Örnek kıvam: "Hamdullah Bey canım ciğerim, seni gördük daha iyi olduk! Ama asıl şu sedef kakmaya bak, gözümüz bayram etti!" veya "Kaç para diye soran dostum, bu fiyata bedava, bakkaldan ekmek alamazsın, bas peyi kaçırma!"
+
+Aktif lot: {urun_bilgi}
+Kullanıcı Sorusu: {mesaj}"""
+
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+            cevap = re.sub(r"[\*#_]", "", (response.text or "")).strip().strip('"')
+            print(f"[Ahmet Usta]: {cevap}")
+            ahmet_yanitini_yayinla(dukkan, cevap or ahmet_nida_sec())
+
+        except Exception as e:
+            print(f"⚠️ Ahmet Usta Yorum Cevaplama Hatası: {e}")
+            ahmet_yanitini_yayinla(dukkan, ahmet_nida_sec())
+
+    socketio.start_background_task(_cevapla)
 
 
 def kademeli_min_artis(fiyat, dukkan="gumus"):
@@ -472,12 +704,9 @@ def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
     if not kazanan_adi or kazanan_adi in ["Yok", "None", "-", ""]:
         return
 
-    if (
-        not kazanan_id
-        and ("[" in kazanan_adi and "]" in kazanan_adi)
-        and not kazanan_adi.startswith("[Web]")
-    ):
-        return
+    if isinstance(kazanan_id, str):
+        kazanan_id = kazanan_id.strip()
+        kazanan_id = int(kazanan_id) if kazanan_id.isdigit() else None
 
     hedef_kullanici = None
     if kazanan_id:
@@ -489,7 +718,7 @@ def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
             return
         hedef_kullanici = (
             Kullanici.query.filter(
-                Kullanici.silindi_mi == False, Kullanici.ad_soyad.ilike(temiz_ad)
+                Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(temiz_ad)
             ).first()
         )
 
@@ -567,6 +796,9 @@ def dukkan_geri_sayim_gorevi(dukkan, gorev_id):
     # 2. AŞAMA: GÖRÜNÜR 60 SANİYE (Pey Karar Sayacı)
     oda["sayac_kalan"] = 60
     bota_haber_ver("son_dakika_basladi", {"dukkan": dukkan})
+    
+    guncel_tutar = int(oda["durum"]["pey"])
+    ahmet_usta_anons_yap(dukkan, f"Dikkat efendim! Son 60 saniye! Güncel teklif {guncel_tutar} lira, satıyorum!")
 
     socketio.emit(
         "sayac_baslat",
@@ -657,6 +889,11 @@ def dukkan_geri_sayim_gorevi(dukkan, gorev_id):
                 },
             )
 
+            if pey_var_mi:
+                ahmet_usta_anons_yap(dukkan, f"Sattım! {oda['durum']['kazanan']} beye hayırlı olsun!")
+            else:
+                ahmet_usta_anons_yap(dukkan, f"{DUKKANLAR[dukkan]['ad']} reyonunda süre doldu, pey gelmediği için eser ayrılmıştır.")
+
             bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
 
 
@@ -698,8 +935,10 @@ def dukkan_otonom_dongusu(dukkan):
 
             if not secilen_urun:
                 secilen_urun = (
-                    Urun.query.filter_by(
-                        dukkan_kodu=dukkan, durum="Aktif", silindi_mi=False
+                    Urun.query.filter(
+                        Urun.dukkan_kodu == dukkan,
+                        Urun.durum == "Aktif",
+                        Urun.silindi_mi.is_(False),
                     )
                     .order_by(Urun.lot_no.asc())
                     .first()
@@ -760,6 +999,9 @@ def dukkan_otonom_dongusu(dukkan):
                     "tanitim_yazisi": secilen_urun.tanitim_yazisi or "",
                 },
             )
+
+            anons_metni = f"{DUKKANLAR[dukkan]['ad']} reyonunda Lot {secilen_urun.lot_no}, {secilen_urun.urun_adi} sahnede! Açılışımız {int(acilis_fiyati)} lira."
+            ahmet_usta_anons_yap(dukkan, anons_metni)
 
             with oda_kilitleri[dukkan]:
                 oda["durum"]["sure_bitis"] = time.time() + 180
@@ -824,6 +1066,8 @@ def veritabani_tablolari_onar():
                     db.session.rollback()
         except Exception:
             pass
+        finally:
+            db.session.remove()
 
 
 @app.route("/static/uploads/<path:filename>")
@@ -886,7 +1130,7 @@ def vitrin_urunler():
         sorgu = Urun.query.filter(
             Urun.dukkan_kodu == dukkan,
             Urun.durum != "Satıldı",
-            Urun.silindi_mi == False,
+            Urun.silindi_mi.is_(False),
         )
 
         if kategori and kategori not in ["Tüm Kategoriler", ""]:
@@ -934,7 +1178,7 @@ def admin_urun_ara_api():
         sorgu = Urun.query.filter(
             Urun.dukkan_kodu == dukkan,
             Urun.durum != "Satıldı",
-            Urun.silindi_mi == False,
+            Urun.silindi_mi.is_(False),
         )
 
         if kategori and kategori != "Tüm Kategoriler":
@@ -1012,8 +1256,11 @@ def durum_getir():
         )
 
         urunler_db = (
-            Urun.query.filter_by(dukkan_kodu=dukkan, silindi_mi=False)
-            .filter(Urun.durum != "Satıldı")
+            Urun.query.filter(
+                Urun.dukkan_kodu == dukkan,
+                Urun.silindi_mi.is_(False),
+                Urun.durum != "Satıldı",
+            )
             .order_by(Urun.lot_no.asc())
             .limit(40)
             .all()
@@ -1021,7 +1268,7 @@ def durum_getir():
         urunler = [u.to_dict(hafif=True) for u in urunler_db]
 
         tum_kullanicilar = (
-            Kullanici.query.filter_by(silindi_mi=False)
+            Kullanici.query.filter(Kullanici.silindi_mi.is_(False))
             .order_by(Kullanici.id.desc())
             .limit(50)
             .all()
@@ -1047,7 +1294,7 @@ def durum_getir():
         satilan_urunler = (
             Urun.query.filter(
                 or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
-                Urun.silindi_mi == False,
+                Urun.silindi_mi.is_(False),
             )
             .order_by(Urun.id.desc())
             .limit(200)
@@ -1145,7 +1392,7 @@ def kategoriler_listesi():
     try:
         sonuclar = (
             db.session.query(Urun.kategori)
-            .filter(Urun.silindi_mi == False)
+            .filter(Urun.silindi_mi.is_(False))
             .filter(Urun.kategori.isnot(None))
             .filter(Urun.kategori != "")
             .distinct()
@@ -1182,7 +1429,13 @@ def kategoriler_listesi():
 def chat_mesaj_gonder():
     veri = request.json or {}
     dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
-    kullanici_id = veri.get("kullanici_id")
+    kullanici_id_raw = veri.get("kullanici_id")
+    kullanici_id = None
+    if kullanici_id_raw not in (None, "", "null"):
+        try:
+            kullanici_id = int(kullanici_id_raw)
+        except (TypeError, ValueError):
+            kullanici_id = None
     kullanici = (veri.get("kullanici") or "Ziyaretçi").strip()
     mesaj = (veri.get("mesaj") or "").strip()
     platform = veri.get("platform", "Web")
@@ -1191,35 +1444,74 @@ def chat_mesaj_gonder():
         return jsonify({"success": False, "mesaj": "Boş mesaj gönderilemez."}), 400
 
     if kullanici_id:
-        k_obj = db.session.get(Kullanici, int(kullanici_id))
+        k_obj = db.session.get(Kullanici, kullanici_id)
         if k_obj and k_obj.durum == "engellendi":
             return jsonify({"success": False, "mesaj": "Mesaj gönderme yetkiniz askıya alınmıştır."}), 403
 
     zaman_damgasi = time.strftime("%H:%M:%S")
 
-    socketio.emit(
-        "yeni_canli_yorum",
-        {
-            "platform": platform,
-            "kullanici": kullanici,
-            "mesaj": mesaj,
-            "zaman": zaman_damgasi,
-            "dukkan": dukkan,
-        },
-        room=dukkan,
-    )
+    yorum_verisi = {
+        "platform": platform,
+        "kullanici": kullanici,
+        "mesaj": mesaj,
+        "zaman": zaman_damgasi,
+        "dukkan": dukkan,
+    }
+    socketio.emit("yeni_canli_yorum", yorum_verisi, room=dukkan)
 
-    bota_haber_ver(
-        "canli_yorum",
-        {
-            "platform": platform,
-            "user": kullanici,
-            "comment": mesaj,
-            "dukkan": dukkan,
-        },
-    )
+    # Rakam veya Türkçe yazı tutarı: "7000", "10 bin", "yedi bin", "yedibin".
+    teklif_tutari = turkce_tutar_coz(mesaj)
 
-    return jsonify({"success": True})
+    oda = odalar[dukkan]
+    aktif_urun_id = oda.get("aktif_urun_id")
+
+    if teklif_tutari and teklif_tutari > 0 and aktif_urun_id:
+        try:
+            mevcut_fiyat = float(oda["durum"].get("pey", 0) or 0)
+
+            if teklif_tutari > mevcut_fiyat:
+                with oda_kilitleri[dukkan]:
+                    etiket_ad = f"[{platform}] {kullanici}"
+                    oda["durum"]["pey"] = teklif_tutari
+                    oda["durum"]["kazanan"] = etiket_ad
+                    oda["durum"]["kazanan_id"] = kullanici_id
+
+                    urun = db.session.get(Urun, aktif_urun_id)
+                    urun_adi = urun.urun_adi if urun else ""
+                    if urun:
+                        urun.guncel_fiyat = teklif_tutari
+                        urun.kazanan_adi = etiket_ad
+                        urun.kazanan_id = kullanici_id
+                        db.session.add(urun)
+
+                        yeni_teklif = Teklif(
+                            dukkan_kodu=dukkan,
+                            urun_id=urun.id,
+                            musteri_id=kullanici_id,
+                            musteri_adi=etiket_ad,
+                            tutar=teklif_tutari,
+                        )
+                        db.session.add(yeni_teklif)
+                        db.session.commit()
+
+                    guncelleme = {
+                        "dukkan": dukkan,
+                        "urun_id": aktif_urun_id,
+                        "pey": teklif_tutari,
+                        "kazanan": etiket_ad,
+                        "kazanan_id": kullanici_id,
+                    }
+                    socketio.emit("pey_guncellendi", guncelleme, room=dukkan)
+
+                anons = ahmet_pey_anonsu(kullanici, teklif_tutari, urun_adi, mevcut_fiyat)
+                ahmet_yanitini_yayinla(dukkan, anons)
+                return jsonify({"success": True, "tip": "pey"})
+        except Exception as e:
+            db.session.rollback()
+            print(f"Pey işleme hatası: {e}")
+
+    ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj)
+    return jsonify({"success": True, "tip": "mesaj"})
 
 
 @app.route("/api/izleyici/bas-konus-ses", methods=["POST"])
@@ -1311,13 +1603,14 @@ def bot_ahmet_usta_yanit():
             "yeni_canli_yorum",
             {
                 "platform": "Ahmet Usta AI",
-                "kullanici": "Ahmet Usta",
+                "kullanici": "[Ahmet Usta]",
                 "mesaj": yanit,
                 "zaman": time.strftime("%H:%M:%S"),
                 "dukkan": dukkan,
             },
             room=dukkan,
         )
+        ahmet_usta_anons_yap(dukkan, yanit)
 
     return jsonify({"success": True})
 
@@ -1501,7 +1794,7 @@ def sepet_getir(musteri_id):
         saf_ad = saf_isim_temizle(url_ad)
         kullanici = (
             Kullanici.query.filter(
-                Kullanici.silindi_mi == False, Kullanici.ad_soyad.ilike(saf_ad)
+                Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(saf_ad)
             ).first()
         )
 
@@ -1540,7 +1833,7 @@ def sepet_getir(musteri_id):
     if kullanici:
         kazanilan_satilanlar = Urun.query.filter(
             or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
-            Urun.silindi_mi == False,
+            Urun.silindi_mi.is_(False),
             Urun.kazanan_id == kullanici.id,
         ).all()
 
@@ -1607,7 +1900,6 @@ def odeme_baslat():
             adres=adres,
             durum="onayli",
             onayli_mi=True,
-            # ip_adresi=get_client_ip(),
             cihaz_kodu=get_device_fingerprint(),
         )
         db.session.add(kullanici)
@@ -1645,7 +1937,7 @@ def pey_ver():
         saf_istek = saf_isim_temizle(musteri_adi)
         kullanici = (
             Kullanici.query.filter(
-                Kullanici.silindi_mi == False, Kullanici.ad_soyad.ilike(saf_istek)
+                Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(saf_istek)
             ).first()
         )
 
@@ -1731,7 +2023,6 @@ def pey_ver():
                     musteri_id=kullanici.id,
                     musteri_adi=etiket_ad,
                     tutar=hemen_al_fiyat,
-                    # ip_adresi=client_ip,
                 )
                 db.session.add(yeni_teklif)
                 db.session.add(urun)
@@ -1771,6 +2062,7 @@ def pey_ver():
                         "fiyat": hemen_al_fiyat,
                     },
                 )
+                ahmet_usta_anons_yap(dukkan, f"Teyit alındı! {DUKKANLAR[dukkan]['ad']} reyonundan {urun.urun_adi}, {int(hemen_al_fiyat)} lira bedelle {kullanici.ad_soyad} beye hayırlı olsun!")
                 bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
 
                 return jsonify({
@@ -1826,7 +2118,6 @@ def pey_ver():
                     musteri_id=kullanici.id,
                     musteri_adi=etiket_ad,
                     tutar=miktar,
-                    # ip_adresi=client_ip,
                 )
                 db.session.add(yeni_teklif)
                 db.session.add(urun)
@@ -1835,6 +2126,10 @@ def pey_ver():
                 bota_haber_ver(
                     "yeni_pey_geldi",
                     {"dukkan": dukkan, "kisi": etiket_ad, "fiyat": miktar},
+                )
+                ahmet_usta_anons_yap(
+                    dukkan,
+                    ahmet_pey_anonsu(kullanici.ad_soyad, miktar, urun.urun_adi, mevcut_fiyat),
                 )
 
                 if oda["sayac_aktif"] and oda["sayac_kalan"] <= 10:
@@ -1944,7 +2239,6 @@ def kayit_ol():
         kullanici.email = mail
         kullanici.adres = adres
         kullanici.sozlesme_onay = sozlesme
-        # kullanici.ip_adresi = client_ip
         kullanici.cihaz_kodu = fingerprint
         kullanici.silindi_mi = False
         kullanici.durum = "onayli"
@@ -1958,7 +2252,6 @@ def kayit_ol():
             sozlesme_onay=sozlesme,
             onayli_mi=True,
             durum="onayli",
-            # ip_adresi=client_ip,
             cihaz_kodu=fingerprint,
         )
         db.session.add(kullanici)
@@ -1993,7 +2286,7 @@ def on_teklif_ver():
         saf_istek = saf_isim_temizle(musteri_adi)
         kullanici = (
             Kullanici.query.filter(
-                Kullanici.silindi_mi == False, Kullanici.ad_soyad.ilike(saf_istek)
+                Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(saf_istek)
             ).first()
         )
 
@@ -2276,7 +2569,7 @@ def admin_panel():
     try:
         en_yuksek_lot = (
             db.session.query(func.max(Urun.lot_no))
-            .filter_by(dukkan_kodu=dukkan, silindi_mi=False)
+            .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
             .scalar()
         )
         siradaki_lot = (en_yuksek_lot + 1) if en_yuksek_lot else 1
@@ -2384,6 +2677,9 @@ def sahneye_al():
         },
     )
 
+    anons = f"{DUKKANLAR[dukkan]['ad']} reyonunda Lot {urun.lot_no}, {urun.urun_adi} sahnede! Açılışımız {int(float(oda['durum']['pey']))} lira."
+    ahmet_usta_anons_yap(dukkan, anons)
+
     return jsonify({"success": True, "urun": urun.to_dict()})
 
 
@@ -2468,6 +2764,7 @@ def satis_bitir():
                 "fiyat": oda["durum"]["pey"],
             },
         )
+        ahmet_usta_anons_yap(dukkan, f"Sattım! {oda['durum']['kazanan']} beye hayırlı olsun!")
         bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
     return jsonify({"success": True, "dukkan": dukkan})
 
@@ -2614,7 +2911,7 @@ def musteri_dosya_sil():
             saf_ad = saf_isim_temizle(ham_ad)
             hedef_kullanici = (
                 Kullanici.query.filter(
-                    Kullanici.silindi_mi == False,
+                    Kullanici.silindi_mi.is_(False),
                     Kullanici.ad_soyad.ilike(saf_ad),
                 ).first()
             )
@@ -2623,7 +2920,7 @@ def musteri_dosya_sil():
             SepetItem.query.filter_by(musteri_id=hedef_kullanici.id).delete()
             satilanlar = Urun.query.filter(
                 or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
-                Urun.silindi_mi == False,
+                Urun.silindi_mi.is_(False),
                 Urun.kazanan_id == hedef_kullanici.id,
             ).all()
 
@@ -2693,7 +2990,7 @@ def urun_ekle():
         else:
             en_yuksek_lot = (
                 db.session.query(func.max(Urun.lot_no))
-                .filter_by(dukkan_kodu=dukkan, silindi_mi=False)
+                .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
                 .scalar()
             )
             lot_no = (en_yuksek_lot + 1) if en_yuksek_lot else 1
@@ -3030,8 +3327,8 @@ def admin_muzik_link_guncelle():
 @admin_required
 def excel_indir():
     try:
-        satilanlar = Urun.query.filter_by(durum="Satıldı", silindi_mi=False).all()
-        musteriler = Kullanici.query.filter_by(silindi_mi=False).all()
+        satilanlar = Urun.query.filter(Urun.durum == "Satıldı", Urun.silindi_mi.is_(False)).all()
+        musteriler = Kullanici.query.filter(Kullanici.silindi_mi.is_(False)).all()
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -3137,7 +3434,7 @@ def bizimhesap_otomatik_xml():
     with app.app_context():
         satilanlar = Urun.query.filter(
             or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
-            Urun.silindi_mi == False
+            Urun.silindi_mi.is_(False)
         ).order_by(Urun.id.desc()).limit(100).all()
 
         xml_lines = [
@@ -3263,7 +3560,7 @@ def wc_orders():
     with app.app_context():
         satilanlar = Urun.query.filter(
             or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
-            Urun.silindi_mi == False
+            Urun.silindi_mi.is_(False)
         ).order_by(Urun.id.desc()).limit(100).all()
 
         orders_data = []
