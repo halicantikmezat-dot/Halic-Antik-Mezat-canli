@@ -805,6 +805,40 @@ for kod in DUKKANLAR.keys():
     oda_kilitleri[kod] = BoundedSemaphore(1)
 
 
+def ahmet_sahne_acilis_metni(urun, acilis_fiyati):
+    """Sahneye ilk çıkış. Yalnızca kayıtlı ad ve açıklamadan 2-3 cümle. Uydurma yok."""
+    kisa = (
+        f"{getattr(urun, 'urun_adi', 'Eser')} sahnede. "
+        f"Açılış {int(float(acilis_fiyati or 0))} lira."
+    )
+    try:
+        from google import genai
+        gemini_key = Config.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+        if not gemini_key:
+            return kisa
+        aciklama = (getattr(urun, "tanitim_yazisi", None) or "").strip() or "Ek açıklama yazılmamış."
+        prompt = f"""Sen ağırbaşlı bir Kapalıçarşı esnafısın. Adın Ahmet Usta. Sahneye yeni gelen eseri 2-3 kısa cümleyle anlat.
+KAFADAN ATMA. Kayıtta olmayan yaş, dönem, damga, menşe, hikaye uydurma. "200 yıllık" gibi süre söyleme; metinde yoksa hiç tarih verme.
+Yalnızca ürün adı ve açıklamada yazanlara dayan. Malzemeyi (ahşap, pirinç, porselen vb.) ancak metin destekliyorsa söyle. Gerçek kullanım amacını ve koleksiyon değerini abartmadan özetle.
+Güvenlik notu SADECE metin gerçekten o riski gösteriyorsa, son cümlede, ciddi ve kısa olsun:
+- kimyasal, tütsü veya kokuluysa: çocuklardan uzak tutulsun, astım ve nefes darlığı olanlar iyi havalandırılmış yerde yaksın
+- kesici aletse: muhafaza edilsin
+- oksitli madense: sergiledikten sonra eller yıkansın
+- hassas seramikse: makinede değil elde yıkansın
+Bu riskler açıklamada yoksa uyarı uydurma. Boş veya komik uyarı yazma. Madde işareti ve markdown kullanma.
+
+Ürün adı: {getattr(urun, 'urun_adi', '')}
+Açıklama: {aciklama}
+Açılış: {int(float(acilis_fiyati or 0))} TL"""
+        client = genai.Client(api_key=gemini_key)
+        response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
+        cevap = re.sub(r"[\*#_]", "", (response.text or "")).strip().strip('"')
+        return cevap or kisa
+    except Exception as e:
+        print(f"Sahne açılış anlatımı alınamadı: {e}")
+        return kisa
+
+
 def dukkan_geri_sayim_gorevi(dukkan, gorev_id):
     oda = odalar[dukkan]
 
@@ -851,6 +885,7 @@ def dukkan_geri_sayim_gorevi(dukkan, gorev_id):
         if oda["sayac_kalan"] == 15 and not son_uyari_yapildi:
             son_uyari_yapildi = True
             bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
+            ahmet_usta_anons_yap(dukkan, "Son 15 saniye beyler, eser elden gidiyor!")
 
         socketio.emit(
             "sayac_guncelle",
@@ -1034,7 +1069,7 @@ def dukkan_otonom_dongusu(dukkan):
                 },
             )
 
-            anons_metni = f"{DUKKANLAR[dukkan]['ad']} reyonunda Lot {secilen_urun.lot_no}, {secilen_urun.urun_adi} sahnede! Açılışımız {int(acilis_fiyati)} lira."
+            anons_metni = ahmet_sahne_acilis_metni(secilen_urun, acilis_fiyati)
             ahmet_usta_anons_yap(dukkan, anons_metni)
 
             with oda_kilitleri[dukkan]:
@@ -2711,7 +2746,7 @@ def sahneye_al():
         },
     )
 
-    anons = f"{DUKKANLAR[dukkan]['ad']} reyonunda Lot {urun.lot_no}, {urun.urun_adi} sahnede! Açılışımız {int(float(oda['durum']['pey']))} lira."
+    anons = ahmet_sahne_acilis_metni(urun, oda["durum"]["pey"])
     ahmet_usta_anons_yap(dukkan, anons)
 
     return jsonify({"success": True, "urun": urun.to_dict()})

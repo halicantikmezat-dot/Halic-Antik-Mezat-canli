@@ -115,17 +115,20 @@
         }
 
         .header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-        .currency-select {
+        .btn-qr-ust {
             background: #0f151d;
-            color: var(--accent-gold);
-            border: 1px solid var(--accent-gold);
-            padding: 2px 4px;
+            color: #38bdf8;
+            border: 1px solid #38bdf8;
+            width: 28px;
+            height: 22px;
             border-radius: 4px;
-            font-size: 9px;
-            font-weight: bold;
-            outline: none;
+            font-size: 12px;
+            font-weight: 800;
             cursor: pointer;
+            line-height: 1;
+            padding: 0;
         }
+        .mobile-container { transform-origin: top center; }
         .live-badge { background: var(--btn-red); color: white; padding: 2px 5px; border-radius: 6px; font-size: 8px; font-weight: bold; white-space: nowrap; }
 
         .shop-nav-bar {
@@ -726,11 +729,7 @@
             </div>
         </div>
         <div class="header-actions">
-            <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
-                <option value="TRY">₺ TL</option>
-                <option value="USD">$ USD</option>
-                <option value="EUR">€ EUR</option>
-            </select>
+            <button type="button" class="btn-qr-ust" onclick="aktifUrunKarekodAc()" title="QR Paylaş">▣</button>
             <div class="live-badge">🟢 <span id="onlineCount">1</span> Canlı</div>
         </div>
     </div>
@@ -762,10 +761,6 @@
                     <span>AÇILIŞ:</span><br>
                     <span class="corner-val" id="cornerAcilisFiyat">0 TL</span>
                 </div>
-                <div class="corner-card corner-top-right">
-                    <span>🔴 İZLEYİCİ:</span><br>
-                    <span class="corner-val" id="cornerIzleyici">0</span>
-                </div>
                 <div class="corner-card corner-bottom-left">
                     <span>HEMEN AL:</span><br>
                     <span class="corner-val" id="cornerHemenAlFiyat" style="color:var(--accent-gold);">0 TL</span>
@@ -775,8 +770,6 @@
                 </div>
             </div>
 
-            <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Tam Ekran</button>
-            <button class="btn-qr-share" onclick="aktifUrunKarekodAc()">📱 QR Paylaş</button>
             <button id="mainAudioBtn" class="audio-toggle" onclick="toggleAudio()">🔊 Ses</button>
             <button id="btnStageTrack" class="btn-track-stage" onclick="sahnedekiUrunuTakipEt()">⭐ Takip Et</button>
         </div>
@@ -799,7 +792,6 @@
             <div style="display:flex; gap:3px; align-items:center;">
                 <input type="text" id="chatMesajGirdi" placeholder="Mesajınızı veya sorunuzu yazın..." style="margin:0; font-size:9px; flex:1;" onkeydown="if(event.key==='Enter') izleyiciMesajGonder()">
                 <button class="btn-bid btn-action-blue" style="width:auto; padding:5px 8px; font-size:8px;" onclick="izleyiciMesajGonder()">Gönder</button>
-                <button id="btnIzleyiciSes" class="btn-izleyici-ses" title="Basılı tutarak odaya sesinizi iletin">🎙️ Bas-Konuş</button>
                 <button id="btnSesliPey" class="btn-izleyici-ses" type="button" title="Basılı tutun: sayı pey olur, cümle yoruma gider">🎤 Bas-Konuş</button>
             </div>
         </div>
@@ -1298,62 +1290,6 @@
         if (input) input.value = "";
     }
 
-    const btnIzleyiciSes = document.getElementById('btnIzleyiciSes');
-
-    async function izleyiciSesBaslat() {
-        if (!kullaniciGirisKontrol()) return;
-        try {
-            izleyiciStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            izleyiciRecorder = new MediaRecorder(izleyiciStream);
-            izleyiciChunks = [];
-
-            izleyiciRecorder.ondataavailable = e => {
-                if (e.data.size > 0) izleyiciChunks.push(e.data);
-            };
-
-            izleyiciRecorder.onstop = () => {
-                const audioBlob = new Blob(izleyiciChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('ses', audioBlob, 'izleyici_ses.webm');
-                formData.append('dukkan', aktifDukkan);
-                if (kullaniciId) formData.append('kullanici_id', kullaniciId);
-
-                fetch('/api/izleyici/bas-konus-ses', {
-                    method: 'POST',
-                    body: formData
-                }).then(r => r.json()).then(res => {
-                    if (!res.success) alert(res.mesaj);
-                }).catch(err => console.error("Ses aktarım hatası:", err));
-
-                if (izleyiciStream) {
-                    izleyiciStream.getTracks().forEach(track => track.stop());
-                    izleyiciStream = null;
-                }
-            };
-
-            izleyiciRecorder.start();
-            btnIzleyiciSes.classList.add('kayit-aktif');
-            btnIzleyiciSes.innerText = "🔴 Dinliyor...";
-        } catch (err) {
-            btnIzleyiciSes.classList.remove('kayit-aktif');
-            btnIzleyiciSes.innerText = "🎙️ Bas-Konuş";
-            alert("Mikrofon erişim izni verilmedi: " + err);
-        }
-    }
-
-    function izleyiciSesBitir() {
-        if (izleyiciRecorder && izleyiciRecorder.state !== 'inactive') {
-            izleyiciRecorder.stop();
-        }
-        btnIzleyiciSes.classList.remove('kayit-aktif');
-        btnIzleyiciSes.innerText = "🎙️ Bas-Konuş";
-    }
-
-    btnIzleyiciSes.addEventListener('mousedown', izleyiciSesBaslat);
-    btnIzleyiciSes.addEventListener('mouseup', izleyiciSesBitir);
-    btnIzleyiciSes.addEventListener('touchstart', (e) => { e.preventDefault(); izleyiciSesBaslat(); });
-    btnIzleyiciSes.addEventListener('touchend', (e) => { e.preventDefault(); izleyiciSesBitir(); });
-
     const btnSesliPey = document.getElementById('btnSesliPey');
     let sesliPeyDinleyici = null;
     let sesliPeySuruyor = false;
@@ -1829,6 +1765,56 @@
     }
     sahneEtkilesiminiBagla();
 
+    (function sayfaYakinlastirmayiBagla() {
+        const kutu = document.querySelector('.mobile-container');
+        if (!kutu) return;
+        let olcek = 1;
+        let pinch = null;
+        let sonBos = 0;
+
+        function uygula() {
+            kutu.style.transform = olcek <= 1 ? '' : 'scale(' + olcek + ')';
+        }
+
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length !== 2) return;
+            if (e.target.closest && e.target.closest('#medyaKapsayici')) return;
+            const a = e.touches[0], b = e.touches[1];
+            pinch = {
+                dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1,
+                olcek: olcek
+            };
+        }, { passive: true });
+
+        document.addEventListener('touchmove', function(e) {
+            if (!pinch || e.touches.length !== 2) return;
+            if (e.target.closest && e.target.closest('#medyaKapsayici')) return;
+            e.preventDefault();
+            const a = e.touches[0], b = e.touches[1];
+            const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
+            olcek = Math.min(2.5, Math.max(1, pinch.olcek * (dist / pinch.dist)));
+            uygula();
+        }, { passive: false });
+
+        document.addEventListener('touchend', function(e) {
+            if (e.touches.length < 2) pinch = null;
+            if (e.touches.length > 0 || e.changedTouches.length !== 1) return;
+            if (e.target.closest && e.target.closest('#stageWrapper, button, a, input, select, textarea')) return;
+            const now = Date.now();
+            if (now - sonBos < 320) {
+                sonBos = 0;
+                olcek = 1;
+                uygula();
+            } else sonBos = now;
+        });
+
+        document.addEventListener('dblclick', function(e) {
+            if (e.target.closest && e.target.closest('#stageWrapper, button, a, input, select, textarea')) return;
+            olcek = 1;
+            uygula();
+        });
+    })();
+
     function toggleCatalogDrawer() {
         playUserClickSound();
         const drawer = document.getElementById('catalogDrawer');
@@ -1931,12 +1917,9 @@
     }
 
     function toggleAudio() {
-        playUserClickSound();
-        const video = document.getElementById('stageVideo');
-        if (video) {
-            video.muted = !video.muted;
-            document.getElementById('mainAudioBtn').innerText = video.muted ? "🔇 Ses Kapalı" : "🔊 Ses Açık";
-        }
+        mobilSesKilidiniAc();
+        const btn = document.getElementById('mainAudioBtn');
+        if (btn) btn.innerText = "🔊 Ses Açık";
     }
 
     function kategorileriDoldurIzleyici() {
@@ -1998,7 +1981,6 @@
     socket.on('izleyici_sayisi_guncelle', function(data) {
         if(data && data.dukkan === aktifDukkan && data.sayi !== undefined) {
             document.getElementById('onlineCount').innerText = data.sayi;
-            document.getElementById('cornerIzleyici').innerText = data.sayi;
         }
     });
 
