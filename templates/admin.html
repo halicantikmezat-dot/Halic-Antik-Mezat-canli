@@ -918,51 +918,71 @@
         sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     }
 
-    // BAS-KONUŞ (MEDIA RECORDER)
-    let mediaRecorder = null;
-    let audioChunks = [];
+    // BAS-KONUŞ (tarayıcı Türkçe ses tanıma)
+    let basKonusDinleyici = null;
+    let basKonusSuruyor = false;
     const btnBasKonus = document.getElementById('btnBasKonus');
 
-    async function basKonusBaslat() {
+    function yoneticiSesiniYayinla(transcript) {
+        const temiz = String(transcript || '').trim();
+        if (!temiz) return;
+        const currentDukkan = seciliDukkan || 'gumus';
+        socket.emit('yeni_yorum_ekle', { dukkan: currentDukkan, kullanici: 'Yönetici', yorum: temiz });
+        socket.emit('admin_sesli_komut', { dukkan: currentDukkan, metin: temiz });
+        const kutu = document.getElementById('adminCanliSohbetAlani');
+        const bos = document.getElementById('sohbetBosUyarisi');
+        if (bos) bos.remove();
+        if (kutu) {
+            const satir = document.createElement('div');
+            satir.style.cssText = 'background:#18202c; border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px; font-size:12px; margin-bottom:4px; color:#f8fafc;';
+            satir.textContent = '🎙️ Yönetici (Sesli): ' + temiz;
+            kutu.appendChild(satir);
+            kutu.scrollTop = kutu.scrollHeight;
+        }
+    }
+
+    function basKonusBaslat() {
+        if (basKonusSuruyor) return;
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+            alert('Bu tarayıcı ses tanımayı desteklemiyor. Chrome kullanın.');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+            stream.getTracks().forEach(function(track) { track.stop(); });
+        }).catch(function(err) {
+            alert('Mikrofon erişim izni verilmedi: ' + err);
+        });
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = e => {
-                if (e.data.size > 0) audioChunks.push(e.data);
+            basKonusDinleyici = new SpeechRec();
+            basKonusDinleyici.lang = 'tr-TR';
+            basKonusDinleyici.continuous = false;
+            basKonusDinleyici.interimResults = false;
+            basKonusDinleyici.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                yoneticiSesiniYayinla(transcript);
             };
-
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('ses', audioBlob, 'admin_ses.webm');
-                formData.append('dukkan', seciliDukkan);
-
-                fetch('/api/admin/bas-konus-ses', {
-                    method: 'POST',
-                    body: formData
-                }).then(r => r.json()).then(res => {
-                    console.log("Ses iletildi:", res);
-                });
-
-                stream.getTracks().forEach(track => track.stop());
+            basKonusDinleyici.onerror = function(event) {
+                if (event.error && event.error !== 'aborted' && event.error !== 'no-speech') {
+                    console.log('Ses tanıma:', event.error);
+                }
             };
-
-            mediaRecorder.start();
+            basKonusDinleyici.start();
+            basKonusSuruyor = true;
             btnBasKonus.classList.add('kayit-aktif');
-            btnBasKonus.innerText = "🔴 Dinliyor... Bırakın!";
+            btnBasKonus.innerText = '🔴 Dinliyor... Bırakın!';
         } catch (err) {
-            alert("Mikrofon erişim izni verilmedi: " + err);
+            alert('Mikrofon erişim izni verilmedi: ' + err);
         }
     }
 
     function basKonusBitir() {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+        if (basKonusDinleyici) {
+            try { basKonusDinleyici.stop(); } catch (e) {}
         }
+        basKonusSuruyor = false;
         btnBasKonus.classList.remove('kayit-aktif');
-        btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+        btnBasKonus.innerText = '🎙️ Bas-Konuş (AI Dinlesin)';
     }
 
     btnBasKonus.addEventListener('mousedown', basKonusBaslat);

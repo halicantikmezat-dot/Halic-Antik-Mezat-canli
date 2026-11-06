@@ -229,34 +229,42 @@
         }
 
         #audioUnlockPrompt {
-            position: absolute;
-            top: 35px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(212, 175, 55, 0.95);
-            color: #000;
-            font-size: 8.5px;
+            position: sticky;
+            top: 0;
+            z-index: 80;
+            width: calc(100% - 12px);
+            margin: 6px auto 2px;
+            background: #d4af37;
+            color: #111;
+            font-size: 15px;
             font-weight: 800;
-            padding: 3px 8px;
-            border-radius: 12px;
-            z-index: 90;
-            cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            padding: 12px 14px;
+            border-radius: 10px;
             border: none;
-            font: inherit;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+            display: block;
+            text-align: center;
             animation: pulseUnlock 1.2s infinite alternate;
         }
         @keyframes pulseUnlock {
-            from { transform: translateX(-50%) scale(0.96); }
-            to { transform: translateX(-50%) scale(1.04); }
+            from { opacity: 0.82; }
+            to { opacity: 1; }
         }
         #audioUnlockPrompt.ses-acik {
             animation: none;
             background: #14532d;
             color: #bbf7d0;
+            opacity: 0.55;
+            font-size: 13px;
+            padding: 7px 10px;
+        }
+        .ios-sessiz-notu {
+            font-size: 11px;
+            line-height: 1.35;
+            color: #fde68a;
+            text-align: center;
+            padding: 2px 12px 6px;
         }
 
         .stage-wrapper {
@@ -704,8 +712,9 @@
 
 <div class="mobile-container">
     <button type="button" id="audioUnlockPrompt" onclick="sesKilidiManuelAc()">
-        🔊 Canlı Yayını Sesli Dinlemek İçin Dokunun
+        🔊 Yayını Sesli Dinle / Sesi Aç
     </button>
+    <p class="ios-sessiz-notu">Ses gelmiyorsa iPhone’un solundaki sessiz anahtarını kapatın. Android’de medya sesinin açık olduğundan emin olun.</p>
 
     <div class="header">
         <div class="logo-box">
@@ -1075,6 +1084,8 @@
     let sonBulunanUrunler = [];
     let audioCtx = null;
     window.audioCtx = null;
+    window.ahmetPlayer = new Audio();
+    let mobilSesAcildi = false;
     document.addEventListener('pointerdown', () => {
         if (!window.audioCtx) {
             try {
@@ -1412,8 +1423,9 @@
 
     socket.on('ahmet_ses_cal', function(data) {
         if (data && data.audio) {
-            var snd = new Audio(data.audio);
-            snd.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
+            if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
+            window.ahmetPlayer.src = data.audio;
+            window.ahmetPlayer.play();
         }
     });
 
@@ -1473,11 +1485,34 @@
     }
 
     function sesKilidiManuelAc() {
-        sesKilidiAc();
-        playUserClickSound();
+        mobilSesKilidiniAc();
     }
 
+    function mobilSesKilidiniAc() {
+        if (mobilSesAcildi) return;
+        mobilSesAcildi = true;
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            window.audioCtx = audioCtx;
+            if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+                audioCtx.resume();
+            }
+        } catch (e) {}
+        if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
+        window.ahmetPlayer.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+        window.ahmetPlayer.play().catch(function(){});
+        const btn = document.getElementById('audioUnlockPrompt');
+        if (btn) {
+            btn.textContent = '🔊 Ses Açık';
+            btn.classList.add('ses-acik');
+        }
+    }
+
+    document.addEventListener('touchstart', mobilSesKilidiniAc, { once: true, passive: true });
+    document.addEventListener('click', mobilSesKilidiniAc, { once: true });
+
     function sesKilidiAc() {
+        mobilSesKilidiniAc();
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         window.audioCtx = audioCtx;
         if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
@@ -1485,8 +1520,6 @@
         }
         const v = document.getElementById('stageVideo');
         if (v && v.paused) v.play().catch(e => {});
-        const prompt = document.getElementById('audioUnlockPrompt');
-        if (prompt) prompt.style.display = 'none';
     }
 
     function playTone(freq, duration, type = 'sine', gainVal = 0.2) {

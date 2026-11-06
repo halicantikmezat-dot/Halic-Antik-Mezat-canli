@@ -3667,6 +3667,15 @@ def handle_leave_dukkan(data):
     )
 
 
+@socketio.on('admin_sesli_komut')
+def handle_admin_sesli_komut(data):
+    dukkan = data.get('dukkan', 'gumus')
+    metin = data.get('metin', '').strip()
+    if metin:
+        # Yönetici sesli konuştuğunda hem yorum olarak bas hem Ahmet Usta anonsunu tetikle
+        ahmet_usta_anons_yap(dukkan, f"Ahmet Usta dinledi: {metin}")
+
+
 # Program başlarken veritabanı kontrolü ve onarımı
 veritabani_tablolari_onar()
 
