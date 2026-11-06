@@ -326,13 +326,20 @@
         .zoom-govde-isilik { transform: scale(2.5) translate(0%, 0%) !important; }
         .zoom-damga-kaide { transform: scale(2.2) translate(0%, -25%) !important; }
 
-        .stage-thumbnails {
+        .stage-thumbs-bar {
             display: flex;
-            gap: 3px;
-            overflow-x: auto;
+            align-items: center;
+            gap: 4px;
             padding: 3px 4px;
             background: #080c13;
             border-bottom: 1px solid var(--card-border);
+        }
+        .stage-thumbnails {
+            display: flex;
+            flex: 1;
+            min-width: 0;
+            gap: 3px;
+            overflow-x: auto;
             -webkit-overflow-scrolling: touch;
         }
         .stage-thumbnails::-webkit-scrollbar { display: none; }
@@ -373,7 +380,7 @@
         .corner-val { font-size: 9px; font-weight: 800; }
 
         .fullscreen-btn { position: absolute; top: 24px; right: 4px; background: rgba(0,0,0,0.65); color: #fff; border: 1px solid #777; border-radius: 3px; padding: 2px 4px; font-size: 7.5px; cursor: pointer; z-index: 60; }
-        .audio-toggle { position: absolute; bottom: 24px; right: 4px; background: rgba(0, 0, 0, 0.85); color: #fff; border: 1px solid var(--accent-gold); padding: 2px 4px; border-radius: 4px; font-size: 7.5px; cursor: pointer; z-index: 60; }
+        .audio-toggle { flex-shrink: 0; margin-left: auto; background: rgba(0, 0, 0, 0.85); color: #fff; border: 1px solid var(--accent-gold); padding: 2px 4px; border-radius: 4px; font-size: 7.5px; cursor: pointer; }
         .btn-track-stage { position: absolute; bottom: 24px; left: 4px; background: rgba(0, 0, 0, 0.85); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 2px 4px; border-radius: 4px; font-size: 7.5px; font-weight: bold; cursor: pointer; z-index: 60; }
         .btn-qr-share { position: absolute; top: 24px; left: 4px; background: rgba(0, 0, 0, 0.85); color: #38bdf8; border: 1px solid #38bdf8; padding: 2px 4px; border-radius: 4px; font-size: 7.5px; font-weight: bold; cursor: pointer; z-index: 60; }
 
@@ -756,25 +763,12 @@
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
             </div>
             
-            <div class="stage-overlay">
-                <div class="corner-card corner-top-left">
-                    <span>AÇILIŞ:</span><br>
-                    <span class="corner-val" id="cornerAcilisFiyat">0 TL</span>
-                </div>
-                <div class="corner-card corner-bottom-left">
-                    <span>HEMEN AL:</span><br>
-                    <span class="corner-val" id="cornerHemenAlFiyat" style="color:var(--accent-gold);">0 TL</span>
-                </div>
-                <div class="corner-card corner-bottom-right">
-                    <span class="corner-val" id="cornerLotNo">LOT #000</span>
-                </div>
-            </div>
-
-            <button id="mainAudioBtn" class="audio-toggle" onclick="toggleAudio()">🔊 Ses</button>
-            <button id="btnStageTrack" class="btn-track-stage" onclick="sahnedekiUrunuTakipEt()">⭐ Takip Et</button>
         </div>
 
-        <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
+        <div class="stage-thumbs-bar">
+            <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
+            <button id="mainAudioBtn" class="audio-toggle" onclick="toggleAudio()">🔊 Ses</button>
+        </div>
 
         <div id="soldBanner" class="sold-banner">
             🎉 SATILDI: <span id="soldWinnerName">-</span> (<span id="soldPrice">0 TL</span>)
@@ -2124,9 +2118,12 @@
             aktifHemenAlStatik = 0;
             document.getElementById('aktif_baslik').innerText = "Sahnede aktif ürün yok";
             document.getElementById('currentBid').innerText = "0";
-            document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(0);
-            document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(0);
-            document.getElementById('cornerLotNo').innerText = "LOT #000";
+            const cornerAcilisBos = document.getElementById('cornerAcilisFiyat');
+            const cornerHemenAlBos = document.getElementById('cornerHemenAlFiyat');
+            const cornerLotBos = document.getElementById('cornerLotNo');
+            if (cornerAcilisBos) cornerAcilisBos.innerText = formatFiyat(0);
+            if (cornerHemenAlBos) cornerHemenAlBos.innerText = formatFiyat(0);
+            if (cornerLotBos) cornerLotBos.innerText = "LOT #000";
             document.getElementById('tanitimMetni').innerText = "Şu an sahnede ürün bulunmamaktadır.";
             document.getElementById('timerStatusTitle').innerText = "MEZAT BEKLENİYOR";
             soldBanner.style.display = 'none';
@@ -2150,11 +2147,14 @@
         aktifHemenAlStatik = parseFloat(urunObj.hemen_al_fiyati || urunObj.hemen_al_fiyat || 0);
         document.getElementById('aktif_baslik').innerText = `LOT #${urunObj.lot} - ${urunObj.ad}`;
         document.getElementById('tanitimMetni').innerText = urunObj.tanitim_yazisi || "Açıklama girilmemiş.";
-        document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(urunObj.fiyat || 0);
-        document.getElementById('cornerLotNo').innerText = `LOT #${urunObj.lot}`;
+        const cornerAcilis = document.getElementById('cornerAcilisFiyat');
+        const cornerLot = document.getElementById('cornerLotNo');
+        if (cornerAcilis) cornerAcilis.innerText = formatFiyat(urunObj.fiyat || 0);
+        if (cornerLot) cornerLot.innerText = `LOT #${urunObj.lot}`;
         let aktifPey = parseFloat(peyTutar || urunObj.guncel_fiyat || urunObj.fiyat || 0);
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(aktifPey, aktifHemenAlStatik);
-        document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(dinamikBedel);
+        const cornerHemenAl = document.getElementById('cornerHemenAlFiyat');
+        if (cornerHemenAl) cornerHemenAl.innerText = formatFiyat(dinamikBedel);
 
         if (durum === "Satıldı" || urunObj.durum === "Satıldı") {
             sahnedekiUrunSatildiMi = true;
