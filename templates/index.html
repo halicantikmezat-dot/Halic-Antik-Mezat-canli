@@ -800,6 +800,7 @@
                 <input type="text" id="chatMesajGirdi" placeholder="Mesajınızı veya sorunuzu yazın..." style="margin:0; font-size:9px; flex:1;" onkeydown="if(event.key==='Enter') izleyiciMesajGonder()">
                 <button class="btn-bid btn-action-blue" style="width:auto; padding:5px 8px; font-size:8px;" onclick="izleyiciMesajGonder()">Gönder</button>
                 <button id="btnIzleyiciSes" class="btn-izleyici-ses" title="Basılı tutarak odaya sesinizi iletin">🎙️ Bas-Konuş</button>
+                <button id="btnSesliPey" class="btn-izleyici-ses" type="button" title="Basılı tutun: sayı pey olur, cümle yoruma gider">🎤 Bas-Konuş</button>
             </div>
         </div>
 
@@ -1353,6 +1354,98 @@
     btnIzleyiciSes.addEventListener('touchstart', (e) => { e.preventDefault(); izleyiciSesBaslat(); });
     btnIzleyiciSes.addEventListener('touchend', (e) => { e.preventDefault(); izleyiciSesBitir(); });
 
+    const btnSesliPey = document.getElementById('btnSesliPey');
+    let sesliPeyDinleyici = null;
+    let sesliPeySuruyor = false;
+
+    function sesliTutariCoz(ham) {
+        let s = String(ham || '').toLocaleLowerCase('tr-TR');
+        s = s.replace(/(\d)[.](\d{3})\b/g, '$1$2').replace(/(\d)[,](\d{3})\b/g, '$1$2');
+        const dolgu = ['tl', 'lira', 'peydir', 'pey', 'veriyorum', 'verdim', 'olsun', 'tamam', 'efendim', 'hadi', 'basıyorum', 'basiyorum', 'teklif', 'ediyorum', 'kadar'];
+        dolgu.forEach(function(k) { s = s.replace(new RegExp('\\b' + k + '\\b', 'g'), ' '); });
+        ['yedi','altı','alti','beş','bes','sekiz','dokuz','dört','dort','üç','uc','iki','bir','on','yirmi','otuz','kırk','kirk','elli','altmış','altmis','yetmiş','yetmis','seksen','doksan'].forEach(function(k) {
+            s = s.replace(new RegExp(k + '(bin|yüz|yuz|milyon)', 'g'), k + ' $1');
+        });
+        const birler = { bir:1, iki:2, üç:3, uc:3, dört:4, dort:4, beş:5, bes:5, altı:6, alti:6, yedi:7, sekiz:8, dokuz:9 };
+        const onlar = { on:10, yirmi:20, otuz:30, kırk:40, kirk:40, elli:50, altmış:60, altmis:60, yetmiş:70, yetmis:70, seksen:80, doksan:90 };
+        const parcalar = s.split(/[^0-9a-zçğıöşü]+/).filter(Boolean);
+        let toplam = 0, grup = 0, sayiGordu = false, yabancı = false;
+        parcalar.forEach(function(p) {
+            if (/^\d+$/.test(p)) { grup += parseInt(p, 10); sayiGordu = true; return; }
+            if (birler[p] != null) { grup += birler[p]; sayiGordu = true; return; }
+            if (onlar[p] != null) { grup += onlar[p]; sayiGordu = true; return; }
+            if (p === 'yüz' || p === 'yuz') { grup = (grup || 1) * 100; sayiGordu = true; return; }
+            if (p === 'bin') { toplam += (grup || 1) * 1000; grup = 0; sayiGordu = true; return; }
+            if (p === 'milyon') { toplam += (grup || 1) * 1000000; grup = 0; sayiGordu = true; return; }
+            yabancı = true;
+        });
+        toplam += grup;
+        if (!sayiGordu || yabancı || toplam <= 0) return null;
+        return toplam;
+    }
+
+    function sesliYorumGonder(metin) {
+        socket.emit('yeni_yorum_ekle', {
+            dukkan: aktifDukkan,
+            kullanici: kullaniciAdi || 'Ziyaretçi',
+            yorum: metin
+        });
+        const input = document.getElementById('chatMesajGirdi');
+        if (input) input.value = metin;
+        izleyiciMesajGonder();
+    }
+
+    function sesliPeyBaslat() {
+        if (sesliPeySuruyor) return;
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) {
+            alert('Bu tarayıcı ses tanımayı desteklemiyor. Chrome kullanın.');
+            return;
+        }
+        try {
+            sesliPeyDinleyici = new SpeechRec();
+            sesliPeyDinleyici.lang = 'tr-TR';
+            sesliPeyDinleyici.continuous = false;
+            sesliPeyDinleyici.interimResults = false;
+            sesliPeyDinleyici.onresult = function(event) {
+                const transcript = String(event.results[0][0].transcript || '').trim();
+                if (!transcript) return;
+                const tutar = sesliTutariCoz(transcript);
+                if (tutar) {
+                    if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
+                    peyGonder(tutar);
+                } else {
+                    sesliYorumGonder(transcript);
+                }
+            };
+            sesliPeyDinleyici.start();
+            sesliPeySuruyor = true;
+            btnSesliPey.classList.add('kayit-aktif');
+            btnSesliPey.innerText = '🔴 Dinliyor';
+        } catch (err) {
+            alert('Mikrofon açılamadı: ' + err);
+        }
+    }
+
+    function sesliPeyBitir() {
+        if (sesliPeyDinleyici) {
+            try { sesliPeyDinleyici.stop(); } catch (e) {}
+        }
+        sesliPeySuruyor = false;
+        if (btnSesliPey) {
+            btnSesliPey.classList.remove('kayit-aktif');
+            btnSesliPey.innerText = '🎤 Bas-Konuş';
+        }
+    }
+
+    if (btnSesliPey) {
+        btnSesliPey.addEventListener('mousedown', sesliPeyBaslat);
+        btnSesliPey.addEventListener('mouseup', sesliPeyBitir);
+        btnSesliPey.addEventListener('mouseleave', sesliPeyBitir);
+        btnSesliPey.addEventListener('touchstart', function(e) { e.preventDefault(); sesliPeyBaslat(); });
+        btnSesliPey.addEventListener('touchend', function(e) { e.preventDefault(); sesliPeyBitir(); });
+    }
+
     socket.on("kullanici_engellendi", function(data) {
         if (data.kullanici_id === kullaniciId) {
             alert("⚠️ Canlı yayında konuşma ve teklif verme yetkiniz yönetici tarafından askıya alındı.");
@@ -1421,9 +1514,39 @@
         });
     });
 
+    let muzikEskiSeviye = 100;
+    function muzigiKıs() {
+        try {
+            if (ytAudioPlayer && typeof ytAudioPlayer.getVolume === 'function') {
+                const anlik = ytAudioPlayer.getVolume();
+                if (typeof anlik === 'number' && anlik > 25) muzikEskiSeviye = anlik;
+                ytAudioPlayer.setVolume(18);
+            }
+        } catch (e) {}
+        document.querySelectorAll('audio').forEach(function(a) {
+            if (a === window.ahmetPlayer || a.id === 'ahmetAudioPlayer') return;
+            if (!a.dataset.eskiSes) a.dataset.eskiSes = String(a.volume);
+            a.volume = 0.18;
+        });
+    }
+    function muzigiAc() {
+        const geri = Math.max(80, muzikEskiSeviye || 100);
+        try {
+            if (ytAudioPlayer && typeof ytAudioPlayer.setVolume === 'function') ytAudioPlayer.setVolume(geri);
+        } catch (e) {}
+        document.querySelectorAll('audio').forEach(function(a) {
+            if (a === window.ahmetPlayer || a.id === 'ahmetAudioPlayer') return;
+            const eski = parseFloat(a.dataset.eskiSes || '1');
+            a.volume = eski >= 0.8 ? eski : 1;
+            delete a.dataset.eskiSes;
+        });
+    }
+
     socket.on('ahmet_ses_cal', function(data) {
         if (data && data.audio) {
             if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
+            muzigiKıs();
+            window.ahmetPlayer.onended = muzigiAc;
             window.ahmetPlayer.src = data.audio;
             window.ahmetPlayer.play();
         }

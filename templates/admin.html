@@ -882,10 +882,41 @@
         sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     });
 
+    let adminMuzikEski = 100;
+    function adminMuzigiKıs() {
+        try {
+            if (window.ytAudioPlayer && typeof window.ytAudioPlayer.getVolume === 'function') {
+                const anlik = window.ytAudioPlayer.getVolume();
+                if (typeof anlik === 'number' && anlik > 25) adminMuzikEski = anlik;
+                window.ytAudioPlayer.setVolume(18);
+            }
+        } catch (e) {}
+        document.querySelectorAll('audio, video').forEach(function(a) {
+            if (a === window.ahmetPlayer) return;
+            if (!a.dataset.eskiSes) a.dataset.eskiSes = String(a.volume);
+            a.volume = 0.18;
+        });
+    }
+    function adminMuzigiAc() {
+        const geri = Math.max(80, adminMuzikEski || 100);
+        try {
+            if (window.ytAudioPlayer && typeof window.ytAudioPlayer.setVolume === 'function') window.ytAudioPlayer.setVolume(geri);
+        } catch (e) {}
+        document.querySelectorAll('audio, video').forEach(function(a) {
+            if (a === window.ahmetPlayer) return;
+            const eski = parseFloat(a.dataset.eskiSes || '1');
+            a.volume = eski >= 0.8 ? eski : 1;
+            delete a.dataset.eskiSes;
+        });
+    }
+
     socket.on('ahmet_ses_cal', function(data) {
         if (data && data.audio) {
-            var snd = new Audio(data.audio);
-            snd.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
+            if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
+            adminMuzigiKıs();
+            window.ahmetPlayer.onended = adminMuzigiAc;
+            window.ahmetPlayer.src = data.audio;
+            window.ahmetPlayer.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
         }
     });
 

@@ -3673,7 +3673,7 @@ def handle_admin_sesli_komut(data):
     metin = data.get('metin', '').strip()
     if metin:
         # Yönetici sesli konuştuğunda hem yorum olarak bas hem Ahmet Usta anonsunu tetikle
-        ahmet_usta_anons_yap(dukkan, f"Ahmet Usta dinledi: {metin}")
+        ahmet_usta_anons_yap(dukkan, metin)
 
 
 # Program başlarken veritabanı kontrolü ve onarımı
