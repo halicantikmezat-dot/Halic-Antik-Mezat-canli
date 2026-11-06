@@ -154,11 +154,18 @@ def _yerel_ahmet_sesi(metin):
 
 
 def ahmet_usta_anons_yap(dukkan, metin, yedek_dene=True):
-    """Yerel sentez yok. Cümleyi 5005 portundaki bota okutur."""
+    """5005 varsa bota da gider. Bulutta bağlantı reddedilse bile metin tarayıcıya düşer."""
     temiz = str(metin or "").strip()
     if not temiz:
         return
-    bota_haber_ver("yorum_oku", {"anons": temiz, "dukkan": dukkan})
+    try:
+        bota_haber_ver("yorum_oku", {"anons": temiz, "dukkan": dukkan})
+    except Exception:
+        pass
+    try:
+        socketio.emit("ahmet_ses_cal", {"metin": temiz, "dukkan": dukkan}, room=dukkan)
+    except Exception as e:
+        print(f"[SES] Tarayıcı anonsu gönderilemedi: {e}")
 
 
 AHMET_NIDALARI = (
