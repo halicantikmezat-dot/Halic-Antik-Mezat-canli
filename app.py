@@ -1,6 +1,10 @@
 from gevent import monkey
 monkey.patch_all(thread=False, ssl=False)
 
+import azure.cognitiveservices.speech as speechsdk
+import base64
+import os
+
 try:
     import psycogreen.gevent
     psycogreen.gevent.patch_psycopg()
@@ -153,19 +157,42 @@ def _yerel_ahmet_sesi(metin):
     return None
 
 
+AZURE_SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY", "")
+AZURE_SPEECH_REGION = os.environ.get("AZURE_SPEECH_REGION", "eastus")
+
+def azure_ahmet_ses_uret_base64(metin):
+    try:
+        if not AZURE_SPEECH_KEY:
+            return None
+        speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+        speech_config.speech_synthesis_voice_name = "tr-TR-AhmetNeural"
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+        result = synthesizer.speak_text_async(metin).get()
+        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+            b64_audio = base64.b64encode(result.audio_data).decode('utf-8')
+            return f"data:audio/wav;base64,{b64_audio}"
+    except Exception as e:
+        print(f"[AZURE SES HATA]: {e}")
+    return None
+
 def ahmet_usta_anons_yap(dukkan, metin, yedek_dene=True):
-    """5005 varsa bota da gider. Bulutta bağlantı reddedilse bile metin tarayıcıya düşer."""
     temiz = str(metin or "").strip()
     if not temiz:
         return
-    try:
-        bota_haber_ver("yorum_oku", {"anons": temiz, "dukkan": dukkan})
-    except Exception:
-        pass
-    try:
-        socketio.emit("ahmet_ses_cal", {"metin": temiz, "dukkan": dukkan}, room=dukkan)
-    except Exception as e:
-        print(f"[SES] Tarayıcı anonsu gönderilemedi: {e}")
+    socketio.emit("yeni_canli_yorum", {
+        "kullanici": "Ahmet Usta",
+        "yorum": temiz,
+        "dukkan": dukkan,
+        "tip": "ahmet_anons"
+    }, room=dukkan)
+    
+    audio_base64 = azure_ahmet_ses_uret_base64(temiz)
+    if audio_base64:
+        socketio.emit("ahmet_ses_cal", {
+            "audio": audio_base64,
+            "metin": temiz,
+            "dukkan": dukkan
+        }, room=dukkan)
 
 
 AHMET_NIDALARI = (

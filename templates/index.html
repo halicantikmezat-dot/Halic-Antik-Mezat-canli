@@ -703,8 +703,8 @@
 <div id="liveToast"></div>
 
 <div class="mobile-container">
-    <button type="button" id="audioUnlockPrompt" onclick="sesiAcCanliDinle()">
-        🔊 Sesi Aç / Canlı Dinle
+    <button type="button" id="audioUnlockPrompt" onclick="sesKilidiManuelAc()">
+        🔊 Canlı Yayını Sesli Dinlemek İçin Dokunun
     </button>
 
     <div class="header">
@@ -1120,10 +1120,7 @@
         anonsOynuyor = true;
         const oge = anonsKuyrugu.shift();
         if (oge.ses) yerelSesiCal(oge);
-        else {
-            ahmetUstaKonus(oge.metin);
-            sonrakiAnonsuCal();
-        }
+        else sonrakiAnonsuCal();
     }
 
     function yerelSesiCal(oge) {
@@ -1352,64 +1349,6 @@
         }
     });
 
-    let ahmetSesAcik = false;
-    let bekleyenAnons = "";
-    let sonKonusanMetin = "";
-    let sonKonusZamani = 0;
-
-    function ahmetUstaKonus(metin) {
-        const temiz = String(metin || "").replace(/\s+/g, " ").trim();
-        if (!temiz) return;
-        if (!ahmetSesAcik) {
-            bekleyenAnons = temiz;
-            return;
-        }
-        const simdi = Date.now();
-        if (temiz === sonKonusanMetin && simdi - sonKonusZamani < 2500) return;
-        sonKonusanMetin = temiz;
-        sonKonusZamani = simdi;
-        if (!('speechSynthesis' in window)) return;
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(temiz);
-        u.lang = 'tr-TR';
-        u.rate = 1.0;
-        u.pitch = 0.95;
-        const voices = window.speechSynthesis.getVoices();
-        const trVoice = voices.find(v => (v.lang || '').toLowerCase().includes('tr') || (v.name || '').toLowerCase().includes('turkish') || (v.name || '').toLowerCase().includes('türk'));
-        if (trVoice) u.voice = trVoice;
-        window.speechSynthesis.speak(u);
-    }
-
-    function sesiAcCanliDinle() {
-        sesKilidiAc();
-        if (window.audioCtx && window.audioCtx.state === 'suspended') window.audioCtx.resume();
-        ahmetSesAcik = true;
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            const kilit = new SpeechSynthesisUtterance(' ');
-            kilit.lang = 'tr-TR';
-            kilit.volume = 0.01;
-            window.speechSynthesis.speak(kilit);
-        }
-        const btn = document.getElementById('audioUnlockPrompt');
-        if (btn) {
-            btn.textContent = '🔊 Ses Açık';
-            btn.classList.add('ses-acik');
-        }
-        if (bekleyenAnons) {
-            const metin = bekleyenAnons;
-            bekleyenAnons = "";
-            sonKonusanMetin = "";
-            setTimeout(() => ahmetUstaKonus(metin), 350);
-        }
-    }
-
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.onvoiceschanged = function() {
-            window.speechSynthesis.getVoices();
-        };
-    }
-
     const gorulenCanliYorumlar = [];
 
     socket.on("yeni_canli_yorum", function(data) {
@@ -1419,9 +1358,6 @@
         if (gorulenCanliYorumlar.indexOf(yorumImzasi) !== -1) return;
         gorulenCanliYorumlar.push(yorumImzasi);
         if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
-
-        const ahmetMi = data.platform === 'Ahmet Usta AI' || /Ahmet Usta/i.test(data.kullanici || '');
-        if (ahmetMi) ahmetUstaKonus(data.mesaj);
 
         const chatBox = document.getElementById('izleyiciChatKutusu');
         if (chatBox) {
@@ -1474,9 +1410,11 @@
         });
     });
 
-    socket.on("anons_yap", function(data) {
-        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        ahmetUstaKonus(data.metin || data.anons || data.mesaj || "");
+    socket.on('ahmet_ses_cal', function(data) {
+        if (data && data.audio) {
+            var snd = new Audio(data.audio);
+            snd.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
+        }
     });
 
     socket.on("pey_gecildi_uyarisi", function(data) {
@@ -1535,7 +1473,8 @@
     }
 
     function sesKilidiManuelAc() {
-        sesiAcCanliDinle();
+        sesKilidiAc();
+        playUserClickSound();
     }
 
     function sesKilidiAc() {

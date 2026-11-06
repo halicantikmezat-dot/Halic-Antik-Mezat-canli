@@ -275,7 +275,6 @@
     <div class="header">
         <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <button type="button" id="adminSesAcBtn" onclick="sesiAcCanliDinle()" style="background:#d4af37; color:#111; border:none; border-radius:6px; padding:6px 10px; font-size:12px; font-weight:800; cursor:pointer;">🔊 Sesi Aç / Canlı Dinle</button>
             <span style="font-size: 13px; margin-right: 5px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
             <button onclick="tumunuOtonomAyarla(true)" class="btn btn-yellow btn-sm" title="10 dükkanın tamamında otonom satışı başlatır">⚡ Tümünde Otonomu Başlat</button>
             <button onclick="tumunuOtonomAyarla(false)" class="btn btn-red btn-sm" title="Tüm otonom mezatları durdurur">🛑 Hepsini Durdur</button>
@@ -828,68 +827,6 @@
     });
     socket.on('reconnect', yoneticiOdayaGir);
 
-    let ahmetSesAcik = false;
-    let bekleyenAnons = "";
-    let sonKonusanMetin = "";
-    let sonKonusZamani = 0;
-
-    function ahmetUstaKonus(metin) {
-        const temiz = String(metin || "").replace(/\s+/g, " ").trim();
-        if (!temiz) return;
-        if (!ahmetSesAcik) {
-            bekleyenAnons = temiz;
-            return;
-        }
-        const simdi = Date.now();
-        if (temiz === sonKonusanMetin && simdi - sonKonusZamani < 2500) return;
-        sonKonusanMetin = temiz;
-        sonKonusZamani = simdi;
-        if (!('speechSynthesis' in window)) return;
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(temiz);
-        u.lang = 'tr-TR';
-        u.rate = 1.0;
-        u.pitch = 0.95;
-        const voices = window.speechSynthesis.getVoices();
-        const trVoice = voices.find(v => (v.lang || '').toLowerCase().includes('tr') || (v.name || '').toLowerCase().includes('turkish') || (v.name || '').toLowerCase().includes('türk'));
-        if (trVoice) u.voice = trVoice;
-        window.speechSynthesis.speak(u);
-    }
-
-    function sesiAcCanliDinle() {
-        if (!window.audioCtx) {
-            try { window.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
-        }
-        audioCtx = window.audioCtx;
-        if (window.audioCtx && window.audioCtx.state === 'suspended') window.audioCtx.resume();
-        ahmetSesAcik = true;
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            const kilit = new SpeechSynthesisUtterance(' ');
-            kilit.lang = 'tr-TR';
-            kilit.volume = 0.01;
-            window.speechSynthesis.speak(kilit);
-        }
-        const btn = document.getElementById('adminSesAcBtn');
-        if (btn) {
-            btn.textContent = '🔊 Ses Açık';
-            btn.style.background = '#14532d';
-            btn.style.color = '#bbf7d0';
-        }
-        if (bekleyenAnons) {
-            const metin = bekleyenAnons;
-            bekleyenAnons = "";
-            sonKonusanMetin = "";
-            setTimeout(() => ahmetUstaKonus(metin), 350);
-        }
-    }
-
-    if ('speechSynthesis' in window) {
-        window.speechSynthesis.onvoiceschanged = function() {
-            window.speechSynthesis.getVoices();
-        };
-    }
-
     // Canlı yorum akışı dinleyicisi
     const gorulenCanliYorumlar = [];
 
@@ -917,7 +854,6 @@
         if (platformAd === "Ahmet Usta AI" || /Ahmet Usta/i.test(data.kullanici || "")) {
             platformRenk = "var(--accent-gold)";
             baslikEtiketi = "🤖 [Ahmet Usta]";
-            ahmetUstaKonus(data.mesaj);
         } else if (platformAd.includes("TikTok")) {
             platformRenk = "#ef4444";
             logoSvg = "🔴";
@@ -946,14 +882,11 @@
         sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     });
 
-    socket.on("ahmet_ses_cal", function(data) {
-        if (!data || (data.dukkan && data.dukkan !== seciliDukkan)) return;
-        ahmetUstaKonus(data.metin || "");
-    });
-
-    socket.on("anons_yap", function(data) {
-        if (!data || (data.dukkan && data.dukkan !== seciliDukkan)) return;
-        ahmetUstaKonus(data.metin || data.anons || data.mesaj || "");
+    socket.on('ahmet_ses_cal', function(data) {
+        if (data && data.audio) {
+            var snd = new Audio(data.audio);
+            snd.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
+        }
     });
 
     function adminAkisaSatirEkle(baslik, metin, renk) {

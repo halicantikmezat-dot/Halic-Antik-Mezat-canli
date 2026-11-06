@@ -23,3 +23,4 @@ pygame==2.5.2
 pycaw
 keyboard
 sounddevice
+azure-cognitiveservices-speech
