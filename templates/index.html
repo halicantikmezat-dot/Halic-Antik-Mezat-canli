@@ -1071,8 +1071,32 @@
     let sonBulunanUrunler = [];
     let audioCtx = null;
     window.audioCtx = null;
-    window.ahmetPlayer = new Audio();
     let mobilSesAcildi = false;
+
+    function ahmetOynatici() {
+        return document.getElementById("ahmetAudioPlayer");
+    }
+
+    function ahmetSesiniTemizle(player) {
+        if (!player) return;
+        player.playbackRate = 1.0;
+        player.defaultPlaybackRate = 1.0;
+        player.volume = 1.0;
+        player.muted = false;
+        if ("preservesPitch" in player) player.preservesPitch = true;
+        if ("mozPreservesPitch" in player) player.mozPreservesPitch = true;
+        if ("webkitPreservesPitch" in player) player.webkitPreservesPitch = true;
+    }
+
+    function ahmetOrijinalSesSrc(data) {
+        if (!data) return "";
+        if (data.audio) return String(data.audio);
+        const ham = data.ses_base64 || data.ses || "";
+        if (!ham) return "";
+        if (String(ham).indexOf("data:") === 0) return String(ham);
+        const mime = data.ses_mime || data.mime || "audio/wav";
+        return "data:" + mime + ";base64," + ham;
+    }
     document.addEventListener('pointerdown', () => {
         if (!window.audioCtx) {
             try {
@@ -1105,7 +1129,7 @@
     let anonsOynuyor = false;
 
     function anonsEkle(oge) {
-        if (!oge) return;
+        if (!oge || !oge.src) return;
         anonsKuyrugu.push(oge);
         if (!anonsOynuyor) sonrakiAnonsuCal();
     }
@@ -1117,21 +1141,31 @@
         }
         anonsOynuyor = true;
         const oge = anonsKuyrugu.shift();
-        if (oge.ses) yerelSesiCal(oge);
+        if (oge.src) yerelSesiCal(oge);
         else sonrakiAnonsuCal();
     }
 
     function yerelSesiCal(oge) {
-        const player = document.getElementById("ahmetAudioPlayer");
+        const player = ahmetOynatici();
         function siradaki() {
-            try { player.pause(); } catch (e) {}
+            try { if (player) player.pause(); } catch (e) {}
+            muzigiAc();
             sonrakiAnonsuCal();
+        }
+        if (!player || !oge || !oge.src) {
+            siradaki();
+            return;
         }
         try {
             sesKilidiAc();
-            player.src = "data:" + (oge.mime || "audio/wav") + ";base64," + oge.ses;
-            player.volume = 1.0;
-            player.onended = sonrakiAnonsuCal;
+            try { player.pause(); } catch (e) {}
+            ahmetSesiniTemizle(player);
+            muzigiKıs();
+            player.src = oge.src;
+            player.onended = function() {
+                muzigiAc();
+                sonrakiAnonsuCal();
+            };
             player.onerror = siradaki;
             const playPromise = player.play();
             if (playPromise !== undefined) {
@@ -1437,11 +1471,9 @@
 
     socket.on("ahmet_ses_cal", function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        anonsEkle({
-            ses: data.ses_base64 || "",
-            mime: data.ses_mime || "audio/wav",
-            metin: data.metin || ""
-        });
+        const src = ahmetOrijinalSesSrc(data);
+        if (!src) return;
+        anonsEkle({ src: src });
     });
 
     let muzikEskiSeviye = 100;
@@ -1454,7 +1486,7 @@
             }
         } catch (e) {}
         document.querySelectorAll('audio').forEach(function(a) {
-            if (a === window.ahmetPlayer || a.id === 'ahmetAudioPlayer') return;
+            if (a.id === 'ahmetAudioPlayer') return;
             if (!a.dataset.eskiSes) a.dataset.eskiSes = String(a.volume);
             a.volume = 0.18;
         });
@@ -1465,22 +1497,12 @@
             if (ytAudioPlayer && typeof ytAudioPlayer.setVolume === 'function') ytAudioPlayer.setVolume(geri);
         } catch (e) {}
         document.querySelectorAll('audio').forEach(function(a) {
-            if (a === window.ahmetPlayer || a.id === 'ahmetAudioPlayer') return;
+            if (a.id === 'ahmetAudioPlayer') return;
             const eski = parseFloat(a.dataset.eskiSes || '1');
             a.volume = eski >= 0.8 ? eski : 1;
             delete a.dataset.eskiSes;
         });
     }
-
-    socket.on('ahmet_ses_cal', function(data) {
-        if (data && data.audio) {
-            if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
-            muzigiKıs();
-            window.ahmetPlayer.onended = muzigiAc;
-            window.ahmetPlayer.src = data.audio;
-            window.ahmetPlayer.play();
-        }
-    });
 
     socket.on("pey_gecildi_uyarisi", function(data) {
         showToast(`⚠️ ${data.mesaj}`);
@@ -1551,9 +1573,14 @@
                 audioCtx.resume();
             }
         } catch (e) {}
-        if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
-        window.ahmetPlayer.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-        window.ahmetPlayer.play().catch(function(){});
+        const player = ahmetOynatici();
+        if (player) {
+            ahmetSesiniTemizle(player);
+            if (!player.src) {
+                player.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+            }
+            if (player.paused) player.play().catch(function(){});
+        }
         const btn = document.getElementById('audioUnlockPrompt');
         if (btn) {
             btn.textContent = '🔊 Ses Açık';
@@ -1911,7 +1938,13 @@
     }
 
     function toggleAudio() {
+        const player = ahmetOynatici();
+        if (player) ahmetSesiniTemizle(player);
         mobilSesKilidiniAc();
+        if (player && player.src && player.paused) {
+            const basla = player.play();
+            if (basla && basla.catch) basla.catch(function(){});
+        }
         const btn = document.getElementById('mainAudioBtn');
         if (btn) btn.innerText = "🔊 Ses Açık";
     }
