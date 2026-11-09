@@ -2168,6 +2168,50 @@
         return "";
     }
 
+    let muzikKisitli = false;
+    let muzikSimdi = 75;
+    let muzikHedef = 75;
+    let muzikFade = null;
+
+    function muzikSeviyeYaz(seviye) {
+        const deger = Math.max(0, Math.min(100, seviye));
+        if (typeof ytAudioPlayer !== "undefined" && ytAudioPlayer && typeof ytAudioPlayer.setVolume === "function") {
+            try { ytAudioPlayer.setVolume(Math.round(deger)); } catch (e) {}
+        }
+        document.querySelectorAll("audio").forEach(function (el) {
+            if (el === currentAudio || el === moderatorAkisSesi) return;
+            el.volume = deger / 100;
+        });
+    }
+
+    function muzikYumusat(hedef) {
+        muzikHedef = hedef;
+        if (muzikFade) cancelAnimationFrame(muzikFade);
+        const adim = function () {
+            const fark = muzikHedef - muzikSimdi;
+            if (Math.abs(fark) < 1.2) {
+                muzikSimdi = muzikHedef;
+                muzikSeviyeYaz(muzikSimdi);
+                muzikFade = null;
+                return;
+            }
+            muzikSimdi += fark * 0.28;
+            muzikSeviyeYaz(muzikSimdi);
+            muzikFade = requestAnimationFrame(adim);
+        };
+        muzikFade = requestAnimationFrame(adim);
+    }
+
+    function muzigiKis() {
+        muzikKisitli = true;
+        muzikYumusat(15);
+    }
+
+    function muzigiNormaleDondur() {
+        muzikKisitli = false;
+        muzikYumusat(75);
+    }
+
     function anonsuCal(data) {
         if (window.moderatorKonusuyor) return;
         const imza = String((data && (data.nesil || data.audio_url || "")) || "");
@@ -2181,55 +2225,86 @@
         const audio = new Audio(kaynak);
         currentAudio = audio;
         window.aktifSes = audio;
-        audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
-    }
-
-    let moderatorSesi = null;
-    let moderatorKuyruk = [];
-    let moderatorCaliyor = false;
-    let moderatorSonSira = 0;
-    let moderatorSusma = null;
-
-    function moderatorSiradaki() {
-        if (moderatorCaliyor || !moderatorKuyruk.length) {
-            if (!moderatorCaliyor && !moderatorKuyruk.length) {
-                clearTimeout(moderatorSusma);
-                moderatorSusma = setTimeout(function () { window.moderatorKonusuyor = false; }, 700);
-            }
-            return;
-        }
-        const data = moderatorKuyruk.shift();
-        const mime = (data && data.mime) || "audio/webm";
-        const audio = new Audio("data:" + mime + ";base64," + data.parca);
-        moderatorSesi = audio;
-        moderatorCaliyor = true;
-        window.moderatorKonusuyor = true;
+        muzigiKis();
         audio.onended = function () {
-            moderatorCaliyor = false;
-            moderatorSiradaki();
-        };
-        audio.onerror = function () {
-            moderatorCaliyor = false;
-            moderatorSiradaki();
+            if (!window.moderatorKonusuyor) muzigiNormaleDondur();
         };
         audio.play().catch(function (e) {
             console.log("Ses oynatma engeli:", e);
-            moderatorCaliyor = false;
+            if (!window.moderatorKonusuyor) muzigiNormaleDondur();
+        });
+    }
+
+    let moderatorAkisSesi = null;
+    let moderatorKaynak = null;
+    let moderatorTampon = null;
+    let moderatorParcaKuyrugu = [];
+    let moderatorSonSeq = 0;
+    let moderatorSusma = null;
+
+    function b64Bayt(b64) {
+        const ikili = atob(b64);
+        const bayt = new Uint8Array(ikili.length);
+        for (let i = 0; i < ikili.length; i++) bayt[i] = ikili.charCodeAt(i);
+        return bayt;
+    }
+
+    function moderatorTamponBosalt() {
+        if (!moderatorTampon || moderatorTampon.updating || !moderatorParcaKuyrugu.length) return;
+        const parca = moderatorParcaKuyrugu.shift();
+        try {
+            moderatorTampon.appendBuffer(parca);
+        } catch (e) {
+            moderatorParcaKuyrugu.unshift(parca);
+        }
+    }
+
+    function moderatorAkisiKur(mime) {
+        if (moderatorAkisSesi) {
+            try { moderatorAkisSesi.pause(); } catch (e) {}
+            if (moderatorAkisSesi.src) URL.revokeObjectURL(moderatorAkisSesi.src);
+        }
+        moderatorParcaKuyrugu = [];
+        moderatorTampon = null;
+        moderatorKaynak = new MediaSource();
+        moderatorAkisSesi = new Audio();
+        moderatorAkisSesi.src = URL.createObjectURL(moderatorKaynak);
+        moderatorAkisSesi.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
+        moderatorKaynak.addEventListener("sourceopen", function () {
+            const adaylar = [mime || "", "audio/webm;codecs=opus", "audio/webm"];
+            for (let i = 0; i < adaylar.length; i++) {
+                if (!adaylar[i] || !MediaSource.isTypeSupported(adaylar[i])) continue;
+                try {
+                    moderatorTampon = moderatorKaynak.addSourceBuffer(adaylar[i]);
+                    break;
+                } catch (e) {}
+            }
+            if (!moderatorTampon) return;
+            moderatorTampon.mode = "sequence";
+            moderatorTampon.addEventListener("updateend", moderatorTamponBosalt);
+            moderatorTamponBosalt();
         });
     }
 
     socket.on("izleyici_moderator_sesi", function (data) {
         if (!data || !data.parca) return;
         if (data.dukkan && data.dukkan !== aktifDukkan) return;
-        const sira = Number(data.sira || 0);
-        if (sira && sira <= moderatorSonSira) return;
-        if (sira) moderatorSonSira = sira;
+        const seq = Number(data.seq || data.sira || 0);
+        if (seq && seq === moderatorSonSeq) return;
+        if (seq === 1 || !moderatorKaynak) moderatorAkisiKur(data.mime);
+        if (seq) moderatorSonSeq = seq;
         window.moderatorKonusuyor = true;
+        muzigiKis();
         if (currentAudio && !currentAudio.paused) {
             try { currentAudio.pause(); } catch (e) {}
         }
-        moderatorKuyruk.push(data);
-        moderatorSiradaki();
+        moderatorParcaKuyrugu.push(b64Bayt(data.parca));
+        moderatorTamponBosalt();
+        clearTimeout(moderatorSusma);
+        moderatorSusma = setTimeout(function () {
+            window.moderatorKonusuyor = false;
+            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+        }, 1200);
     });
 
     socket.on("ses_oynat", function (data) {
@@ -3433,6 +3508,9 @@
         if (!btn) return;
         if (event.data === YT.PlayerState.PLAYING) {
             muzikCaliyorMu = true;
+            if (!muzikKisitli && typeof ytAudioPlayer.setVolume === "function") {
+                ytAudioPlayer.setVolume(75);
+            }
             btn.innerHTML = "⏸️ Müzik";
             btn.style.background = "#881337";
             btn.style.borderColor = "#f43f5e";

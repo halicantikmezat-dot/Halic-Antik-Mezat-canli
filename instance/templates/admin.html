@@ -987,40 +987,32 @@
 
     function moderatorDilimiBaslat() {
         if (!moderatorBasili || !moderatorAkis) return;
-        const mime = moderatorMime();
-        const rec = mime ? new MediaRecorder(moderatorAkis, { mimeType: mime }) : new MediaRecorder(moderatorAkis);
+        const mime = moderatorMime() || "audio/webm;codecs=opus";
+        const rec = MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(mime)
+            ? new MediaRecorder(moderatorAkis, { mimeType: mime })
+            : new MediaRecorder(moderatorAkis);
         mediaRecorder = rec;
-        const parcalar = [];
-        rec.ondataavailable = function (ev) {
-            if (ev.data && ev.data.size > 0) parcalar.push(ev.data);
+        moderatorSira = 0;
+        rec.ondataavailable = async function (ev) {
+            if (!ev.data || ev.data.size < 40) return;
+            const parca = await blobBase64(ev.data);
+            if (!parca) return;
+            moderatorSira += 1;
+            socket.emit("moderator_ses_parcasi", {
+                dukkan: seciliDukkan,
+                parca: parca,
+                mime: mime,
+                seq: moderatorSira,
+                sira: moderatorSira
+            });
         };
-        rec.onstop = async function () {
-            const blob = new Blob(parcalar, { type: rec.mimeType || mime || "audio/webm" });
-            if (blob.size > 80) {
-                const parca = await blobBase64(blob);
-                if (parca) {
-                    moderatorSira += 1;
-                    socket.emit("moderator_ses_parcasi", {
-                        dukkan: seciliDukkan,
-                        parca: parca,
-                        mime: blob.type || "audio/webm",
-                        sira: moderatorSira
-                    });
-                }
-            }
-            if (moderatorBasili) {
-                moderatorDilimiBaslat();
-                return;
-            }
+        rec.onstop = function () {
             if (moderatorAkis) {
                 moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
                 moderatorAkis = null;
             }
         };
-        rec.start();
-        setTimeout(function () {
-            if (rec.state === "recording") rec.stop();
-        }, 350);
+        rec.start(300);
     }
 
     async function basKonusBaslat(e) {

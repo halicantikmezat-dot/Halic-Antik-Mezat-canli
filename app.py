@@ -4260,19 +4260,21 @@ def moderator_ses_parcasi(veri):
             return
         dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
         try:
-            sira = int(veri.get("sira") or 0)
+            sira = int(veri.get("seq") if veri.get("seq") is not None else (veri.get("sira") or 0))
         except (TypeError, ValueError):
             sira = 0
-        socketio.emit(
+        emit(
             "izleyici_moderator_sesi",
             {
                 "dukkan": dukkan,
                 "parca": parca,
-                "mime": str(veri.get("mime") or "audio/webm")[:80],
+                "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
+                "seq": sira,
                 "sira": sira,
             },
-            room=dukkan,
-            skip_sid=request.sid,
+            to=dukkan,
+            broadcast=True,
+            include_self=False,
         )
     finally:
         db.session.remove()
