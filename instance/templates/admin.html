@@ -397,6 +397,7 @@
                     <button id="btnBasKonus" class="btn-bas-konus" title="Ahmet Usta'ya sesle soru sorun / talimat verin">
                         🎙️ Bas-Konuş (AI Dinlesin)
                     </button>
+                    <button type="button" id="adminSesDugmesi" class="btn-bas-konus" title="Yönetici ekranında anons sesi">Ses kapalı</button>
                     <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
                 </div>
             </div>
@@ -827,8 +828,30 @@
         socket.emit("join_admin");
     });
 
-    const sesKuyrugu = [];
-    let sesCaliyor = false;
+    let adminSesAcik = false;
+    let currentAudio = null;
+    let sonSesImza = "";
+    let sonSesAni = 0;
+
+    function calanSesiDurdur() {
+        if (currentAudio) {
+            currentAudio.onended = null;
+            currentAudio.onerror = null;
+            try {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            } catch (e) {}
+            currentAudio.src = "";
+            currentAudio = null;
+        }
+        if (window.aktifSes) {
+            try {
+                window.aktifSes.pause();
+                window.aktifSes.currentTime = 0;
+            } catch (e) {}
+            window.aktifSes = null;
+        }
+    }
 
     function sesKaynagi(data) {
         let url = (data && data.audio_url) || "";
@@ -840,52 +863,34 @@
         return "";
     }
 
-    function sesKuyrugunuCal() {
-        if (sesCaliyor || !sesKuyrugu.length) return;
-        const data = sesKuyrugu[0];
+    function anonsuCal(data) {
+        const imza = String((data && (data.nesil || data.audio_url || "")) || "");
+        const simdi = Date.now();
+        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
+        sonSesImza = imza;
+        sonSesAni = simdi;
         const kaynak = sesKaynagi(data);
-        if (!kaynak) {
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-            return;
-        }
+        if (!kaynak) return;
+        calanSesiDurdur();
         const audio = new Audio(kaynak);
+        currentAudio = audio;
         window.aktifSes = audio;
-        audio.onended = function () {
-            sesCaliyor = false;
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-        };
-        audio.onerror = function () {
-            if (data.audio_base64 && audio.src.indexOf("data:") !== 0) {
-                audio.src = "data:audio/mp3;base64," + data.audio_base64;
-                audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
-                return;
-            }
-            sesCaliyor = false;
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-        };
-        sesCaliyor = true;
-        const cal = audio.play();
-        if (cal && typeof cal.catch === "function") {
-            cal.catch(function (e) {
-                console.log("Ses oynatma engeli:", e);
-                audio.onended = null;
-                audio.onerror = null;
-                sesCaliyor = false;
-            });
-        }
+        audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
+    }
+
+    const adminSesDugmesi = document.getElementById("adminSesDugmesi");
+    if (adminSesDugmesi) {
+        adminSesDugmesi.addEventListener("click", function () {
+            adminSesAcik = !adminSesAcik;
+            adminSesDugmesi.textContent = adminSesAcik ? "Ses açık" : "Ses kapalı";
+            if (!adminSesAcik) calanSesiDurdur();
+        });
     }
 
     socket.on("ses_oynat", function (data) {
+        if (!adminSesAcik) return;
         if (data && data.dukkan && data.dukkan !== seciliDukkan) return;
-        sesKuyrugu.push(data || {});
-        sesKuyrugunuCal();
-    });
-
-    document.addEventListener("pointerdown", function () {
-        sesKuyrugunuCal();
+        anonsuCal(data);
     });
 
     let seciliDukkan = 'gumus';

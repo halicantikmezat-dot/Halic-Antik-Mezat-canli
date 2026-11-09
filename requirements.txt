@@ -10,6 +10,7 @@ psycogreen==1.0.2
 pandas==2.2.2
 openpyxl==3.1.2
 requests==2.31.0
+openai==3.42.0
 pyotp==2.9.0
 TikTokLive
 edge-tts==6.1.12

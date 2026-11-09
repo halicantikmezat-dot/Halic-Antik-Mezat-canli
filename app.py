@@ -179,6 +179,21 @@ SES_DIL_KURALI = (
 )
 
 
+def ses_metnini_temizle(metin):
+    """Ses motoruna yalnızca okunacak Türkçe düz metin gider."""
+    s = str(metin or "")
+    s = re.sub(r"```[\s\S]*?```", " ", s)
+    s = re.sub(r"\{[\s\S]*?\}", " ", s)
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"\[[^\]]*\]", " ", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"https?://\S+", " ", s)
+    s = re.sub(r"(?im)^\s*(system|assistant|user|json)\s*:\s*", " ", s)
+    s = re.sub(r"[*_#`~|]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:4096]
+
+
 def ses_icin_fonetik(metin):
     """Hitap eklerini, ekrandaki yazıyı bozmadan ses motorunun akıcı okuyacağı biçime çevirir."""
     s = str(metin or "")
@@ -225,35 +240,33 @@ def _mp3_kaydet(veri, nesil):
     return f"/static/sesler/{ad}"
 
 
+_son_ses_paketi = {"imza": "", "an": 0.0}
+
+
 def _openai_mp3(istemci, model, ses, soylenen):
-    try:
-        yanit = istemci.audio.speech.create(
-            model=model,
-            voice=ses,
-            input=soylenen,
-            response_format="mp3",
-            instructions=SES_DIL_KURALI,
-        )
-    except Exception as dil_hata:
-        print(f"[SES] Dil talimatı yeniden denendi: {dil_hata}")
-        yanit = istemci.audio.speech.create(
-            model=model,
-            voice=ses,
-            input=soylenen,
-            response_format="mp3",
-        )
+    yanit = istemci.audio.speech.create(
+        model=model,
+        voice=ses,
+        input=soylenen,
+        response_format="mp3",
+    )
     if hasattr(yanit, "read"):
         return yanit.read()
     return bytes(getattr(yanit, "content", b"") or b"")
 
 
 def ahmet_ses_akisi(dukkan, metin, tur="anons"):
-    """Panelde görünen anonsu nova sesiyle üretip tüm ekranlara yollar."""
+    """Panelde görünen anonsu nova sesiyle üretip tek paket olarak yollar."""
     global _ses_nesil
-    temiz = re.sub(r"\s+", " ", str(metin or "")).strip()[:4096]
+    temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
     if not temiz:
         return
-    soylenen = ses_icin_fonetik(temiz)
+    imza = f"{dukkan}:{temiz}"
+    simdi = time.time()
+    if _son_ses_paketi["imza"] == imza and simdi - _son_ses_paketi["an"] < 2:
+        return
+    _son_ses_paketi["imza"] = imza
+    _son_ses_paketi["an"] = simdi
     _ses_nesil += 1
     nesil = _ses_nesil
     socketio.emit("ses_kes", {"dukkan": dukkan, "nesil": nesil, "tur": tur}, room=dukkan)
@@ -270,19 +283,16 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons"):
             model = "tts-1-hd"
         ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
         try:
-            veri = _openai_mp3(istemci, model, ses, soylenen)
+            veri = _openai_mp3(istemci, model, ses, temiz)
             if nesil != _ses_nesil or not veri:
                 return
             adres = _mp3_kaydet(veri, nesil)
-            b64 = base64.b64encode(veri).decode("ascii")
-            paket = {
+            socketio.emit("ses_oynat", {
                 "dukkan": dukkan,
                 "nesil": nesil,
                 "tur": tur,
                 "audio_url": adres,
-                "audio_base64": b64 if len(b64) < 700000 else "",
-            }
-            socketio.emit("ses_oynat", paket)
+            })
             print(f"[SES] anons yayında, {len(temiz)} karakter, model {model}, ses {ses}")
         except Exception as hata:
             print(f"[SES HATA] OpenAI akış: {hata}")

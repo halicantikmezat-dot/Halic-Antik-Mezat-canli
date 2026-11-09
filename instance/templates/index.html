@@ -2134,8 +2134,29 @@
         }
     });
 
-    const sesKuyrugu = [];
-    let sesCaliyor = false;
+    let currentAudio = null;
+    let sonSesImza = "";
+    let sonSesAni = 0;
+
+    function calanSesiDurdur() {
+        if (currentAudio) {
+            currentAudio.onended = null;
+            currentAudio.onerror = null;
+            try {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+            } catch (e) {}
+            currentAudio.src = "";
+            currentAudio = null;
+        }
+        if (window.aktifSes) {
+            try {
+                window.aktifSes.pause();
+                window.aktifSes.currentTime = 0;
+            } catch (e) {}
+            window.aktifSes = null;
+        }
+    }
 
     function sesKaynagi(data) {
         let url = (data && data.audio_url) || "";
@@ -2147,55 +2168,31 @@
         return "";
     }
 
-    function sesKuyrugunuCal() {
-        if (sesCaliyor || !sesKuyrugu.length) return;
-        const data = sesKuyrugu[0];
+    function anonsuCal(data) {
+        const imza = String((data && (data.nesil || data.audio_url || "")) || "");
+        const simdi = Date.now();
+        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
+        sonSesImza = imza;
+        sonSesAni = simdi;
         const kaynak = sesKaynagi(data);
-        if (!kaynak) {
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-            return;
-        }
+        if (!kaynak) return;
+        calanSesiDurdur();
         const audio = new Audio(kaynak);
+        currentAudio = audio;
         window.aktifSes = audio;
-        audio.onended = function () {
-            sesCaliyor = false;
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-        };
-        audio.onerror = function () {
-            if (data.audio_base64 && audio.src.indexOf("data:") !== 0) {
-                audio.src = "data:audio/mp3;base64," + data.audio_base64;
-                audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
-                return;
-            }
-            sesCaliyor = false;
-            sesKuyrugu.shift();
-            sesKuyrugunuCal();
-        };
-        sesCaliyor = true;
-        const cal = audio.play();
-        if (cal && typeof cal.catch === "function") {
-            cal.catch(function (e) {
-                console.log("Ses oynatma engeli:", e);
-                audio.onended = null;
-                audio.onerror = null;
-                sesCaliyor = false;
-            });
-        }
+        audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
     }
 
     socket.on("ses_oynat", function (data) {
         const dukkan = data && (data.dukkan || data.dukkan_kodu);
         if (dukkan && dukkan !== aktifDukkan) return;
-        sesBaglaminiAc();
-        sesKuyrugu.push(data || {});
-        sesKuyrugunuCal();
+        anonsuCal(data);
     });
 
     document.addEventListener("pointerdown", function () {
-        sesBaglaminiAc();
-        sesKuyrugunuCal();
+        if (currentAudio && currentAudio.paused) {
+            currentAudio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
+        }
     });
 
     socket.on("ahmet_usta_kayan_yazi", function(data) {
