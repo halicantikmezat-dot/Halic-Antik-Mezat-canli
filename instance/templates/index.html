@@ -1345,6 +1345,14 @@
     </div>
 </div>
 
+<div id="fahisPeyModal" class="modal">
+    <div class="modal-content" style="text-align:left; background:#07090e;">
+        <p id="fahisPeyMetni" style="font-size:16px; color:#ffffff; line-height:1.45;"></p>
+        <button type="button" onclick="fahisPeyKapat(true)" class="btn-bid btn-action-green" style="width:100%; margin-top:8px; font-size:16px;">Onaylıyorum / Eminim</button>
+        <button type="button" onclick="fahisPeyKapat(false)" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;">İptal</button>
+    </div>
+</div>
+
 <div id="feedbackModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:11px; font-weight:800;">📩 Yöneticiye Görüş / Şikayet İlet</h3>
@@ -1916,7 +1924,7 @@
                 alert(gecersizPeyUyarisi(minKabul));
                 return;
             }
-            peyGonder(tutar);
+            fahisPeyKontrol(tutar, function () { peyGonder(tutar); });
             return;
         }
         const input = document.getElementById('chatMesajGirdi');
@@ -2761,6 +2769,11 @@
                     window.aktifSes.pause();
                     window.aktifSes.currentTime = 0;
                 }
+                muzigiKis();
+                clearTimeout(window.peyMuzikZaman);
+                window.peyMuzikZaman = setTimeout(function () {
+                    if (!window.moderatorKonusuyor && !(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+                }, 1200);
                 peyBandinaYaz(data.platform || data.kazanan, kisi, fiyat);
             }
             sonGorulenPey = fiyat;
@@ -3131,18 +3144,33 @@
             return;
         }
 
-        let fahisLimit = current > 0 ? (current * 5) : (minKabulFiyat * 5);
-        if (tutar >= fahisLimit) {
-            let onay = confirm(
-                `⚠️ DİKKAT: YÜKSEK BİR TEKLİF YAZDINIZ!\n\n` +
-                `Mevcut Teklif: ${current.toLocaleString('tr-TR')} TL\n` +
-                `Sizin Girdiğiniz: ${tutar.toLocaleString('tr-TR')} TL\n\n` +
-                `Bu teklif mevcut fiyatın 5 katından fazladır. Onaylıyor musunuz?`
-            );
-            if (!onay) return;
-        }
+        fahisPeyKontrol(tutar, function () { peyGonder(tutar); });
+    }
 
-        peyGonder(tutar);
+    let fahisOnayKuyrugu = null;
+
+    function fahisPeyKontrol(tutar, onaylaninca) {
+        const current = sonGorulenPey || 0;
+        if (!(current > 0 && tutar >= current * 10)) {
+            onaylaninca();
+            return;
+        }
+        const yazi = document.getElementById("fahisPeyMetni");
+        const tutarYazi = Math.round(tutar).toLocaleString("tr-TR");
+        if (yazi) {
+            yazi.textContent = "⚠️ Dikkat: Ürün fiyatının çok üzerinde bir teklif girdiniz (" + tutarYazi + " TL). Bilginiz dahilinde mi, bu teklifi onaylıyor musunuz?";
+        }
+        fahisOnayKuyrugu = onaylaninca;
+        const modal = document.getElementById("fahisPeyModal");
+        if (modal) modal.style.display = "flex";
+    }
+
+    function fahisPeyKapat(onay) {
+        const modal = document.getElementById("fahisPeyModal");
+        if (modal) modal.style.display = "none";
+        const devam = fahisOnayKuyrugu;
+        fahisOnayKuyrugu = null;
+        if (onay && typeof devam === "function") devam();
     }
 
     function peyGonder(miktar) {

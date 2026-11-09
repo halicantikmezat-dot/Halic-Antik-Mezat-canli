@@ -4248,6 +4248,34 @@ def handle_join_admin():
         join_room("admin_room")
 
 
+_son_duzeltme_ani = {}
+
+
+@socketio.on("yonetici_duzeltmesi")
+def yonetici_duzeltmesi(veri):
+    """Patronun söylediği düzeltmeyi Ahmet Usta'nın sonraki cümlesine bağlar."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        metin = ses_metnini_temizle(veri.get("metin"))
+        if len(metin) < 2:
+            return
+        dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
+        anahtar = f"{dukkan}:{metin.casefold()}"
+        simdi = time.time()
+        if simdi - _son_duzeltme_ani.get(anahtar, 0) < 8:
+            return
+        _son_duzeltme_ani[anahtar] = simdi
+        ahmet_usta_anons_yap(
+            dukkan,
+            f"Pardon efendim, sayın yöneticimin/patronun belirttiği üzere {metin}",
+            tur="anons",
+        )
+    finally:
+        db.session.remove()
+
+
 @socketio.on("moderator_ses_parcasi")
 def moderator_ses_parcasi(veri):
     """Moderatörün canlı mikrofon parçasını odadaki izleyicilere iletir."""

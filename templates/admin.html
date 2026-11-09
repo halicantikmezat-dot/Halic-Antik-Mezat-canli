@@ -397,6 +397,7 @@
                     <button id="btnBasKonus" class="btn-bas-konus" title="Ahmet Usta'ya sesle soru sorun / talimat verin">
                         🎙️ Bas-Konuş (AI Dinlesin)
                     </button>
+                    <button type="button" id="btnPatronYayin" class="btn-bas-konus" title="Mikrofon sürekli açık kalsın">Patron Yayında (Sürekli Dinleme)</button>
                     <button type="button" id="adminSesDugmesi" class="btn-bas-konus" title="Yönetici ekranında anons sesi">Ses kapalı</button>
                     <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
                 </div>
@@ -962,6 +963,8 @@
     let moderatorAkis = null;
     let moderatorBasili = false;
     let moderatorSira = 0;
+    let patronYayinda = false;
+    let patronTaniyici = null;
 
     function moderatorMime() {
         const adaylar = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
@@ -1031,6 +1034,7 @@
     }
 
     function basKonusBitir() {
+        if (patronYayinda) return;
         moderatorBasili = false;
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
             try { mediaRecorder.stop(); } catch (e) {}
@@ -1045,6 +1049,51 @@
         }
     }
 
+    function patronTanimaBaslat() {
+        const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Rec) return;
+        patronTanimaDurdur();
+        patronTaniyici = new Rec();
+        patronTaniyici.lang = "tr-TR";
+        patronTaniyici.continuous = true;
+        patronTaniyici.interimResults = false;
+        patronTaniyici.onresult = function (ev) {
+            const sonuc = ev.results[ev.results.length - 1];
+            if (!sonuc || !sonuc.isFinal) return;
+            const metin = String((sonuc[0] && sonuc[0].transcript) || "").trim();
+            if (metin.length < 2) return;
+            socket.emit("yonetici_duzeltmesi", { dukkan: seciliDukkan, metin: metin });
+        };
+        patronTaniyici.onend = function () {
+            if (!patronYayinda || !patronTaniyici) return;
+            try { patronTaniyici.start(); } catch (e) {}
+        };
+        try { patronTaniyici.start(); } catch (e) {}
+    }
+
+    function patronTanimaDurdur() {
+        if (!patronTaniyici) return;
+        patronTaniyici.onend = null;
+        try { patronTaniyici.stop(); } catch (e) {}
+        patronTaniyici = null;
+    }
+
+    function patronModuAcKapa() {
+        patronYayinda = !patronYayinda;
+        const btn = document.getElementById("btnPatronYayin");
+        if (btn) {
+            btn.textContent = patronYayinda ? "Patron Yayında ●" : "Patron Yayında (Sürekli Dinleme)";
+            btn.style.background = patronYayinda ? "#881337" : "";
+        }
+        if (patronYayinda) {
+            if (!moderatorBasili) basKonusBaslat();
+            patronTanimaBaslat();
+            return;
+        }
+        patronTanimaDurdur();
+        basKonusBitir();
+    }
+
     if (btnBasKonus) {
         btnBasKonus.addEventListener('pointerdown', function (e) {
             e.preventDefault();
@@ -1054,6 +1103,9 @@
         btnBasKonus.addEventListener('pointerup', basKonusBitir);
         btnBasKonus.addEventListener('pointercancel', basKonusBitir);
     }
+
+    const btnPatronYayin = document.getElementById("btnPatronYayin");
+    if (btnPatronYayin) btnPatronYayin.addEventListener("click", patronModuAcKapa);
 
     // CANLI SOHBET VE AHMET USTA AKIŞI
     socket.on("yeni_canli_yorum", function(data) {
