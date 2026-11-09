@@ -4,6 +4,7 @@
 __pycache__/
 *.pyc
 mezat_raporu.xlsx
+static/sesler/*.mp3
 
 instagram_profile/  
 fb_profile/ 

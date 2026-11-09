@@ -60,6 +60,8 @@ from config import Config
 # Yükleme klasörünü garantiye al
 UPLOADS_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+SESLER_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "sesler")
+os.makedirs(SESLER_DIR, exist_ok=True)
 
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
@@ -206,8 +208,47 @@ def _openai_ses_istemcisi():
     return _openai_istemci
 
 
+def _mp3_kaydet(veri, nesil):
+    os.makedirs(SESLER_DIR, exist_ok=True)
+    ad = f"ahmet_{nesil}_{uuid.uuid4().hex[:8]}.mp3"
+    with open(os.path.join(SESLER_DIR, ad), "wb") as dosya:
+        dosya.write(veri)
+    eskiler = sorted(
+        (os.path.join(SESLER_DIR, ad) for ad in os.listdir(SESLER_DIR) if ad.endswith(".mp3")),
+        key=os.path.getmtime,
+    )
+    for eski in eskiler[:-40]:
+        try:
+            os.remove(eski)
+        except OSError:
+            pass
+    return f"/static/sesler/{ad}"
+
+
+def _openai_mp3(istemci, model, ses, soylenen):
+    try:
+        yanit = istemci.audio.speech.create(
+            model=model,
+            voice=ses,
+            input=soylenen,
+            response_format="mp3",
+            instructions=SES_DIL_KURALI,
+        )
+    except Exception as dil_hata:
+        print(f"[SES] Dil talimatı yeniden denendi: {dil_hata}")
+        yanit = istemci.audio.speech.create(
+            model=model,
+            voice=ses,
+            input=soylenen,
+            response_format="mp3",
+        )
+    if hasattr(yanit, "read"):
+        return yanit.read()
+    return bytes(getattr(yanit, "content", b"") or b"")
+
+
 def ahmet_ses_akisi(dukkan, metin, tur="anons"):
-    """Metni dosyaya kaydetmeden PCM parçaları olarak odaya yollar."""
+    """Panelde görünen anonsu nova sesiyle üretip tüm ekranlara yollar."""
     global _ses_nesil
     temiz = re.sub(r"\s+", " ", str(metin or "")).strip()[:4096]
     if not temiz:
@@ -216,29 +257,6 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons"):
     _ses_nesil += 1
     nesil = _ses_nesil
     socketio.emit("ses_kes", {"dukkan": dukkan, "nesil": nesil, "tur": tur}, room=dukkan)
-
-    def _pcm_yolla(cevap):
-        artik = b""
-        for parca in cevap.iter_bytes(chunk_size=SES_BLOK):
-            if nesil != _ses_nesil:
-                return
-            artik += parca or b""
-            while len(artik) >= SES_BLOK and nesil == _ses_nesil:
-                blok, artik = artik[:SES_BLOK], artik[SES_BLOK:]
-                socketio.emit("ses_akisi", {
-                    "dukkan": dukkan,
-                    "nesil": nesil,
-                    "ornekleme": SES_ORNEKLEME,
-                    "pcm": base64.b64encode(blok).decode("ascii"),
-                }, room=dukkan)
-        if nesil == _ses_nesil and len(artik) >= 2:
-            cift = len(artik) - (len(artik) % 2)
-            socketio.emit("ses_akisi", {
-                "dukkan": dukkan,
-                "nesil": nesil,
-                "ornekleme": SES_ORNEKLEME,
-                "pcm": base64.b64encode(artik[:cift]).decode("ascii"),
-            }, room=dukkan)
 
     def _akitar():
         istemci = _openai_ses_istemcisi()
@@ -252,29 +270,20 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons"):
             model = "tts-1-hd"
         ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
         try:
-            try:
-                with istemci.audio.speech.with_streaming_response.create(
-                    model=model,
-                    voice=ses,
-                    input=soylenen,
-                    response_format="pcm",
-                    instructions=SES_DIL_KURALI,
-                ) as cevap:
-                    _pcm_yolla(cevap)
-            except Exception as dil_hata:
-                if nesil != _ses_nesil:
-                    return
-                print(f"[SES] Dil talimatı yeniden denendi: {dil_hata}")
-                with istemci.audio.speech.with_streaming_response.create(
-                    model=model,
-                    voice=ses,
-                    input=soylenen,
-                    response_format="pcm",
-                ) as cevap:
-                    _pcm_yolla(cevap)
-            if nesil == _ses_nesil:
-                socketio.emit("ses_akisi_bitti", {"dukkan": dukkan, "nesil": nesil}, room=dukkan)
-                print(f"[SES] akış bitti, {len(temiz)} karakter, model {model}, ses {ses}")
+            veri = _openai_mp3(istemci, model, ses, soylenen)
+            if nesil != _ses_nesil or not veri:
+                return
+            adres = _mp3_kaydet(veri, nesil)
+            b64 = base64.b64encode(veri).decode("ascii")
+            paket = {
+                "dukkan": dukkan,
+                "nesil": nesil,
+                "tur": tur,
+                "audio_url": adres,
+                "audio_base64": b64 if len(b64) < 700000 else "",
+            }
+            socketio.emit("ses_oynat", paket)
+            print(f"[SES] anons yayında, {len(temiz)} karakter, model {model}, ses {ses}")
         except Exception as hata:
             print(f"[SES HATA] OpenAI akış: {hata}")
 

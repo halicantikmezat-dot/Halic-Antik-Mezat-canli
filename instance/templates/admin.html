@@ -827,6 +827,67 @@
         socket.emit("join_admin");
     });
 
+    const sesKuyrugu = [];
+    let sesCaliyor = false;
+
+    function sesKaynagi(data) {
+        let url = (data && data.audio_url) || "";
+        if (url && window.location.protocol === "https:" && url.indexOf("http://") === 0) {
+            url = "https://" + url.slice("http://".length);
+        }
+        if (url) return url;
+        if (data && data.audio_base64) return "data:audio/mp3;base64," + data.audio_base64;
+        return "";
+    }
+
+    function sesKuyrugunuCal() {
+        if (sesCaliyor || !sesKuyrugu.length) return;
+        const data = sesKuyrugu[0];
+        const kaynak = sesKaynagi(data);
+        if (!kaynak) {
+            sesKuyrugu.shift();
+            sesKuyrugunuCal();
+            return;
+        }
+        const audio = new Audio(kaynak);
+        window.aktifSes = audio;
+        audio.onended = function () {
+            sesCaliyor = false;
+            sesKuyrugu.shift();
+            sesKuyrugunuCal();
+        };
+        audio.onerror = function () {
+            if (data.audio_base64 && audio.src.indexOf("data:") !== 0) {
+                audio.src = "data:audio/mp3;base64," + data.audio_base64;
+                audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
+                return;
+            }
+            sesCaliyor = false;
+            sesKuyrugu.shift();
+            sesKuyrugunuCal();
+        };
+        sesCaliyor = true;
+        const cal = audio.play();
+        if (cal && typeof cal.catch === "function") {
+            cal.catch(function (e) {
+                console.log("Ses oynatma engeli:", e);
+                audio.onended = null;
+                audio.onerror = null;
+                sesCaliyor = false;
+            });
+        }
+    }
+
+    socket.on("ses_oynat", function (data) {
+        if (data && data.dukkan && data.dukkan !== seciliDukkan) return;
+        sesKuyrugu.push(data || {});
+        sesKuyrugunuCal();
+    });
+
+    document.addEventListener("pointerdown", function () {
+        sesKuyrugunuCal();
+    });
+
     let seciliDukkan = 'gumus';
     let dukkanlar = {};
     let otonomDurumlari = {};
