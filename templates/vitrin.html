@@ -268,7 +268,16 @@
 </div>
 
 <script>
-    const socket = io({ transports: ['websocket'], upgrade: false });
+    function mezatSocketAdresi() {
+        const host = window.location.hostname;
+        if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000';
+        if (host === 'halicantikcanli.com' || host === 'www.halicantikcanli.com') {
+            return 'https://halic-antik-mezat-canli.onrender.com';
+        }
+        return window.location.origin;
+    }
+
+    const socket = io(mezatSocketAdresi(), { transports: ['websocket'], upgrade: false });
 
     // DÜKKAN YÖNETİMİ
     const urlParams = new URLSearchParams(window.location.search);
