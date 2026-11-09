@@ -546,13 +546,14 @@
             display: flex;
             align-items: center;
             white-space: nowrap;
-            animation: peyTickerKaydir 60s linear infinite !important;
+            animation: peyTickerKaydir 25s linear infinite !important;
             gap: 30px;
             will-change: transform;
         }
         .pey-ticker-oge {
-            font-size: 9px;
-            font-weight: 800 !important;
+            font-size: 1.15rem;
+            font-weight: 600 !important;
+            line-height: 1.4;
             color: #ffffff;
             display: inline-flex;
             align-items: center;
@@ -670,11 +671,367 @@
         .table-custom { width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 3px; }
         .table-custom th, .table-custom td { padding: 4px 3px; text-align: left; border-bottom: 1px solid var(--card-border); }
         .table-custom th { color: var(--accent-gold); }
+
+        html, body {
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            background: #000;
+        }
+        .mobile-container {
+            height: 100dvh;
+            max-height: 100dvh;
+            padding: 0 !important;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+            position: relative;
+        }
+        .header, .shop-nav-bar, .user-bar-compact {
+            position: relative;
+            z-index: 40;
+            background: rgba(8, 12, 19, 0.62);
+            backdrop-filter: blur(8px);
+            margin-top: 0;
+            border-radius: 0;
+        }
+        #mezatAlani {
+            position: relative;
+            flex: 1;
+            min-height: 0;
+        }
+        .stage-wrapper {
+            position: absolute !important;
+            inset: 0;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0;
+            border: none;
+            border-radius: 0;
+            z-index: 1;
+        }
+        .stage-media-box img, .stage-media-box video {
+            object-fit: cover !important;
+        }
+        .yuzer-sohbet {
+            position: absolute;
+            left: 10px;
+            bottom: 168px;
+            width: min(78%, 320px);
+            max-height: 32vh;
+            z-index: 45;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            gap: 6px;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        .yuzer-sohbet .chat-item {
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.42);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 8px;
+            font-size: 13px;
+            line-height: 1.35;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            max-width: 100%;
+        }
+        #tanitimSeridi, .auction-status-compact, .sold-banner, .stage-thumbnails, .kayan-bant-kapsayici, .muzik-ve-pey-satiri {
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            z-index: 30;
+            background: rgba(8, 12, 19, 0.45);
+            backdrop-filter: blur(6px);
+        }
+        #tanitimSeridi { top: 8px; }
+        .stage-thumbnails { top: 62px; }
+        .sold-banner { top: 102px; }
+        .auction-status-compact { bottom: 168px; right: 8px; left: auto; width: min(46%, 210px); }
+        .kayan-bant-kapsayici { display: none; }
+        .muzik-ve-pey-satiri { bottom: 118px; }
+        .footer { display: none; }
+        .cekmece-tutamac {
+            position: fixed;
+            left: 50%;
+            bottom: 92px;
+            transform: translateX(-50%);
+            width: min(100%, 480px);
+            z-index: 1001;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-weight: 800;
+            font-size: 12px;
+            padding: 6px 0 2px;
+            cursor: pointer;
+        }
+        .cekmece-tutamac span {
+            display: block;
+            width: 42px;
+            height: 4px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.75);
+            margin: 0 auto 4px;
+        }
+        #altCekmece {
+            position: fixed;
+            left: 50%;
+            bottom: 118px;
+            width: min(100%, 480px);
+            max-height: 52vh;
+            z-index: 900;
+            transform: translateX(-50%) translateY(120%);
+            transition: transform 0.28s ease;
+            background: rgba(15, 21, 30, 0.86);
+            backdrop-filter: blur(12px);
+            border-radius: 16px 16px 0 0;
+            padding: 8px;
+            overflow: auto;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+        }
+        #altCekmece.acik { transform: translateX(-50%) translateY(0); visibility: visible; pointer-events: auto; }
+        #altCekmece:not(.acik) {
+            transform: translateX(-50%) translateY(120vh);
+            visibility: hidden;
+            pointer-events: none;
+        }
+        #audioUnlockPrompt { top: auto; bottom: 210px; z-index: 50; }
+        #altCekmece .chat-drawer, #altCekmece .catalog-drawer-inline { display: none; margin: 0; }
+        .cekmece-sekmeler { display: flex; gap: 6px; margin-bottom: 8px; }
+        .cekmece-sekmeler button {
+            flex: 1;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 8px 4px;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .sabit-pey-bar {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 0;
+            width: min(100%, 480px);
+            z-index: 1000;
+            padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+            background: rgba(8, 12, 19, 0.94);
+            border-top: 1px solid rgba(212, 175, 55, 0.45);
+        }
+        .sabit-pey-bar .bid-btn-row { display: flex; gap: 6px; margin: 0; }
+        .sabit-pey-bar .btn-bid, .sabit-pey-bar .btn-buy-now {
+            font-size: 13px;
+            padding: 12px 4px;
+            width: 33.33%;
+        }
+        .shop-nav-bar, .user-bar-compact, .yuzer-sohbet, #tanitimSeridi, .cekmece-tutamac, .corner-top-left, .corner-top-right, .currency-select { display: none !important; }
+        .sade-header { align-items: center; gap: 8px; background: rgba(8, 12, 19, 0.55); }
+        .btn-menu, .btn-muzik-ust, .live-badge {
+            border: 1px solid rgba(255,255,255,0.28);
+            background: rgba(0,0,0,0.35);
+            color: #fff;
+            border-radius: 999px;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+        }
+        .btn-menu { width: 36px; height: 36px; font-size: 18px; flex-shrink: 0; }
+        .btn-muzik-ust { padding: 6px 10px; font-size: 11px; font-weight: 800; }
+        .live-badge { cursor: pointer; }
+        .genel-menu {
+            position: absolute;
+            top: 0; left: 0;
+            width: 86%;
+            height: 100%;
+            z-index: 1400;
+            background: rgba(10, 14, 22, 0.88);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(212, 175, 55, 0.35);
+            padding: 16px 14px 24px;
+            overflow: auto;
+            transform: translateX(-105%);
+            transition: transform 0.25s ease;
+        }
+        .genel-menu.acik { transform: translateX(0); }
+        .genel-menu h4 { color: var(--accent-gold); font-size: 12px; margin: 14px 0 8px; letter-spacing: 0.4px; }
+        .genel-menu a, .genel-menu button.menu-oge {
+            display: block; width: 100%; text-align: left;
+            background: rgba(255,255,255,0.06); color: #fff;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px; padding: 9px 10px; margin-bottom: 6px;
+            font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer;
+        }
+        .genel-menu a.active, .genel-menu a:hover, .genel-menu button.menu-oge:hover { border-color: var(--accent-gold); }
+        .menu-perde { position: absolute; inset: 0; background: rgba(0,0,0,0.35); z-index: 1300; }
+        .menu-perde[hidden] { display: none; }
+        .stage-media-box { height: 70vh; max-height: 70vh; overflow: hidden; }
+        @keyframes kenBurnsTanitim {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.1); }
+        }
+        #medyaKapsayici.tanitim-zoom img,
+        #medyaKapsayici.tanitim-zoom video {
+            animation: kenBurnsTanitim 7s ease-in-out forwards !important;
+        }
+        #medyaKapsayici .kb-orta { transform-origin: center center !important; }
+        #medyaKapsayici .kb-sag-ust { transform-origin: 82% 18% !important; }
+        #medyaKapsayici .kb-sol-alt { transform-origin: 18% 82% !important; }
+        #medyaKapsayici .kb-sag-alt { transform-origin: 80% 78% !important; }
+        .stage-media-box img, .stage-media-box video {
+            max-height: 70vh !important;
+            width: 100% !important;
+            height: auto !important;
+            object-fit: contain !important;
+        }
+        .lot-rozet {
+            position: absolute; top: 10px; left: 10px; z-index: 50;
+            background: rgba(0,0,0,0.28); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.28); border-radius: 999px;
+            padding: 4px 9px; font-size: 11px; font-weight: 800; color: #fff;
+        }
+        .btn-dinle-kisa {
+            position: static;
+            z-index: 2;
+            width: 36px;
+            height: 36px;
+            flex: 0 0 36px;
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.38);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 999px;
+            padding: 0;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .bilgi-karti {
+            position: fixed;
+            left: max(8px, calc(50vw - 232px));
+            bottom: 208px;
+            z-index: 35;
+            width: min(72%, 300px);
+            max-height: 150px;
+            overflow: auto;
+            background: rgba(6, 8, 14, 0.94);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(254, 240, 138, 0.45);
+            border-radius: 12px;
+            padding: 10px;
+            color: #ffffff;
+            font-size: 16px;
+            line-height: 1.45;
+        }
+        .bilgi-karti[hidden] { display: none !important; }
+        .bilgi-karti b { color: var(--accent-gold); }
+        .inceleme-serit {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 60; display: flex; gap: 8px; align-items: center;
+            background: rgba(0,0,0,0.4); backdrop-filter: blur(8px);
+            border: 1px solid rgba(212,175,55,0.6); color: #fff;
+            border-radius: 999px; padding: 4px 8px 4px 12px; font-size: 12px;
+        }
+        .inceleme-serit[hidden] { display: none !important; }
+        .inceleme-serit button { border: none; background: var(--accent-gold); color: #111; border-radius: 999px; padding: 4px 8px; font-weight: 800; cursor: pointer; }
+        .akis-mesaj-satiri {
+            position: fixed; left: 50%; transform: translateX(-50%);
+            bottom: calc(62px + env(safe-area-inset-bottom));
+            width: min(100%, 480px); z-index: 1001;
+            display: flex; align-items: flex-end; gap: 8px;
+            padding: 0 8px; box-sizing: border-box; pointer-events: auto;
+        }
+        .hibrit-kapsul {
+            flex: 1 1 auto; min-width: 0; height: 40px;
+            display: flex; align-items: center; gap: 6px;
+            background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.28); border-radius: 999px;
+            padding: 0 4px 0 4px; box-sizing: border-box; overflow: hidden;
+        }
+        .hibrit-alan { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
+        .hibrit-kapsul .pey-ticker-kapsayici {
+            position: absolute; inset: 0; height: auto; margin: 0; padding: 0 8px 0 2px;
+            background: transparent; border: none; border-radius: 0; overflow: hidden;
+            display: flex; align-items: center;
+        }
+        .hibrit-kapsul .pey-ticker-oge { font-size: 16px !important; font-weight: 600 !important; line-height: 1.2 !important; color: #ffffff !important; }
+        .hibrit-kapsul .pey-ticker-metin { animation-duration: 18s !important; }
+        .hibrit-kapsul.yazi-modu .pey-ticker-kapsayici { opacity: 0; }
+        .ses-sutunu { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; }
+        @keyframes canli-nabiz { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        .canli-nokta { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 4px; animation: canli-nabiz 1.2s infinite; vertical-align: middle; }
+        .canli-rozet { color: #ef4444; font-weight: 800; font-size: 13px; margin-left: 6px; white-space: nowrap; }
+        .genel-menu a.dukkan-sonuk { opacity: 0.5; }
+        .lot-galeri-satiri { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 50; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+        .lot-galeri-satiri .lot-rozet { position: static; flex: 0 0 auto; }
+        .lot-galeri-satiri .stage-thumbnails { position: static !important; top: auto !important; left: auto !important; right: auto !important; display: flex; gap: 4px; background: transparent !important; border: none !important; padding: 0; max-width: calc(100% - 108px); overflow-x: auto; pointer-events: auto; }
+        .lot-galeri-satiri .thumb-item { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+        .mezat-sayaci { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 40; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.38); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.28); border-radius: 12px; padding: 4px 8px; color: #fff; margin: 0; }
+        .guncel-pey-kutu { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: 118px; z-index: 60; height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.38); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 999px; padding: 0 14px; font-size: 15px; font-weight: 700; line-height: 1; white-space: nowrap; }
+        .guncel-pey-kutu .pey-etiket { color: #fef08a; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; line-height: 1; }
+        .guncel-pey-kutu .price-val, .guncel-pey-kutu #aktif_kazanan { font-size: 15px !important; font-weight: 700 !important; line-height: 1 !important; color: #ffffff !important; text-shadow: none !important; }
+        #modalKurallar .modal-content { max-width: 560px; background: #07090e !important; }
+        #modalKurallar h2 { color: #fef08a; font-size: 17px; margin: 14px 0 6px; }
+        #modalKurallar p { font-size: 16px !important; color: #ffffff !important; line-height: 1.5; }
+        .akis-mesaj-satiri input.akis-mesaj {
+            position: absolute; inset: 0; width: 100% !important; height: 100%; margin: 0 !important;
+            padding: 0 8px; box-sizing: border-box; border: none !important; border-radius: 0 !important;
+            background: transparent !important; color: transparent; caret-color: transparent;
+            font-size: 16px !important; line-height: 40px; z-index: 2;
+        }
+        .hibrit-kapsul.yazi-modu input.akis-mesaj { color: #ffffff; caret-color: #fef08a; }
+        .akis-mesaj-satiri input.akis-mesaj::placeholder { color: transparent; }
+        .hibrit-kapsul.yazi-modu input.akis-mesaj::placeholder { color: rgba(255,255,255,0.55); }
+        .akis-mikrofon {
+            width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.45);
+            background: rgba(0,0,0,0.7); color: #fff; cursor: pointer; flex: 0 0 40px;
+            font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0;
+        }
+        .akis-mikrofon span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; line-height: 1; }
+        .ses-sutunu .btn-dinle-kisa { width: 32px; height: 32px; flex: 0 0 32px; font-size: 16px; }
+        .hibrit-kapsul .guncel-pey-kutu {
+            position: static !important; left: auto !important; right: auto !important; bottom: auto !important;
+            width: auto !important; height: 30px !important; flex: 0 0 auto; z-index: 3;
+            border-radius: 999px; padding: 0 8px; gap: 4px;
+            background: rgba(255,255,255,0.1);
+        }
+        .hibrit-kapsul #aktif_kazanan { display: none !important; }
+        .genel-menu { background: #07090e !important; }
+        .genel-menu, .genel-menu a, .genel-menu button.menu-oge, #genelMenu {
+            font-size: 16px !important;
+            color: #ffffff !important;
+            line-height: 1.4;
+        }
+        .genel-menu h4 { color: #fef08a !important; font-size: 16px !important; }
+        #modalKurallar .modal-content { background: #07090e !important; }
+        #modalKurallar .modal-content, #modalKurallar .modal-content p, #modalKurallar .modal-content div {
+            font-size: 16px !important;
+            color: #ffffff !important;
+            line-height: 1.45;
+        }
+        #elestiriPaneli { background: #07090e; }
+        #elestiriPaneli, #elestiriPaneli p, #elestiriPaneli select, #elestiriPaneli textarea {
+            font-size: 16px !important;
+            color: #ffffff !important;
+            line-height: 1.45;
+        }
+        .bilgi-karti, .bilgi-karti p { font-size: 16px !important; color: #ffffff !important; }
+        .bilgi-karti b, #lotAnonsMetni { color: #fef08a !important; }
+        #altCekmece, #catalogDrawer { background: #0a0e14 !important; color: #ffffff; font-size: 16px; }
+        #katalogSonucListesi, #katalogSonucListesi div { font-size: 16px !important; color: #ffffff; }
+        #izleyiciModal { background: rgba(0,0,0,0.45); }
     </style>
 </head>
 <body onclick="sesKilidiAc()">
 
-<audio id="ahmetAudioPlayer" preload="auto" style="display:none;"></audio>
 <div id="liveToast"></div>
 
 <div class="mobile-container">
@@ -682,40 +1039,40 @@
         🔊 Canlı Yayını Sesli Dinlemek İçin Dokunun
     </div>
 
-    <div class="header">
+    <div class="header sade-header">
+        <button type="button" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Genel Menü">☰</button>
         <div class="logo-box">
-            <span style="font-size: 13px;">🏛️</span>
-            <h2>HALİÇ ANTİK MEZAT</h2>
+            <h2>HALİÇ ANTİK</h2>
             <div class="header-lokasyon-rozet">
                 <span class="header-rozet-pulse"></span>
                 <span id="aktifDukkanRozet">GÜMÜŞ</span>
             </div>
         </div>
         <div class="header-actions">
-            <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
-                <option value="TRY">₺ TL</option>
-                <option value="USD">$ USD</option>
-                <option value="EUR">€ EUR</option>
-            </select>
-            <div class="live-badge">🟢 <span id="onlineCount">1</span> Canlı</div>
+            <button type="button" id="btnCanliMuzikToggle" onclick="canliMuzikAcKapa()" class="btn-muzik-ust">♪ Müzik</button>
+            <button type="button" class="live-badge" onclick="izleyiciListesiniAc()">🟢 <span id="onlineCount">0</span> Canlı</button>
         </div>
     </div>
-
-    <div class="shop-nav-bar" id="shopNavBar"></div>
-
-    <div class="user-bar-compact">
-        <div class="user-bar-compact-links">
-            <button class="btn-top-nav" onclick="toggleCatalogDrawer()">📦 Seç</button>
-            <a id="linkVitrin" href="/vitrin" class="btn-top-nav" style="background:#2e1065;">🛍️ Vitrin</a>
-            <button class="btn-top-nav" onclick="toggleChatDrawer()">💬 Sohbet</button>
-            <button class="btn-top-nav" onclick="openSepetModal()">🛒 Sepet (<span id="sepetAdet">0</span>)</button>
-            <button class="btn-top-nav" onclick="openGecmisModal()">📜 Geçmiş</button>
-        </div>
-        <div class="user-bar-profile-box">
-            <span class="user-name-display" id="aktifKullaniciGosterge">Misafir</span>
-            <button class="btn-top-nav" style="background:var(--accent-gold); color:#111; font-weight:bold;" onclick="openRegisterModal()">Profil</button>
-        </div>
-    </div>
+    <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
+    <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
+        <button type="button" class="menu-oge" onclick="genelMenuAcKapa()">✕ Kapat</button>
+        <div style="font-size:12px; margin-top:8px;">İzleyici: <b id="aktifKullaniciGosterge">Misafir</b></div>
+        <h4>Dükkanlar</h4>
+        <div id="menuDukkanlar"></div>
+        <h4>Kullanıcı İşlemleri</h4>
+        <button type="button" class="menu-oge" onclick="menuIslem(toggleCatalogDrawer)">Seç</button>
+        <a id="linkVitrin" href="/vitrin">Vitrin</a>
+        <button type="button" class="menu-oge" onclick="menuIslem(openSepetModal)">Sepet (<span id="sepetAdet">0</span>)</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(openGecmisModal)">Geçmiş</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(openRegisterModal)">Profil</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
+        <select id="currencySelector" onchange="paraBirimiDegistir()" style="margin-top:8px;">
+            <option value="TRY">₺ TL</option>
+            <option value="USD">$ USD</option>
+            <option value="EUR">€ EUR</option>
+        </select>
+    </aside>
 
     <div id="mezatAlani">
         <div class="stage-wrapper" id="stageWrapper">
@@ -723,37 +1080,40 @@
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
             </div>
             
-            <div class="stage-overlay">
-                <div class="corner-card corner-top-left">
-                    <span>AÇILIŞ:</span><br>
-                    <span class="corner-val" id="cornerAcilisFiyat">0 TL</span>
-                </div>
-                <div class="corner-card corner-top-right">
-                    <span>🔴 İZLEYİCİ:</span><br>
-                    <span class="corner-val" id="cornerIzleyici">0</span>
-                </div>
-                <div class="corner-card corner-bottom-left">
-                    <span>HEMEN AL:</span><br>
-                    <span class="corner-val" id="cornerHemenAlFiyat" style="color:var(--accent-gold);">0 TL</span>
-                </div>
-                <div class="corner-card corner-bottom-right">
-                    <span class="corner-val" id="cornerLotNo">LOT #000</span>
-                </div>
+            <span id="cornerAcilisFiyat" hidden>0</span>
+            <span id="cornerIzleyici" hidden>0</span>
+            <span id="cornerHemenAlFiyat" hidden>0</span>
+            <div class="lot-galeri-satiri">
+                <div class="lot-rozet" id="cornerLotNo">LOT #000</div>
+                <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
             </div>
-
-            <button class="fullscreen-btn" onclick="toggleFullscreen()">⛶ Tam Ekran</button>
-            <button class="btn-qr-share" onclick="aktifUrunKarekodAc()">📱 QR Paylaş</button>
-            <button id="mainAudioBtn" class="audio-toggle" onclick="toggleAudio()">🔊 Ses</button>
-            <button id="btnStageTrack" class="btn-track-stage" onclick="sahnedekiUrunuTakipEt()">⭐ Takip Et</button>
+            <div id="bilgiKarti" class="bilgi-karti" hidden>
+                <b id="aktif_baslik">Sahnede aktif ürün yok</b>
+                <p id="tanitimMetni" style="margin-top:6px;">Şu an sahnede ürün bulunmamaktadır.</p>
+                <p id="lotAnonsMetni" style="margin-top:6px; color:#fde68a;"></p>
+            </div>
+            <div id="incelemeSeridi" class="inceleme-serit" hidden>
+                <span>Ürün incelemesi</span>
+                <button type="button" onclick="incelemeKapat()">Kapat</button>
+            </div>
+            <div id="yuzerSohbet" class="yuzer-sohbet" hidden></div>
         </div>
-
-        <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
 
         <div id="soldBanner" class="sold-banner">
             🎉 SATILDI: <span id="soldWinnerName">-</span> (<span id="soldPrice">0 TL</span>)
             <div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>
         </div>
 
+        <button type="button" class="cekmece-tutamac" onclick="toggleAltCekmece()">
+            <span></span>Sohbet / Eleştiri
+        </button>
+        <div id="altCekmece">
+            <div class="cekmece-sekmeler">
+                <button type="button" onclick="cekmeceSekmeAc('sohbet')">Sohbet</button>
+                <button type="button" onclick="cekmeceSekmeAc('elestiri')">Eleştiri</button>
+                <button type="button" onclick="cekmeceSekmeAc('katalog')">Katalog</button>
+                <button type="button" onclick="kurallariAc()">Kurallar</button>
+            </div>
         <div class="chat-drawer" id="chatDrawer">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                 <span style="font-size:9px; font-weight:bold; color:var(--accent-gold);">💬 Canlı Sohbet Odası & Sesli İletişim</span>
@@ -762,11 +1122,7 @@
             <div class="chat-messages" id="izleyiciChatKutusu">
                 <div class="chat-item ahmet"><b>🤖 Ahmet Usta:</b> Hoş geldiniz efendim, ürünle ilgili sorularınızı bana iletebilirsiniz.</div>
             </div>
-            <div style="display:flex; gap:3px; align-items:center;">
-                <input type="text" id="chatMesajGirdi" placeholder="Mesajınızı veya sorunuzu yazın..." style="margin:0; font-size:9px; flex:1;" onkeydown="if(event.key==='Enter') izleyiciMesajGonder()">
-                <button class="btn-bid btn-action-blue" style="width:auto; padding:5px 8px; font-size:8px;" onclick="izleyiciMesajGonder()">Gönder</button>
-                <button id="btnIzleyiciSes" class="btn-izleyici-ses" title="Basılı tutarak odaya sesinizi iletin">🎙️ Bas-Konuş</button>
-            </div>
+            <p style="font-size:11px; color:#94a3b8;">Mesaj ve bas-konuş alt bantta.</p>
         </div>
 
         <div class="catalog-drawer-inline" id="catalogDrawer">
@@ -814,62 +1170,57 @@
                 <button onclick="onTeklifGonder()" style="background:#d4af37; color:#111; border:none; padding:5px; width:100%; font-weight:800; border-radius:3px; margin-top:2px; cursor:pointer;">🚀 Ön Teklifi Kaydet</button>
             </div>
         </div>
-
-        <div style="padding: 4px 6px; background: #0e141d; border-bottom: 1px solid var(--card-border);">
-            <div style="font-size: 10px; color: var(--accent-gold); font-weight: 800;" id="aktif_baslik">Sahnede aktif ürün yok</div>
-            <div class="story-container">
-                <span class="story-text" id="tanitimMetni">Şu an sahnede ürün bulunmamaktadır.</span>
-                <button onclick="sesliDinle()" class="btn-mini-audio">🔊 Dinle</button>
-            </div>
+        <div class="chat-drawer" id="elestiriPaneli">
+            <div style="font-size:12px; font-weight:800; color:var(--accent-gold); margin-bottom:6px;">Eleştiri Odası</div>
+            <p style="font-size:11px; color:#cbd5e1; margin-bottom:6px;">Ürün, satıcı veya mezat hakkındaki yazılar canlı sohbete düşmez. Yalnızca yönetici arşivine gider.</p>
+            <select id="elestiri_hedef">
+                <option value="Ürün">Ürün</option>
+                <option value="Satıcı">Satıcı</option>
+                <option value="Mezat">Mezat</option>
+            </select>
+            <textarea id="elestiri_mesaj" rows="3" placeholder="Şikayet veya eleştiriniz"></textarea>
+            <button class="btn-bid btn-action-green" style="width:100%;" onclick="elestiriGonder()">Eleştiriyi İlet</button>
+        </div>
         </div>
 
-        <div class="auction-status-compact" id="auctionCockpit">
-            <div class="price-compact-box">
-                <div class="price-label">GÜNCEL PEY</div>
-                <div class="price-val" id="aktif_fiyat"><span id="currentBid">0</span> <span id="currentBidCurrency">TL</span></div>
-                <div class="bidder-val">Son Teklif: <b id="aktif_kazanan">Yok</b></div>
-            </div>
+        <div id="tanitimSeridi" hidden></div>
 
-            <div class="timer-compact-row">
-                <div class="timer-mini-cockpit">
-                    <svg viewBox="0 0 50 50">
-                        <circle class="dial-bg" cx="25" cy="25" r="20"></circle>
-                        <circle id="futuristicDial" class="dial-active" cx="25" cy="25" r="20" stroke-dasharray="125.6" stroke-dashoffset="0"></circle>
-                    </svg>
-                    <div class="timer-digits-mini" id="timerDigits">--</div>
+        <div class="mezat-sayaci" id="mezatSayaci">
+            <div class="timer-mini-cockpit">
+                <svg viewBox="0 0 50 50">
+                    <circle class="dial-bg" cx="25" cy="25" r="20"></circle>
+                    <circle id="futuristicDial" class="dial-active" cx="25" cy="25" r="20" stroke-dasharray="125.6" stroke-dashoffset="0"></circle>
+                </svg>
+                <div class="timer-digits-mini" id="timerDigits">--</div>
+            </div>
+            <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
+        </div>
+        <div class="akis-mesaj-satiri">
+            <div class="hibrit-kapsul" id="hibritKapsul">
+                <div class="guncel-pey-kutu" id="auctionCockpit">
+                    <span class="pey-etiket">GÜNCEL PEY:</span>
+                    <span class="price-val" id="aktif_fiyat"><span id="currentBid">0</span> <span id="currentBidCurrency">TL</span></span>
+                    <b id="aktif_kazanan" hidden>Yok</b>
                 </div>
-                <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
-            </div>
-        </div>
-
-        <div class="pey-butonlari-konteyner">
-            <div class="bid-btn-row">
-                <button id="btnYuzdeOn" class="btn-bid btn-action-green" onclick="yuzdeOnPeyVer()">⚡ %10 ARTIR</button>
-                <button id="btnSerbestPey" class="btn-bid btn-action-blue" onclick="serbestPeyVer()">✍️ Serbest Teklif</button>
-            </div>
-            <button id="btnHemenAl" class="btn-buy-now" onclick="hemenAl()">⚡ HEMEN AL (Satın Al)</button>
-        </div>
-
-        <div class="kayan-bant-kapsayici">
-            <div class="kayan-bant-baslik">CANLI YAYIN</div>
-            <div class="kayan-bant-metin" id="izleyiciKayanMetin">
-                <span class="bant-oge">🏛️ Haliç Antik Mezat'a Hoş Geldiniz! Keyifli mezatlar dileriz...</span>
-            </div>
-        </div>
-
-        <div class="muzik-ve-pey-satiri">
-            <div class="muzik-mini-panel">
-                <button type="button" id="btnCanliMuzikToggle" onclick="canliMuzikAcKapa()" class="btn-mini-play">
-                    ▶️ Müzik
-                </button>
-            </div>
-            
-            <div class="pey-ticker-kapsayici">
-                <div class="pey-ticker-metin" id="bidTickerStream">
-                    <div class="pey-ticker-oge">
-                        <b>🏛️ PEY GEÇMİŞİ:</b> Canlı mezat teklifleri bekleniyor...
+                <div class="hibrit-alan">
+                    <div class="pey-ticker-kapsayici">
+                        <div class="pey-ticker-metin" id="bidTickerStream"></div>
                     </div>
+                    <input type="text" id="chatMesajGirdi" class="akis-mesaj" placeholder="Mesaj" autocomplete="off" onfocus="hibritYaziAc()" onblur="hibritYaziKapat()" onkeydown="if(event.key==='Enter'){ izleyiciMesajGonder(); this.blur(); }">
                 </div>
+            </div>
+            <div class="ses-sutunu">
+                <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" onclick="bilgiKartiniAcKapa()">🔊</button>
+                <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" type="button"><span>🎤</span></button>
+            </div>
+        </div>
+        <div id="izleyiciKayanMetin" hidden></div>
+
+        <div class="pey-butonlari-konteyner sabit-pey-bar">
+            <div class="bid-btn-row">
+                <button id="btnYuzdeOn" class="btn-bid btn-action-green" onclick="yuzdeOnPeyVer()">+%10 Artır</button>
+                <button id="btnSerbestPey" class="btn-bid btn-action-blue" onclick="serbestPeyVer()">Serbest Pey</button>
+                <button id="btnHemenAl" class="btn-bid btn-buy-now" onclick="hemenAl()">Hemen Al</button>
             </div>
         </div>
 
@@ -890,6 +1241,14 @@
 </div>
 
 <!-- MODALLAR -->
+<div id="izleyiciModal" class="modal" onclick="if(event.target===this) this.style.display='none'">
+    <div class="modal-content" style="text-align:left; background:rgba(15,21,30,0.82); backdrop-filter:blur(12px);">
+        <h3 style="color:var(--accent-gold); font-size:14px; margin-bottom:8px;">Yayını izleyenler</h3>
+        <ul id="izleyiciIsimListesi" style="list-style:none; font-size:13px; line-height:1.6;"></ul>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:8px;" onclick="closeModal('izleyiciModal')">Kapat</button>
+    </div>
+</div>
+
 <div id="modalUrunQr" class="modal">
     <div class="modal-content">
         <h3 style="color:var(--accent-gold); font-size:12px; margin-bottom:6px;">📱 Lot Karekodu Paylaş</h3>
@@ -904,21 +1263,22 @@
 
 <div id="modalKurallar" class="modal">
     <div class="modal-content" style="text-align: left;">
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:6px; margin-bottom:8px;">
-            <h3 style="color:var(--accent-gold); margin:0; font-size:13px; font-weight:800;">🏛️ Haliç Antik - Güvenli Mezat Şartnamesi</h3>
-            <button onclick="kurallariKapat()" style="background:#881337; color:#fff; border:none; padding:2px 6px; border-radius:3px; cursor:pointer; font-weight:bold; font-size:10px;">✕</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:8px; margin-bottom:8px;">
+            <h3 style="color:#fef08a; margin:0; font-size:18px; font-weight:800;">Haliç Antik — Kurallar ve Sözleşme</h3>
+            <button onclick="kurallariKapat()" style="background:#881337; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
         </div>
-        <div style="font-size:10px; line-height:1.5; color:#cbd5e1; max-height:60vh; overflow-y:auto; padding-right:4px;">
-            <p style="margin-bottom:6px;">
-                <b style="color:#38bdf8;">🛡️ Haliç Antik Güvenli Havuz Güvencesi:</b><br>
-                İstanbul Balat merkezli canlı mezatımızda kazanılan ürünlerde ödemeler kurumsal havuzda tutulur.
-            </p>
-            <div style="background:#080c13; border-left:3px solid var(--accent-gold); padding:5px 7px; border-radius:4px; margin-bottom:6px;">
-                <b style="color:var(--accent-gold);">📦 ALICILAR İÇİN (Açılış Videosu Şartı):</b><br>
-                Kargo teslim alındığında ambalaj açılışının kesintisiz video kaydına alınması zorunludur.
-            </div>
+        <div style="max-height:62vh; overflow-y:auto; padding-right:6px;">
+            <h2>1. İşletmeci Sorumluluğu</h2>
+            <p>Haliç Antik Mezat, 6563 sayılı kanun kapsamında Aracı Hizmet Sağlayıcıdır; ürünlerin mülkiyeti satıcıya/tedarikçiye aittir.</p>
+            <h2>2. Tedarikçi Taahhüdü ve Cezai Şart</h2>
+            <p>Yayına ürün veren tedarikçi, ürünü mezat bitimine kadar rezerve etmekle yükümlüdür. Ürünü haricen satan, teslim etmeyen, kırık veya fotoğraftakinden farklı gönderen tedarikçiye son satış tutarı üzerinden %20 cezai şart fatura edilir ve sistemden süresiz men edilir.</p>
+            <h2>3. Kargo ve Hasar Güvencesi</h2>
+            <p>Tedarikçi ürünü kargo taşımacılığına uygun darbe emici korumayla paketlemek zorundadır. Alıcı, kargo teslim anında paketi açarken kesintisiz video kaydı almakla yükümlüdür; videosuz hasar bildirimleri işleme alınmaz.</p>
+            <h2>4. Güvenli Havuz Sistemi</h2>
+            <p>Alıcının ödediği bedel, ürün teslim edilip alıcı onay verene kadar Haliç Antik Mezat havuz hesabında güvende tutulur.</p>
         </div>
-        <button onclick="kurallariKapat()" class="btn-bid btn-action-green" style="width:100%; margin-top:8px;">
+        <a href="/kurallar" style="display:block; color:#fef08a; font-size:15px; margin:8px 0;">Kuralları tam sayfada aç</a>
+        <button onclick="kurallariKapat()" class="btn-bid btn-action-green" style="width:100%; margin-top:8px; font-size:16px;">
             Okudum, Anladım ve Kabul Ediyorum
         </button>
     </div>
@@ -963,13 +1323,25 @@
 
 <div id="authRegisterModal" class="modal">
     <div class="modal-content" style="text-align: left;">
-        <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:11px; font-weight:800;">📝 Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
+        <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:16px; font-weight:800;">Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
         <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız (* Zorunlu)" required>
-        <input type="text" id="k_tel" placeholder="05XX XXX XX XX (* Zorunlu)" required>
-        <input type="email" id="k_mail" placeholder="ornek@mail.com (* Zorunlu)" required>
+        <label for="k_tel" style="font-size:15px; color:#ffffff;">Telefon Numarası (* Zorunlu)</label>
+        <input type="tel" id="k_tel" placeholder="05XX XXX XX XX" required>
+        <label for="k_mail" style="font-size:15px; color:#ffffff;">E-posta (* Zorunlu)</label>
+        <input type="email" id="k_mail" placeholder="ornek@mail.com" required>
         <textarea id="k_adres" rows="2" placeholder="Teslimat Adresiniz..."></textarea>
         <button onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%; margin-top:4px;">💾 Onayla & Kaydol</button>
         <button onclick="closeModal('authRegisterModal')" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;">Kapat</button>
+    </div>
+</div>
+
+<div id="dogrulamaModal" class="modal">
+    <div class="modal-content" style="text-align:left; background:#07090e;">
+        <h3 style="color:#fef08a; font-size:17px; margin-bottom:8px;">Telefon ve e-posta doğrulama</h3>
+        <p id="testKodSatiri" style="font-size:16px; color:#ffffff; line-height:1.45;"></p>
+        <input type="text" id="dogrulamaKodu" inputmode="numeric" maxlength="6" placeholder="6 haneli kod" style="font-size:18px; letter-spacing:3px;">
+        <button onclick="dogrulamayiGonder()" class="btn-bid btn-action-green" style="width:100%; margin-top:6px; font-size:16px;">Doğrula</button>
+        <button onclick="closeModal('dogrulamaModal')" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;">Kapat</button>
     </div>
 </div>
 
@@ -1044,6 +1416,7 @@
     let dukkanlar = {};
 
     let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "", kullaniciMail = "";
+    let kullaniciDogrulandi = false;
     let secilenArsivUrunId = null;
     let aktifSahneUrunId = null;
     let sahnedekiUrunSatildiMi = false;
@@ -1066,46 +1439,85 @@
     let izleyiciRecorder = null;
     let izleyiciStream = null;
     let izleyiciChunks = [];
+    let sesTanima = null;
+    let sesDinleniyor = false;
+    let sesBitirIstendi = false;
+    let sesMetin = '';
 
-    let sesKuyrugu = [];
-    let sesOynatiliyorMu = false;
+    const sahneDom = {
+        yuzer: document.getElementById("yuzerSohbet"),
+        online: document.getElementById("onlineCount"),
+        cornerIz: document.getElementById("cornerIzleyici")
+    };
+    let sesNesil = 0;
+    let sesKaynaklari = [];
+    let sesZaman = 0;
+    let sesArtik = new Uint8Array(0);
 
-    function sesKuyrugunaEkle(base64Ses) {
-        if (!base64Ses) return;
-        sesKuyrugu.push(base64Ses);
-        if (!sesOynatiliyorMu) {
-            sonrakiSesiCal();
+    function sesBaglaminiAc() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+            audioCtx.resume().catch(function () {});
         }
+        return audioCtx;
     }
 
-    function sonrakiSesiCal() {
-        if (sesKuyrugu.length === 0) {
-            sesOynatiliyorMu = false;
+    function sesAkisiniKes() {
+        sesArtik = new Uint8Array(0);
+        sesZaman = 0;
+        sesKaynaklari.forEach(function (kaynak) {
+            try { kaynak.stop(); } catch (e) {}
+        });
+        sesKaynaklari = [];
+    }
+
+    function pcmCoz(b64) {
+        const ikili = atob(b64);
+        const bayt = new Uint8Array(ikili.length);
+        for (let i = 0; i < ikili.length; i++) bayt[i] = ikili.charCodeAt(i);
+        return bayt;
+    }
+
+    function pcmBirlestir(eski, yeni) {
+        if (!eski.length) return yeni;
+        const birlesik = new Uint8Array(eski.length + yeni.length);
+        birlesik.set(eski, 0);
+        birlesik.set(yeni, eski.length);
+        return birlesik;
+    }
+
+    function pcmTamponuOynat(ornekler, ornekleme) {
+        const ctx = sesBaglaminiAc();
+        const oran = ornekleme || 24000;
+        const yuzer = new Float32Array(ornekler.length);
+        for (let i = 0; i < ornekler.length; i++) yuzer[i] = ornekler[i] / 32768;
+        const tampon = ctx.createBuffer(1, yuzer.length, oran);
+        tampon.copyToChannel(yuzer, 0);
+        const kaynak = ctx.createBufferSource();
+        kaynak.buffer = tampon;
+        kaynak.connect(ctx.destination);
+        const simdi = ctx.currentTime;
+        if (sesZaman < simdi + 0.02) sesZaman = simdi + 0.03;
+        kaynak.start(sesZaman);
+        sesZaman += tampon.duration;
+        sesKaynaklari.push(kaynak);
+        kaynak.onended = function () {
+            const sira = sesKaynaklari.indexOf(kaynak);
+            if (sira >= 0) sesKaynaklari.splice(sira, 1);
+        };
+    }
+
+    function sesParcasiAl(data) {
+        if (!data || data.dukkan !== aktifDukkan || data.nesil !== sesNesil || !data.pcm) return;
+        const bayt = pcmBirlestir(sesArtik, pcmCoz(data.pcm));
+        const tam = bayt.length - (bayt.length % 2);
+        if (tam < 2) {
+            sesArtik = bayt;
             return;
         }
-
-        sesOynatiliyorMu = true;
-        const b64 = sesKuyrugu.shift();
-        const player = document.getElementById("ahmetAudioPlayer");
-
-        try {
-            sesKilidiAc();
-            player.src = "data:audio/mp3;base64," + b64;
-            player.volume = 1.0;
-
-            player.onended = function() { sonrakiSesiCal(); };
-            player.onerror = function() { sonrakiSesiCal(); };
-
-            const playPromise = player.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(function(err) {
-                    console.warn("Autoplay engeli:", err);
-                    sonrakiSesiCal();
-                });
-            }
-        } catch(err) {
-            sonrakiSesiCal();
-        }
+        sesArtik = bayt.slice(tam);
+        const ornek = new Int16Array(bayt.buffer, bayt.byteOffset, tam / 2);
+        pcmTamponuOynat(ornek, data.ornekleme || 24000);
     }
 
     async function dukkanMenuYukle() {
@@ -1114,15 +1526,19 @@
             const data = await res.json();
             dukkanlar = data.dukkanlar || {};
 
-            const navBar = document.getElementById('shopNavBar');
-            navBar.innerHTML = '';
-
-            for (const [kod, d] of Object.entries(dukkanlar)) {
-                const btn = document.createElement('a');
-                btn.className = `shop-nav-btn ${kod === aktifDukkan ? 'active' : ''}`;
-                btn.href = `/?dukkan=${encodeURIComponent(kod)}`;
-                btn.innerHTML = `<span>🏛️</span> ${escapeHtml(d.ad)}`;
-                navBar.appendChild(btn);
+            const navBar = document.getElementById('menuDukkanlar');
+            if (navBar) {
+                navBar.innerHTML = '';
+                for (const [kod, d] of Object.entries(dukkanlar)) {
+                    const btn = document.createElement('a');
+                    const siniflar = [];
+                    if (kod === aktifDukkan) siniflar.push('active');
+                    if (!d.canli) siniflar.push('dukkan-sonuk');
+                    btn.className = siniflar.join(' ');
+                    btn.href = `/?dukkan=${encodeURIComponent(kod)}`;
+                    btn.innerHTML = escapeHtml(d.ad) + (d.canli ? ' <span class="canli-rozet"><span class="canli-nokta"></span> CANLI</span>' : '');
+                    navBar.appendChild(btn);
+                }
             }
 
             const ad = dukkanlar[aktifDukkan] ? dukkanlar[aktifDukkan].ad : aktifDukkan.toUpperCase();
@@ -1132,7 +1548,113 @@
     }
 
     function odayaKatil() {
-        socket.emit('join_dukkan', { dukkan: aktifDukkan });
+        const kayitli = (localStorage.getItem('halic_antik_ad') || kullaniciAdi || 'Misafir').replace(/^\[.*?\]\s*/, '').trim();
+        socket.emit('join_dukkan', { dukkan: aktifDukkan, isim: kayitli || 'Misafir' });
+    }
+
+    let izleyiciIsimleri = [];
+    let incelemeAcik = false;
+    let canliSahneAnlik = null;
+
+    function genelMenuAcKapa() {
+        const menu = document.getElementById('genelMenu');
+        const perde = document.getElementById('menuPerde');
+        if (!menu) return;
+        const acik = menu.classList.toggle('acik');
+        if (perde) perde.hidden = !acik;
+        if (acik) dukkanMenuYukle();
+    }
+
+    function menuIslem(fn) {
+        genelMenuAcKapa();
+        if (typeof fn === 'function') fn();
+    }
+
+    let dinlemeAcik = false;
+
+    function dinlemeyiDurdur() {
+        sesNesil = 0;
+        sesAkisiniKes();
+    }
+
+    function dinleDugmesiniYaz(yazi) {
+        const btn = document.getElementById('btnDinleKisa');
+        if (!btn) return;
+        btn.title = yazi;
+        btn.textContent = String(yazi).indexOf('Konuşuyor') >= 0 ? '🗣️' : '🔊';
+    }
+
+    function baslikTekrariTemizle(metin) {
+        let s = String(metin || '').replace(/\s+/g, ' ').trim();
+        s = s.replace(/Kayıtta malzeme,?\s*el işçiliği ve dönem ayrıca teyit edilmemiş\.?/gi, '');
+        s = s.replace(/Malzeme, el işçiliği ve dönem kayda göre şöyle:\s*/gi, '');
+        const baslikEl = document.getElementById('aktif_baslik');
+        const baslik = (baslikEl ? baslikEl.textContent : '').replace(/^LOT\s*#\S+\s*-\s*/i, '').trim();
+        if (baslik.length > 3) {
+            const kacis = baslik.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            s = s.replace(new RegExp('(?:' + kacis + '[\\s\\.…,!-]*){2,}', 'gi'), baslik + ' ');
+        }
+        return s.replace(/\s+/g, ' ').trim();
+    }
+
+    function bilgiKartiniAcKapa() {
+        const kart = document.getElementById('bilgiKarti');
+        if (!kart) return;
+        if (dinlemeAcik) {
+            dinlemeAcik = false;
+            kart.hidden = true;
+            dinlemeyiDurdur();
+            dinleDugmesiniYaz('🔊 Dinle');
+            return;
+        }
+        dinlemeAcik = true;
+        kart.hidden = false;
+        dinleDugmesiniYaz('🔊 Konuşuyor...');
+        const tanitimKarti = document.getElementById('tanitimMetni');
+        const anonsKarti = document.getElementById('lotAnonsMetni');
+        const okunacak = ((tanitimKarti && tanitimKarti.textContent) || (anonsKarti && anonsKarti.textContent) || '').trim();
+        if (okunacak) socket.emit('ahmet_ses_iste', { dukkan: aktifDukkan, metin: okunacak });
+    }
+
+    function izleyiciListesiniAc() {
+        const liste = document.getElementById('izleyiciIsimListesi');
+        const modal = document.getElementById('izleyiciModal');
+        if (!liste || !modal) return;
+        liste.innerHTML = '';
+        const adlar = izleyiciIsimleri.length ? izleyiciIsimleri : ['Henüz isim bildiren izleyici yok'];
+        adlar.forEach(function (ad) {
+            const li = document.createElement('li');
+            li.textContent = ad;
+            liste.appendChild(li);
+        });
+        modal.style.display = 'flex';
+    }
+
+    function kayanBantaEkle(html) {
+        const ticker = document.getElementById('bidTickerStream');
+        if (!ticker) return;
+        const item = document.createElement('div');
+        item.className = 'pey-ticker-oge';
+        item.innerHTML = html;
+        ticker.appendChild(item);
+        const ogeler = ticker.getElementsByClassName('pey-ticker-oge');
+        while (ogeler.length > 2) ogeler[0].remove();
+    }
+
+    function kisaIsim(ad) {
+        return String(ad || 'Yok').replace(/^\[.*?\]\s*/, '').trim() || 'Yok';
+    }
+
+    function platformRozeti(platform) {
+        const p = String(platform || 'Web').toLowerCase();
+        if (p.indexOf('tiktok') !== -1) return { ikon: '🎵', etiket: 'TikTok' };
+        if (p.indexOf('instagram') !== -1) return { ikon: '📸', etiket: 'Instagram' };
+        return { ikon: '🌐', etiket: 'Web' };
+    }
+
+    function peyBandinaYaz(platform, ad, tutar) {
+        const rozet = platformRozeti(platform);
+        kayanBantaEkle(`${rozet.ikon} [${rozet.etiket}] ${escapeHtml(kisaIsim(ad))}: ${formatFiyat(tutar)}`);
     }
 
     socket.on('connect', odayaKatil);
@@ -1146,6 +1668,46 @@
     window.addEventListener('beforeunload', () => {
         socket.emit('leave_dukkan', { dukkan: aktifDukkan });
     });
+
+    let tanitimSlaytZamanlayici = null;
+    let tanitimSlaytAdim = 0;
+    const kenBurnsKoseler = ['kb-orta', 'kb-sag-ust', 'kb-sol-alt', 'kb-sag-alt'];
+
+    function tanitimKaresiniGoster() {
+        if (!tanitimModuAktif) return;
+        const liste = (aktifUrunMedyalari || []).filter(function (m) { return m && m.tip !== 'hls'; });
+        const kutu = document.getElementById('medyaKapsayici');
+        if (!kutu) return;
+        kutu.classList.add('tanitim-zoom');
+        if (liste.length) {
+            medyaGoster(liste[tanitimSlaytAdim % liste.length]);
+        }
+        const gorsel = kutu.querySelector('img, video');
+        if (gorsel) {
+            gorsel.className = kenBurnsKoseler[tanitimSlaytAdim % kenBurnsKoseler.length];
+            gorsel.style.animation = 'none';
+            void gorsel.offsetWidth;
+            gorsel.style.animation = '';
+        }
+        tanitimSlaytAdim += 1;
+    }
+
+    function kenBurnsBaslat() {
+        zoomEfektiDurdur();
+        kenBurnsDurdur();
+        tanitimSlaytAdim = 0;
+        tanitimKaresiniGoster();
+        tanitimSlaytZamanlayici = setInterval(tanitimKaresiniGoster, 7000);
+    }
+
+    function kenBurnsDurdur() {
+        if (tanitimSlaytZamanlayici) {
+            clearInterval(tanitimSlaytZamanlayici);
+            tanitimSlaytZamanlayici = null;
+        }
+        const kutu = document.getElementById('medyaKapsayici');
+        if (kutu) kutu.classList.remove('tanitim-zoom');
+    }
 
     function zoomEfektiBaslat() {
         zoomEfektiDurdur();
@@ -1183,7 +1745,7 @@
 
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
-            const cockpit = document.getElementById('auctionCockpit');
+            const cockpit = document.getElementById('mezatSayaci');
             const dial = document.getElementById('futuristicDial');
 
             if (cockpit) cockpit.classList.remove('urgent');
@@ -1191,18 +1753,19 @@
             if (statusTitle) statusTitle.innerText = "ESER İNCELENİYOR";
             if (dial) dial.style.strokeDashoffset = 0;
 
-            setTimeout(zoomEfektiBaslat, 800);
+            setTimeout(kenBurnsBaslat, 400);
         }
     });
 
     socket.on('sayac_baslat', function(data) {
         if (data && data.dukkan === aktifDukkan) {
             tanitimModuAktif = false;
+            kenBurnsDurdur();
             zoomEfektiDurdur();
 
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
-            const cockpit = document.getElementById('auctionCockpit');
+            const cockpit = document.getElementById('mezatSayaci');
 
             if (digits) digits.innerText = "60";
             if (statusTitle) statusTitle.innerText = "KARAR ANI: 60 SN";
@@ -1211,10 +1774,48 @@
         }
     });
 
-    function toggleChatDrawer() {
+    function cekmeceSekmeAc(sekme) {
+        const kutu = document.getElementById('altCekmece');
+        const sohbet = document.getElementById('chatDrawer');
+        const elestiri = document.getElementById('elestiriPaneli');
+        const katalog = document.getElementById('catalogDrawer');
+        if (kutu) kutu.classList.add('acik');
+        if (sohbet) sohbet.style.display = sekme === 'sohbet' ? 'block' : 'none';
+        if (elestiri) elestiri.style.display = sekme === 'elestiri' ? 'block' : 'none';
+        if (katalog) katalog.style.display = sekme === 'katalog' ? 'block' : 'none';
+        if (sekme === 'katalog') {
+            kategorileriDoldurIzleyici();
+            katalogSunucudanAra();
+        }
+    }
+
+    function toggleAltCekmece() {
         playUserClickSound();
-        const d = document.getElementById('chatDrawer');
-        d.style.display = d.style.display === 'block' ? 'none' : 'block';
+        const kutu = document.getElementById('altCekmece');
+        if (!kutu) return;
+        if (kutu.classList.contains('acik')) {
+            const katalog = document.getElementById('catalogDrawer');
+            if (katalog && katalog.style.display === 'block') return;
+            kutu.classList.remove('acik');
+            return;
+        }
+        cekmeceSekmeAc('sohbet');
+    }
+
+    function toggleChatDrawer() {
+        toggleAltCekmece();
+    }
+
+    function hibritYaziAc() {
+        const kutu = document.getElementById('hibritKapsul');
+        if (kutu) kutu.classList.add('yazi-modu');
+    }
+
+    function hibritYaziKapat() {
+        const kutu = document.getElementById('hibritKapsul');
+        const input = document.getElementById('chatMesajGirdi');
+        if (input) input.value = '';
+        if (kutu) kutu.classList.remove('yazi-modu');
     }
 
     function izleyiciMesajGonder() {
@@ -1252,59 +1853,209 @@
 
     const btnIzleyiciSes = document.getElementById('btnIzleyiciSes');
 
-    async function izleyiciSesBaslat() {
-        if (!kullaniciGirisKontrol()) return;
+    function mikrofonHatasi(err) {
+        const ad = (err && (err.name || err.error)) || '';
+        if (ad === 'NotAllowedError' || ad === 'PermissionDeniedError' || ad === 'not-allowed') {
+            return "Mikrofon izni kapalı. Adres çubuğundaki kilit simgesinden mikrofona izin verin. Sayfa http://127.0.0.1:5000 üzerinden açık olmalı.";
+        }
+        if (ad === 'NotFoundError' || ad === 'audio-capture') {
+            return "Mikrofon bulunamadı. Aygıtın bağlı ve başka bir program tarafından kilitli olmadığını kontrol edin.";
+        }
+        if (ad === 'SecurityError' || ad === 'service-not-allowed') {
+            return "Tarayıcı mikrofonu bu adreste açmadı. Canlı sahneyi http://127.0.0.1:5000 olarak açın.";
+        }
+        return "Mikrofon açılamadı: " + (err && err.message ? err.message : err);
+    }
+
+    function sozdenTutar(metin) {
+        const t = String(metin || '').toLocaleLowerCase('tr-TR');
+        const rakamlar = [];
+        const re = /(\d{1,3}(?:\.\d{3})+|\d+)/g;
+        let eslesen;
+        while ((eslesen = re.exec(t))) {
+            const n = parseInt(eslesen[1].replace(/\./g, ''), 10);
+            if (n > 0) rakamlar.push(n);
+        }
+        if (rakamlar.length) return Math.max.apply(null, rakamlar);
+        const bir = { bir: 1, iki: 2, üç: 3, uc: 3, dört: 4, dort: 4, beş: 5, bes: 5, altı: 6, alti: 6, yedi: 7, sekiz: 8, dokuz: 9 };
+        const on = { on: 10, yirmi: 20, otuz: 30, kırk: 40, kirk: 40, elli: 50, altmış: 60, altmis: 60, yetmiş: 70, yetmis: 70, seksen: 80, doksan: 90 };
+        const kelimeler = t.split(/[^a-zçğıöşü0-9]+/).filter(Boolean);
+        let toplam = 0, ara = 0, gordu = false;
+        kelimeler.forEach(function (k) {
+            if (!gordu && bir[k] == null && on[k] == null && k !== 'yüz' && k !== 'yuz' && k !== 'bin') return;
+            if (bir[k] != null) { ara += bir[k]; gordu = true; }
+            else if (on[k] != null) { ara += on[k]; gordu = true; }
+            else if (k === 'yüz' || k === 'yuz') { ara = (ara || 1) * 100; gordu = true; }
+            else if (k === 'bin') { toplam += (ara || 1) * 1000; ara = 0; gordu = true; }
+        });
+        return gordu ? (toplam + ara) : 0;
+    }
+
+    function sozlesmeyiIsle(metin) {
+        const temiz = (metin || '').trim();
+        if (!temiz) return;
+        const tutar = sozdenTutar(temiz);
+        if (tutar > 0) {
+            if (!kullaniciId || !kullaniciAdi || kullaniciAdi === "Misafir") {
+                const giris = document.getElementById('chatMesajGirdi');
+                if (giris) giris.value = temiz;
+                kullaniciGirisKontrol();
+                return;
+            }
+            const taban = sonGorulenPey || 0;
+            const minKabul = minimumPeyTabani(taban);
+            if (taban > 0 && tutar < minKabul) {
+                alert(gecersizPeyUyarisi(minKabul));
+                return;
+            }
+            peyGonder(tutar);
+            return;
+        }
+        const input = document.getElementById('chatMesajGirdi');
+        if (input) input.value = temiz;
+        izleyiciMesajGonder();
+    }
+
+    function sesKaydiYedekBaslat() {
+        if (!izleyiciStream) return;
         try {
-            izleyiciStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             izleyiciRecorder = new MediaRecorder(izleyiciStream);
-            izleyiciChunks = [];
-
-            izleyiciRecorder.ondataavailable = e => {
-                if (e.data.size > 0) izleyiciChunks.push(e.data);
-            };
-
-            izleyiciRecorder.onstop = () => {
-                const audioBlob = new Blob(izleyiciChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('ses', audioBlob, 'izleyici_ses.webm');
-                formData.append('dukkan', aktifDukkan);
-                if (kullaniciId) formData.append('kullanici_id', kullaniciId);
-
-                fetch('/api/izleyici/bas-konus-ses', {
-                    method: 'POST',
-                    body: formData
-                }).then(r => r.json()).then(res => {
-                    if (!res.success) alert(res.mesaj);
-                }).catch(err => console.error("Ses aktarım hatası:", err));
-
+        } catch (err) {
+            return;
+        }
+        izleyiciChunks = [];
+        izleyiciRecorder.ondataavailable = function (e) {
+            if (e.data && e.data.size > 0) izleyiciChunks.push(e.data);
+        };
+        izleyiciRecorder.onstop = function () {
+            if (!izleyiciChunks.length || !kullaniciId) {
                 if (izleyiciStream) {
-                    izleyiciStream.getTracks().forEach(track => track.stop());
+                    izleyiciStream.getTracks().forEach(function (track) { track.stop(); });
                     izleyiciStream = null;
                 }
-            };
+                return;
+            }
+            const audioBlob = new Blob(izleyiciChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('ses', audioBlob, 'izleyici_ses.webm');
+            formData.append('dukkan', aktifDukkan);
+            formData.append('kullanici_id', kullaniciId);
+            fetch('/api/izleyici/bas-konus-ses', { method: 'POST', body: formData })
+                .catch(function (err) { console.error("Ses aktarım hatası:", err); });
+            if (izleyiciStream) {
+                izleyiciStream.getTracks().forEach(function (track) { track.stop(); });
+                izleyiciStream = null;
+            }
+        };
+        izleyiciRecorder.start();
+    }
 
-            izleyiciRecorder.start();
+    async function izleyiciSesBaslat(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (sesDinleniyor) return;
+        sesDinleniyor = true;
+        sesBitirIstendi = false;
+        sesMetin = '';
+        if (btnIzleyiciSes) {
             btnIzleyiciSes.classList.add('kayit-aktif');
-            btnIzleyiciSes.innerText = "🔴 Dinliyor...";
+            btnIzleyiciSes.innerText = "🔴";
+        }
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("Bu tarayıcı mikrofonu açamıyor. Chrome ile http://127.0.0.1:5000 kullanın.");
+            }
+            izleyiciStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (sesBitirIstendi) {
+                izleyiciStream.getTracks().forEach(function (track) { track.stop(); });
+                izleyiciStream = null;
+                sesDinleniyor = false;
+                if (btnIzleyiciSes) {
+                    btnIzleyiciSes.classList.remove('kayit-aktif');
+                    btnIzleyiciSes.innerText = "🎤";
+                }
+                return;
+            }
         } catch (err) {
-            btnIzleyiciSes.classList.remove('kayit-aktif');
-            btnIzleyiciSes.innerText = "🎙️ Bas-Konuş";
-            alert("Mikrofon erişim izni verilmedi: " + err);
+            sesDinleniyor = false;
+            if (btnIzleyiciSes) {
+                btnIzleyiciSes.classList.remove('kayit-aktif');
+                btnIzleyiciSes.innerText = "🎤";
+            }
+            alert(mikrofonHatasi(err));
+            return;
+        }
+
+        const Tanima = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Tanima) {
+            sesKaydiYedekBaslat();
+            return;
+        }
+        if (izleyiciStream) {
+            izleyiciStream.getTracks().forEach(function (track) { track.stop(); });
+            izleyiciStream = null;
+        }
+        sesTanima = new Tanima();
+        sesTanima.lang = 'tr-TR';
+        sesTanima.continuous = true;
+        sesTanima.interimResults = false;
+        sesTanima.onresult = function (ev) {
+            for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                if (ev.results[i].isFinal) sesMetin += ' ' + ev.results[i][0].transcript;
+            }
+        };
+        sesTanima.onerror = function (ev) {
+            if (ev.error === 'no-speech' || ev.error === 'aborted') return;
+            console.error("Mikrofon tanıma hatası:", ev.error);
+            if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+                alert(mikrofonHatasi(ev));
+            }
+        };
+        sesTanima.onend = function () {
+            if (sesDinleniyor && !sesBitirIstendi) {
+                try { sesTanima.start(); } catch (err) {}
+                return;
+            }
+            const metin = sesMetin.trim();
+            sesMetin = '';
+            sesDinleniyor = false;
+            sozlesmeyiIsle(metin);
+        };
+        try {
+            sesTanima.start();
+        } catch (err) {
+            sesDinleniyor = false;
+            if (btnIzleyiciSes) {
+                btnIzleyiciSes.classList.remove('kayit-aktif');
+                btnIzleyiciSes.innerText = "🎤";
+            }
+            alert(mikrofonHatasi(err));
         }
     }
 
     function izleyiciSesBitir() {
+        sesBitirIstendi = true;
+        sesDinleniyor = false;
+        if (sesTanima) {
+            try { sesTanima.stop(); } catch (err) {}
+        }
         if (izleyiciRecorder && izleyiciRecorder.state !== 'inactive') {
             izleyiciRecorder.stop();
         }
-        btnIzleyiciSes.classList.remove('kayit-aktif');
-        btnIzleyiciSes.innerText = "🎙️ Bas-Konuş";
+        if (btnIzleyiciSes) {
+            btnIzleyiciSes.classList.remove('kayit-aktif');
+            btnIzleyiciSes.innerText = "🎤";
+        }
     }
 
-    btnIzleyiciSes.addEventListener('mousedown', izleyiciSesBaslat);
-    btnIzleyiciSes.addEventListener('mouseup', izleyiciSesBitir);
-    btnIzleyiciSes.addEventListener('touchstart', (e) => { e.preventDefault(); izleyiciSesBaslat(); });
-    btnIzleyiciSes.addEventListener('touchend', (e) => { e.preventDefault(); izleyiciSesBitir(); });
+    if (btnIzleyiciSes) {
+        btnIzleyiciSes.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            try { btnIzleyiciSes.setPointerCapture(e.pointerId); } catch (err) {}
+            izleyiciSesBaslat(e);
+        });
+        btnIzleyiciSes.addEventListener('pointerup', izleyiciSesBitir);
+        btnIzleyiciSes.addEventListener('pointercancel', izleyiciSesBitir);
+    }
 
     socket.on("kullanici_engellendi", function(data) {
         if (data.kullanici_id === kullaniciId) {
@@ -1315,28 +2066,63 @@
 
     socket.on("yeni_canli_yorum", function(data) {
         if (!data || data.dukkan !== aktifDukkan) return;
-
-        const chatBox = document.getElementById('izleyiciChatKutusu');
-        if (chatBox) {
-            const item = document.createElement('div');
-            item.className = data.platform === 'Ahmet Usta AI' ? 'chat-item ahmet' : 'chat-item';
-            item.innerHTML = `<b>${escapeHtml(data.kullanici)}:</b> ${escapeHtml(data.mesaj)}`;
-            chatBox.appendChild(item);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-
-        const bant = document.getElementById("izleyiciKayanMetin");
-        if (bant) {
-            const oge = document.createElement("span");
-            oge.className = "bant-oge";
-            let platformLogo = data.platform === 'Ahmet Usta AI' ? '🤖 [Ahmet Usta]' : `💬 [${escapeHtml(data.kullanici)}]`;
-            oge.innerHTML = `<strong>${platformLogo}:</strong> ${escapeHtml(data.mesaj)} • `;
-            bant.appendChild(oge);
-
-            const tumOgeler = bant.getElementsByClassName("bant-oge");
-            if (tumOgeler.length > 5) {
-                bant.removeChild(tumOgeler[0]);
+        if (data.tur === "elestiri" || data.platform === "Eleştiri") return;
+        const metin = data.mesaj || data.yorum || "";
+        if (!metin) return;
+        const ahmetMi = /ahmet/i.test(data.kullanici || "") || data.tip === "ahmet_anons" || data.tur === "tanitim" || data.tur === "pey" || data.tur === "sayac" || data.tur === "anons";
+        if (ahmetMi) {
+            const temizMetin = baslikTekrariTemizle(metin);
+            const tanitim = document.getElementById("tanitimMetni");
+            const anons = document.getElementById("lotAnonsMetni");
+            if (data.tur === "tanitim") {
+                if (tanitim) tanitim.textContent = temizMetin;
+                if (anons) anons.textContent = "";
+                return;
             }
+            if (anons && (!tanitim || tanitim.textContent.trim() !== temizMetin)) {
+                anons.textContent = temizMetin;
+            }
+            return;
+        }
+        const kutu = document.getElementById('izleyiciChatKutusu');
+        if (kutu) {
+            const satir = document.createElement('div');
+            satir.className = 'chat-item';
+            satir.innerHTML = `<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}`;
+            kutu.appendChild(satir);
+        }
+    });
+
+    function cekicVur() {
+        const ctx = sesBaglaminiAc();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(180, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.45, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.24);
+    }
+
+    socket.on("ses_kes", function (data) {
+        if (!data || data.dukkan !== aktifDukkan) return;
+        sesNesil = data.nesil;
+        sesAkisiniKes();
+        sesBaglaminiAc();
+        if (data.tur === 'satis') cekicVur();
+    });
+
+    socket.on("ses_akisi", sesParcasiAl);
+
+    socket.on("ses_akisi_bitti", function (data) {
+        if (!data || data.dukkan !== aktifDukkan || data.nesil !== sesNesil) return;
+        if (dinlemeAcik) {
+            dinlemeAcik = false;
+            dinleDugmesiniYaz('🔊 Dinle');
         }
     });
 
@@ -1358,9 +2144,15 @@
         }
     });
 
-    socket.on("ahmet_ses_cal", function(data) {
+    socket.on("tanitim_sayac", function(data) {
         if (!data || data.dukkan !== aktifDukkan) return;
-        if (data.ses_base64) sesKuyrugunaEkle(data.ses_base64);
+        tanitimModuAktif = true;
+        const digits = document.getElementById('timerDigits');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        const dial = document.getElementById('futuristicDial');
+        if (digits) digits.innerText = String(data.kalan);
+        if (statusTitle) statusTitle.innerText = "TANITIM " + data.kalan + " SN";
+        if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, data.kalan) / 120);
     });
 
     socket.on("pey_gecildi_uyarisi", function(data) {
@@ -1488,14 +2280,7 @@
 
     function toggleCatalogDrawer() {
         playUserClickSound();
-        const drawer = document.getElementById('catalogDrawer');
-        if (drawer.style.display === 'block') {
-            drawer.style.display = 'none';
-        } else {
-            drawer.style.display = 'block';
-            kategorileriDoldurIzleyici();
-            katalogSunucudanAra();
-        }
+        cekmeceSekmeAc('katalog');
     }
 
     function debounceKatalogArama() {
@@ -1524,10 +2309,11 @@
                 let div = document.createElement('div');
                 div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#080c13; padding:4px 5px; border-radius:4px; border:1px solid #1c2541;";
                 div.innerHTML = `
-                    <div style="font-size:9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:4px;">
+                    <div style="font-size:16px; color:#ffffff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:4px;">
                         <b style="color:var(--accent-gold);">LOT #${escapeHtml(u.lot)}</b> - ${escapeHtml(u.ad)} 
                         <span style="color:#34d399; font-weight:bold;">(${formatFiyat(u.fiyat)})</span>
                     </div>
+                    <button class="btn-bid btn-action-blue" style="padding:2px 5px; font-size:8px; white-space:nowrap; width:auto;" onclick="urunIncele(${Number(u.id)})">Ürün İncele</button>
                     <button class="btn-bid btn-action-green" style="padding:2px 5px; font-size:8px; white-space:nowrap; width:auto;" onclick="urunSecManuel(${encodeURIComponent(u.id)})">Teklif</button>
                 `;
                 listeDiv.appendChild(div);
@@ -1552,7 +2338,40 @@
             const hemenAlBedeli = (secilenUrun.hemen_al_fiyat !== undefined && secilenUrun.hemen_al_fiyat > 0) ? secilenUrun.hemen_al_fiyat : (secilenUrun.hemen_al_fiyati || 0);
             document.getElementById('secilenUrunHemenAl').innerText = formatFiyat(hemenAlBedeli);
             document.getElementById('secilenUrunSecere').innerText = secilenUrun.tanitim_yazisi || "Açıklama girilmemiş.";
-            sahneyiGuncelle(secilenUrun, "İnceleme", canliGuncelFiyat, "Ön Teklif Modu");
+        }
+    }
+
+    function urunIncele(urunId) {
+        const secilen = sonBulunanUrunler.find(u => String(u.id) === String(urunId));
+        if (!secilen) return;
+        const eskiId = aktifSahneUrunId;
+        const eskiSatildi = sahnedekiUrunSatildiMi;
+        const eskiHemen = aktifHemenAlStatik;
+        incelemeAcik = true;
+        sonYuklenenSahneMedyaUrl = null;
+        sahneyiGuncelle(secilen, "İnceleme", secilen.guncel_fiyat || secilen.fiyat, "Önizleme", "inceleme");
+        aktifSahneUrunId = eskiId;
+        sahnedekiUrunSatildiMi = eskiSatildi;
+        aktifHemenAlStatik = eskiHemen;
+        const serit = document.getElementById('incelemeSeridi');
+        if (serit) serit.hidden = false;
+        const kart = document.getElementById('bilgiKarti');
+        if (kart) kart.hidden = false;
+        const menu = document.getElementById('genelMenu');
+        const perde = document.getElementById('menuPerde');
+        if (menu) menu.classList.remove('acik');
+        if (perde) perde.hidden = true;
+    }
+
+    function incelemeKapat() {
+        incelemeAcik = false;
+        const serit = document.getElementById('incelemeSeridi');
+        if (serit) serit.hidden = true;
+        sonYuklenenSahneMedyaUrl = null;
+        if (canliSahneAnlik) {
+            sahneyiGuncelle(canliSahneAnlik.urunObj, canliSahneAnlik.durum, canliSahneAnlik.peyTutar, canliSahneAnlik.kazananKisi);
+        } else {
+            canliDurumuGetirHafif();
         }
     }
 
@@ -1581,6 +2400,8 @@
 
     function katalogKapat() {
         playUserClickSound();
+        const kutu = document.getElementById('altCekmece');
+        if (kutu) kutu.classList.remove('acik');
         document.getElementById('catalogDrawer').style.display = 'none';
         secilenArsivUrunId = null;
         document.getElementById('secilenUrunOnizleme').style.display = 'none';
@@ -1644,8 +2465,15 @@
             kullaniciId = id ? parseInt(id) : null;
             kullaniciTel = tel || "";
             kullaniciMail = mail || "";
+            kullaniciDogrulandi = localStorage.getItem('halic_antik_dogrulandi') === '1';
             document.getElementById('aktifKullaniciGosterge').innerText = kullaniciAdi;
             sepetAdediGuncelle();
+            if (kullaniciId) {
+                fetch('/dogrulama-durum?id=' + kullaniciId).then(r => r.json()).then(d => {
+                    kullaniciDogrulandi = !!(d && d.is_verified);
+                    localStorage.setItem('halic_antik_dogrulandi', kullaniciDogrulandi ? '1' : '0');
+                }).catch(function () {});
+            }
         }
         canliDurumuGetirHafif();
     };
@@ -1653,9 +2481,12 @@
     socket.on('urun_takip_bildirimi', function(data) { showToast(`🔔 ${data.mesaj}`); playTone(600, 0.2, 'sine', 0.2); });
 
     socket.on('izleyici_sayisi_guncelle', function(data) {
-        if(data && data.dukkan === aktifDukkan && data.sayi !== undefined) {
-            document.getElementById('onlineCount').innerText = data.sayi;
-            document.getElementById('cornerIzleyici').innerText = data.sayi;
+        if(data && (data.dukkan === aktifDukkan || !data.dukkan) && data.sayi !== undefined) {
+            const sayac = document.getElementById('onlineCount');
+            if (sayac) sayac.innerText = data.sayi;
+            const kose = document.getElementById('cornerIzleyici');
+            if (kose) kose.innerText = data.sayi;
+            if (Array.isArray(data.isimler)) izleyiciIsimleri = data.isimler;
         }
     });
 
@@ -1670,29 +2501,21 @@
     socket.on('pey_guncellendi', function(data) {
         if (data && data.dukkan === aktifDukkan) {
             let fiyat = parseFloat(data.pey || data.guncel_fiyat || 0);
-            let kisi = data.kazanan || data.kazanan_ad || "Yok";
+            let kisi = data.ad || data.kazanan || data.kazanan_ad || "Yok";
             if (fiyat > sonGorulenPey) {
-                gongSesiCal();
-                const tickerStream = document.getElementById('bidTickerStream');
-                if (tickerStream) {
-                    const item = document.createElement('div');
-                    item.className = 'pey-ticker-oge';
-                    item.innerHTML = `<b>${escapeHtml(kisi)}</b> <span>${formatFiyat(fiyat)}</span> •`;
-                    tickerStream.appendChild(item);
-
-                    const tumOgeler = tickerStream.getElementsByClassName('pey-ticker-oge');
-                    if (tumOgeler.length > 5) {
-                        tumOgeler[0].remove();
-                    }
+                if (window.aktifSes) {
+                    window.aktifSes.pause();
+                    window.aktifSes.currentTime = 0;
                 }
+                peyBandinaYaz(data.platform || data.kazanan, kisi, fiyat);
             }
             sonGorulenPey = fiyat;
             document.getElementById('currentBid').innerText = Math.round(fiyat).toLocaleString('tr-TR');
-            document.getElementById('aktif_kazanan').innerText = kisi;
+            document.getElementById('aktif_kazanan').innerText = kisaIsim(kisi);
             let dinamikBedel = dinamikHemenAlFiyatiHesapla(fiyat, aktifHemenAlStatik);
             const btnHemenAl = document.getElementById('btnHemenAl');
             if (btnHemenAl && !sahnedekiUrunSatildiMi) {
-                btnHemenAl.innerText = `⚡ HEMEN AL (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
+                btnHemenAl.innerText = `Hemen Al (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
             }
             const cornerHemenAl = document.getElementById('cornerHemenAlFiyat');
             if (cornerHemenAl) cornerHemenAl.innerText = formatFiyat(dinamikBedel);
@@ -1703,7 +2526,7 @@
         if (data && data.dukkan === aktifDukkan) {
             let kalan = data.kalan;
             const digits = document.getElementById('timerDigits');
-            const cockpit = document.getElementById('auctionCockpit');
+            const cockpit = document.getElementById('mezatSayaci');
             const dial = document.getElementById('futuristicDial');
             const statusTitle = document.getElementById('timerStatusTitle');
 
@@ -1735,7 +2558,7 @@
         if (data && data.dukkan === aktifDukkan) {
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
-            const cockpit = document.getElementById('auctionCockpit');
+            const cockpit = document.getElementById('mezatSayaci');
             const dial = document.getElementById('futuristicDial');
             sureUzatildiSesiCal();
             let yeniSure = data.kalan || 15;
@@ -1751,7 +2574,7 @@
             zoomEfektiDurdur();
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
-            const cockpit = document.getElementById('auctionCockpit');
+            const cockpit = document.getElementById('mezatSayaci');
             
             if (cockpit) cockpit.classList.remove('urgent');
             if (digits) digits.innerText = "00";
@@ -1786,7 +2609,11 @@
         }
     });
 
-    function sahneyiGuncelle(urunObj, durum, peyTutar, kazananKisi) {
+    function sahneyiGuncelle(urunObj, durum, peyTutar, kazananKisi, kaynak) {
+        if (kaynak !== "inceleme") {
+            canliSahneAnlik = { urunObj: urunObj, durum: durum, peyTutar: peyTutar, kazananKisi: kazananKisi };
+            if (incelemeAcik) return;
+        }
         let soldBanner = document.getElementById('soldBanner');
         let thumbsDiv = document.getElementById('stageThumbs');
         let btnYuzdeOn = document.getElementById('btnYuzdeOn');
@@ -1821,12 +2648,15 @@
             return;
         }
 
+        document.getElementById('aktif_baslik').innerText = `LOT #${urunObj.lot} - ${urunObj.ad}`;
+        document.getElementById('tanitimMetni').innerText = baslikTekrariTemizle(urunObj.tanitim_yazisi || "Açıklama girilmemiş.");
+        document.getElementById('cornerLotNo').innerText = `LOT #${urunObj.lot}`;
+        if (kaynak === "inceleme") {
+            aktifUrunMedyalari = [];
+        } else {
         aktifSahneUrunId = urunObj.id;
         aktifHemenAlStatik = parseFloat(urunObj.hemen_al_fiyati || urunObj.hemen_al_fiyat || 0);
-        document.getElementById('aktif_baslik').innerText = `LOT #${urunObj.lot} - ${urunObj.ad}`;
-        document.getElementById('tanitimMetni').innerText = urunObj.tanitim_yazisi || "Açıklama girilmemiş.";
         document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(urunObj.fiyat || 0);
-        document.getElementById('cornerLotNo').innerText = `LOT #${urunObj.lot}`;
         let aktifPey = parseFloat(peyTutar || urunObj.guncel_fiyat || urunObj.fiyat || 0);
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(aktifPey, aktifHemenAlStatik);
         document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(dinamikBedel);
@@ -1847,27 +2677,36 @@
             sahnedekiUrunSatildiMi = false;
             soldBanner.style.display = 'none';
             document.getElementById('currentBid').innerText = Math.round(aktifPey).toLocaleString('tr-TR');
-            document.getElementById('aktif_kazanan').innerText = kazananKisi || "Henüz Yok";
+            document.getElementById('aktif_kazanan').innerText = kisaIsim(kazananKisi || "Henüz Yok");
             if (btnYuzdeOn) btnYuzdeOn.classList.remove('btn-disabled-sold');
             if (btnSerbest) btnSerbest.classList.remove('btn-disabled-sold');
             if (btnHemenAl) {
                 btnHemenAl.classList.remove('btn-disabled-sold');
-                btnHemenAl.innerText = `⚡ HEMEN AL (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
+                btnHemenAl.innerText = `Hemen Al (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
             }
+        }
         }
 
         aktifUrunMedyalari = [];
-        if (urunObj.canli_yayin_hls) aktifUrunMedyalari.push({ tip: 'hls', url: urunObj.canli_yayin_hls });
-        if (urunObj.video) aktifUrunMedyalari.push({ tip: 'video', url: urunObj.video });
+        const videoUrl = (urunObj.video || "").trim();
+        if (videoUrl) aktifUrunMedyalari.push({ tip: 'video', url: videoUrl });
         if (urunObj.fotograflar && Array.isArray(urunObj.fotograflar)) {
-            urunObj.fotograflar.forEach(f => { if (f && f.trim()) aktifUrunMedyalari.push({ tip: 'foto', url: f.trim() }); });
+            urunObj.fotograflar.forEach(f => {
+                const adres = (f || "").trim();
+                if (adres && adres !== videoUrl) aktifUrunMedyalari.push({ tip: 'foto', url: adres });
+            });
         }
+        if (urunObj.canli_yayin_hls) aktifUrunMedyalari.push({ tip: 'hls', url: urunObj.canli_yayin_hls });
 
         if (aktifUrunMedyalari.length > 1) {
             thumbsDiv.style.display = 'flex';
-            thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => `
-                <img src="${(m.tip === 'video' || m.tip === 'hls') ? '/static/img/video-icon.png' : m.url}" class="thumb-item ${idx === 0 ? 'active' : ''}" onclick="medyaDegistir(${idx})">
-            `).join('');
+            thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => {
+                const sinif = `thumb-item ${idx === 0 ? 'active' : ''}`;
+                if (m.tip === 'video' || m.tip === 'hls') {
+                    return `<video src="${m.url}" class="${sinif}" muted playsinline onclick="medyaDegistir(${idx})"></video>`;
+                }
+                return `<img src="${m.url}" class="${sinif}" onclick="medyaDegistir(${idx})">`;
+            }).join('');
         } else {
             thumbsDiv.style.display = 'none';
         }
@@ -1943,7 +2782,8 @@
         } else {
             let img = document.createElement('img');
             img.src = medya.url;
-            img.className = "zoom-genel-plan";
+            const kutu = document.getElementById('medyaKapsayici');
+            img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
         }
     }
@@ -1956,11 +2796,54 @@
         return true;
     }
 
+    function dogrulamaPenceresiniAc(testKodu) {
+        const satir = document.getElementById('testKodSatiri');
+        const kod = testKodu || '145320';
+        if (satir) satir.textContent = 'Test Doğrulama Kodu: ' + kod;
+        console.log('Test Doğrulama Kodu: ' + kod);
+        const kutu = document.getElementById('dogrulamaModal');
+        if (kutu) kutu.style.display = 'flex';
+    }
+
+    function dogrulamaKontrol() {
+        if (!kullaniciId || kullaniciDogrulandi) return true;
+        alert('Pey verebilmek için lütfen telefon ve e-posta doğrulamanızı tamamlayınız');
+        dogrulamaPenceresiniAc('145320');
+        return false;
+    }
+
+    function dogrulamayiGonder() {
+        const kod = (document.getElementById('dogrulamaKodu').value || '').trim();
+        fetch('/dogrulama-tamamla', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: kullaniciId, kod: kod })
+        }).then(r => r.json()).then(d => {
+            if (!d.success) {
+                alert(d.mesaj || 'Doğrulama kodu hatalı.');
+                return;
+            }
+            kullaniciDogrulandi = true;
+            localStorage.setItem('halic_antik_dogrulandi', '1');
+            closeModal('dogrulamaModal');
+            alert(d.mesaj || 'Doğrulama tamamlandı.');
+        }).catch(function () { alert('Doğrulama sunucusuna ulaşılamadı.'); });
+    }
+
+    function minimumPeyTabani(mevcutFiyat) {
+        const fiyat = Number(mevcutFiyat) || 0;
+        if (fiyat <= 0) return 1;
+        return Math.ceil(fiyat * 1.10);
+    }
+
     function asgariArtisHesapla(mevcutFiyat) {
-        if (mevcutFiyat < 1000) return 50;
-        if (mevcutFiyat < 2000) return 100;
-        if (mevcutFiyat < 5000) return 250;
-        return 500;
+        const fiyat = Number(mevcutFiyat) || 0;
+        if (fiyat <= 0) return 1;
+        return minimumPeyTabani(fiyat) - fiyat;
+    }
+
+    function gecersizPeyUyarisi(gereken) {
+        return "Geçersiz Teklif! En az %10 artışla minimum " + Math.round(gereken).toLocaleString('tr-TR') + " TL verebilirsiniz.";
     }
 
     function yuzdeOnPeyVer() {
@@ -1988,7 +2871,11 @@
         if (!miktar) return;
         
         let tutar = parseFloat(miktar.replace(/\./g, '').replace(/,/g, '.'));
-        if (isNaN(tutar) || tutar < minKabulFiyat) return alert("Geçersiz teklif tutarı! En az " + minKabulFiyat.toLocaleString('tr-TR') + " TL olmalıdır.");
+        if (isNaN(tutar)) return alert(gecersizPeyUyarisi(minKabulFiyat));
+        if (current > 0 && tutar < minKabulFiyat) {
+            alert(gecersizPeyUyarisi(minKabulFiyat));
+            return;
+        }
 
         let fahisLimit = current > 0 ? (current * 5) : (minKabulFiyat * 5);
         if (tutar >= fahisLimit) {
@@ -2005,6 +2892,7 @@
     }
 
     function peyGonder(miktar) {
+        if (!dogrulamaKontrol()) return;
         if (peyGonderiliyorMu) return;
         peyGonderiliyorMu = true;
         fetch('/pey-ver', {
@@ -2016,10 +2904,18 @@
                 musteri_id: kullaniciId,
                 musteri_adi: kullaniciAdi,
                 telefon: kullaniciTel,
-                miktar: miktar, 
+                miktar: miktar,
+                platform: 'Web',
                 islem: 'pey' 
             })
         }).then(res => res.json()).then(d => {
+            if (!d.success && d.dogrulama_gerekli) {
+                kullaniciDogrulandi = false;
+                localStorage.setItem('halic_antik_dogrulandi', '0');
+                alert(d.mesaj);
+                dogrulamaPenceresiniAc('145320');
+                return;
+            }
             if(!d.success) alert(d.mesaj || "Pey verilemedi!");
         }).catch(err => {
             alert("Bağlantı hatası: Pey gönderilemedi.");
@@ -2030,7 +2926,7 @@
 
     function hemenAl() {
         playUserClickSound();
-        if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
+        if (!kullaniciGirisKontrol() || !dogrulamaKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(sonGorulenPey, aktifHemenAlStatik);
         if (!confirm(`Bu ürünü ${dinamikBedel.toLocaleString('tr-TR')} TL bedelle HEMEN SATIN ALMAK istiyor musunuz?`)) return;
         fetch('/pey-ver', {
@@ -2164,7 +3060,6 @@
             if (d.success) { 
                 alert(d.mesaj || "Ön teklif başarıyla kaydedildi."); 
                 document.getElementById('onTeklifMiktari').value = ""; 
-                katalogKapat(); 
             } else {
                 alert(d.mesaj);
             }
@@ -2187,20 +3082,26 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ad, tel, mail, adres, sozlesme: true })
         }).then(res => res.json()).then(d => {
-            alert(d.mesaj || "Kayıt tamamlandı.");
             kullaniciAdi = ad; 
             kullaniciTel = tel;
             kullaniciMail = mail;
             if(d.musteri_id) kullaniciId = d.musteri_id;
+            kullaniciDogrulandi = !!d.is_verified;
             
             localStorage.setItem('halic_antik_ad', ad);
             localStorage.setItem('halic_antik_tel', tel);
             localStorage.setItem('halic_antik_mail', mail);
             if(d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
+            localStorage.setItem('halic_antik_dogrulandi', kullaniciDogrulandi ? '1' : '0');
             
             document.getElementById('aktifKullaniciGosterge').innerText = ad;
             closeModal('authRegisterModal');
             sepetAdediGuncelle();
+            if (d.dogrulama_gerekli || d.is_verified === false) {
+                dogrulamaPenceresiniAc(d.test_kodu || '145320');
+            } else {
+                alert(d.mesaj || "Kayıt tamamlandı.");
+            }
         });
     }
 
@@ -2249,6 +3150,27 @@
         localStorage.removeItem('halic_antik_tel');
         localStorage.removeItem('halic_antik_mail');
         location.reload();
+    }
+
+    function elestiriGonder() {
+        playUserClickSound();
+        const hedef = document.getElementById('elestiri_hedef');
+        const kutu = document.getElementById('elestiri_mesaj');
+        const mesaj = (kutu ? kutu.value : '').trim();
+        if (mesaj.length < 3) return alert("Eleştirinizi birkaç kelimeyle yazın.");
+        fetch('/elestiri-gonder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                dukkan: aktifDukkan,
+                musteri: kullaniciAdi || "Misafir",
+                hedef: hedef ? hedef.value : "Mezat",
+                mesaj: mesaj
+            })
+        }).then(r => r.json()).then(d => {
+            alert(d.mesaj || "İletildi.");
+            if (d.success && kutu) kutu.value = "";
+        }).catch(() => alert("Eleştiri iletilemedi."));
     }
 
     function sikayetGonder() {

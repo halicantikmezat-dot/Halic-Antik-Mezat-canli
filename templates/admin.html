@@ -37,6 +37,7 @@
         }
         .header h2 { color: var(--accent-gold); font-size: 18px; text-transform: uppercase; letter-spacing: 0.5px; }
 
+        /* 10 DÜKKAN SEÇİM BARI */
         .shop-selector-bar {
             background: #141b24;
             border: 1px solid var(--card-border);
@@ -128,20 +129,32 @@
         th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
         th { background: #121822; color: var(--accent-gold); }
 
+        /* ALINAN ÜRÜNLER KUTUSU (TAM 3 SATIR & BEYAZ/GRİ SCROLLBAR) */
         .urun-chip-container {
             display: flex !important;
             flex-direction: column !important;
             gap: 4px !important;
-            max-height: 125px !important;
+            max-height: 125px !important; /* Tam 3 ürünlük yükseklik */
             overflow-y: scroll !important;
             overflow-x: hidden !important;
             padding-right: 6px !important;
             scroll-behavior: smooth;
         }
-        .urun-chip-container::-webkit-scrollbar { width: 6px !important; }
-        .urun-chip-container::-webkit-scrollbar-track { background: #1e293b !important; border-radius: 3px !important; }
-        .urun-chip-container::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 3px !important; }
-        .urun-chip-container::-webkit-scrollbar-thumb:hover { background: #cbd5e1 !important; }
+
+        .urun-chip-container::-webkit-scrollbar {
+            width: 6px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-track {
+            background: #1e293b !important;
+            border-radius: 3px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-thumb {
+            background: #94a3b8 !important;
+            border-radius: 3px !important;
+        }
+        .urun-chip-container::-webkit-scrollbar-thumb:hover {
+            background: #cbd5e1 !important;
+        }
 
         .urun-chip {
             background: #0d121a;
@@ -242,6 +255,7 @@
             object-fit: contain;
         }
 
+        /* BAS-KONUŞ BUTON STİLİ */
         .btn-bas-konus {
             background: #1e293b;
             border: 1.5px solid #38bdf8;
@@ -284,6 +298,11 @@
             <a id="linkCanliEkran" href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
             <a id="linkVitrin" href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
             <a href="/excel-indir" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
+            <button type="button" onclick="excelRaporSil()" class="btn btn-red btn-sm">Raporu Sil</button>
+            <button type="button" onclick="excelRaporSifirla()" class="btn btn-sm" style="background:#475569; color:#fff;">Raporu Sıfırla</button>
+            <label class="btn btn-yellow btn-sm" style="margin:0;">Raporu Üzerine Yaz
+                <input type="file" id="excelRaporDosya" accept=".xlsx,.xls" style="display:none;" onchange="excelRaporYukle(this)">
+            </label>
             <button onclick="copKutusunuAc()" class="btn btn-red btn-sm">🗑️ Çöp Kutusu (<span id="copSayisi">0</span>)</button>
             <button onclick="sifreDegistirModalAc()" class="btn btn-yellow btn-sm">🔑 Şifre Değiştir</button>
             <button onclick="adminCikisYap()" class="btn btn-sm" style="background:#334155; color:#fff;">Çıkış</button>
@@ -298,7 +317,10 @@
         <div class="card">
             <div class="card-title">⚡ Toplu Ürün Yükleme (Excel / XML / Canlı Bağlantı)</div>
             <form id="topluYukleForm" onsubmit="topluUrunYukle(event)" style="display: flex; flex-direction: column; gap: 8px;">
-                <input type="text" id="topluUrl" placeholder="Canlı XML Linki" style="margin: 0;">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="text" id="topluUrl" placeholder="Canlı XML Linki" style="margin: 0; flex:1;">
+                    <button type="button" class="btn btn-red btn-sm" onclick="xmlLinkiTemizle()">Linki Temizle / Sil</button>
+                </div>
                 <div style="text-align: center; font-size: 11px; color: #94a3b8;">- VEYA BİLGİSAYARDAN DOSYA SEÇİN -</div>
                 <input type="file" id="topluDosya" accept=".xlsx, .xls, .csv, .xml" style="margin: 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
@@ -313,6 +335,7 @@
             </div>
         </div>
 
+        <!-- 7/24 CANLI YAYIN MÜZİK YÖNETİMİ -->
         <div class="card">
             <div class="card-title">🎵 7/24 Canlı Müzik Yayını Yönetimi</div>
             <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">
@@ -785,6 +808,14 @@
 </div>
 
 <script>
+    const socket = io({
+        transports: ['websocket', 'polling'],
+        upgrade: true
+    });
+    socket.on("connect", function() {
+        socket.emit("join_admin");
+    });
+
     let seciliDukkan = 'gumus';
     let dukkanlar = {};
     let otonomDurumlari = {};
@@ -792,17 +823,6 @@
     let tumOnTeklifler = [];
     let tumArsivUrunleri = [];
     let audioCtx = null;
-    window.audioCtx = null;
-    document.addEventListener('pointerdown', () => {
-        if (!window.audioCtx) {
-            try {
-                window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                audioCtx = window.audioCtx;
-            } catch (e) {}
-        }
-    }, { once: true });
-    document.addEventListener('click', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true });
-    document.addEventListener('touchstart', () => { if (window.audioCtx && window.audioCtx.state === 'suspended') { window.audioCtx.resume(); } }, { once: true, passive: true });
     let yukleniyorMu = false;
     let sonVeriCekmeZamani = 0;
     let adminAramaTimer = null;
@@ -810,216 +830,9 @@
 
     const medyaDosyaHavuzu = new DataTransfer();
 
-    // Socket bağlantısı kurulumu
-    const socket = io({
-        transports: ['websocket', 'polling'],
-        upgrade: true
-    });
-
-    function yoneticiOdayaGir() {
-        const currentDukkan = seciliDukkan || 'gumus';
-        socket.emit('join_dukkan', { dukkan: currentDukkan });
-    }
-
-    socket.on('connect', function() {
-        console.log("Admin Socket bağlandı, odaya giriliyor:", seciliDukkan);
-        yoneticiOdayaGir();
-    });
-    socket.on('reconnect', yoneticiOdayaGir);
-
-    // Canlı yorum akışı dinleyicisi
-    const gorulenCanliYorumlar = [];
-
-    socket.on("yeni_canli_yorum", function(data) {
-        if (data.dukkan && data.dukkan !== seciliDukkan) {
-            return;
-        }
-
-        const yorumImzasi = [data.platform, data.kullanici, data.mesaj, data.zaman].join("|");
-        if (gorulenCanliYorumlar.indexOf(yorumImzasi) !== -1) return;
-        gorulenCanliYorumlar.push(yorumImzasi);
-        if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
-
-        const bosUyari = document.getElementById("sohbetBosUyarisi");
-        if (bosUyari) bosUyari.remove();
-
-        toplamYorumSayisi++;
-        document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
-
-        let platformRenk = "#38bdf8";
-        let platformAd = data.platform || "Web";
-        let logoSvg = "💬";
-
-        let baslikEtiketi = "";
-        if (platformAd === "Ahmet Usta AI" || /Ahmet Usta/i.test(data.kullanici || "")) {
-            platformRenk = "var(--accent-gold)";
-            baslikEtiketi = "🤖 [Ahmet Usta]";
-        } else if (platformAd.includes("TikTok")) {
-            platformRenk = "#ef4444";
-            logoSvg = "🔴";
-            baslikEtiketi = `${logoSvg} [${platformAd}] ${data.kullanici || ""}`;
-        } else {
-            baslikEtiketi = `${logoSvg} [${platformAd}] ${data.kullanici || ""}`;
-        }
-
-        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
-        const yeniSatir = document.createElement("div");
-        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px; margin-bottom: 4px;`;
-
-        yeniSatir.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <span style="font-weight: bold; color: ${platformRenk};">
-                    ${baslikEtiketi}
-                </span>
-                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
-            </div>
-            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
-                ${data.mesaj}
-            </div>
-        `;
-
-        sohbetKutusu.appendChild(yeniSatir);
-        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
-    });
-
-    let adminMuzikEski = 100;
-    function adminMuzigiKıs() {
-        try {
-            if (window.ytAudioPlayer && typeof window.ytAudioPlayer.getVolume === 'function') {
-                const anlik = window.ytAudioPlayer.getVolume();
-                if (typeof anlik === 'number' && anlik > 25) adminMuzikEski = anlik;
-                window.ytAudioPlayer.setVolume(18);
-            }
-        } catch (e) {}
-        document.querySelectorAll('audio, video').forEach(function(a) {
-            if (a === window.ahmetPlayer) return;
-            if (!a.dataset.eskiSes) a.dataset.eskiSes = String(a.volume);
-            a.volume = 0.18;
-        });
-    }
-    function adminMuzigiAc() {
-        const geri = Math.max(80, adminMuzikEski || 100);
-        try {
-            if (window.ytAudioPlayer && typeof window.ytAudioPlayer.setVolume === 'function') window.ytAudioPlayer.setVolume(geri);
-        } catch (e) {}
-        document.querySelectorAll('audio, video').forEach(function(a) {
-            if (a === window.ahmetPlayer) return;
-            const eski = parseFloat(a.dataset.eskiSes || '1');
-            a.volume = eski >= 0.8 ? eski : 1;
-            delete a.dataset.eskiSes;
-        });
-    }
-
-    socket.on('ahmet_ses_cal', function(data) {
-        if (data && data.audio) {
-            if (!window.ahmetPlayer) window.ahmetPlayer = new Audio();
-            adminMuzigiKıs();
-            window.ahmetPlayer.onended = adminMuzigiAc;
-            window.ahmetPlayer.src = data.audio;
-            window.ahmetPlayer.play().catch(function(e){ console.log("Otomatik ses engeli:", e); });
-        }
-    });
-
-    function adminAkisaSatirEkle(baslik, metin, renk) {
-        const bosUyari = document.getElementById("sohbetBosUyarisi");
-        if (bosUyari) bosUyari.remove();
-        toplamYorumSayisi++;
-        const sayac = document.getElementById("yorumSayaci");
-        if (sayac) sayac.innerText = toplamYorumSayisi + " Mesaj";
-        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
-        if (!sohbetKutusu) return;
-        const yeniSatir = document.createElement("div");
-        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${renk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px; margin-bottom: 4px;`;
-        const ust = document.createElement("div");
-        ust.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;";
-        const ad = document.createElement("span");
-        ad.style.cssText = `font-weight:bold; color:${renk};`;
-        ad.textContent = baslik;
-        const saat = document.createElement("span");
-        saat.style.cssText = "font-size:10px; color:#94a3b8;";
-        saat.textContent = new Date().toLocaleTimeString("tr-TR");
-        ust.appendChild(ad);
-        ust.appendChild(saat);
-        const govde = document.createElement("div");
-        govde.style.cssText = "color:#f8fafc; font-size:12px; word-break:break-word;";
-        govde.textContent = metin;
-        yeniSatir.appendChild(ust);
-        yeniSatir.appendChild(govde);
-        sohbetKutusu.appendChild(yeniSatir);
-        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
-    }
-
-    // BAS-KONUŞ (tarayıcı Türkçe ses tanıma)
-    let basKonusDinleyici = null;
-    let basKonusSuruyor = false;
-    const btnBasKonus = document.getElementById('btnBasKonus');
-
-    function yoneticiSesiniYayinla(transcript) {
-        const temiz = String(transcript || '').trim();
-        if (!temiz) return;
-        const currentDukkan = seciliDukkan || 'gumus';
-        socket.emit('yeni_yorum_ekle', { dukkan: currentDukkan, kullanici: 'Yönetici', yorum: temiz });
-        socket.emit('admin_sesli_komut', { dukkan: currentDukkan, metin: temiz });
-        const kutu = document.getElementById('adminCanliSohbetAlani');
-        const bos = document.getElementById('sohbetBosUyarisi');
-        if (bos) bos.remove();
-        if (kutu) {
-            const satir = document.createElement('div');
-            satir.style.cssText = 'background:#18202c; border-left:3px solid #38bdf8; padding:6px 10px; border-radius:4px; font-size:12px; margin-bottom:4px; color:#f8fafc;';
-            satir.textContent = '🎙️ Yönetici (Sesli): ' + temiz;
-            kutu.appendChild(satir);
-            kutu.scrollTop = kutu.scrollHeight;
-        }
-    }
-
-    function basKonusBaslat() {
-        if (basKonusSuruyor) return;
-        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRec) {
-            alert('Bu tarayıcı ses tanımayı desteklemiyor. Chrome kullanın.');
-            return;
-        }
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
-            stream.getTracks().forEach(function(track) { track.stop(); });
-        }).catch(function(err) {
-            alert('Mikrofon erişim izni verilmedi: ' + err);
-        });
-        try {
-            basKonusDinleyici = new SpeechRec();
-            basKonusDinleyici.lang = 'tr-TR';
-            basKonusDinleyici.continuous = false;
-            basKonusDinleyici.interimResults = false;
-            basKonusDinleyici.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                yoneticiSesiniYayinla(transcript);
-            };
-            basKonusDinleyici.onerror = function(event) {
-                if (event.error && event.error !== 'aborted' && event.error !== 'no-speech') {
-                    console.log('Ses tanıma:', event.error);
-                }
-            };
-            basKonusDinleyici.start();
-            basKonusSuruyor = true;
-            btnBasKonus.classList.add('kayit-aktif');
-            btnBasKonus.innerText = '🔴 Dinliyor... Bırakın!';
-        } catch (err) {
-            alert('Mikrofon erişim izni verilmedi: ' + err);
-        }
-    }
-
-    function basKonusBitir() {
-        if (basKonusDinleyici) {
-            try { basKonusDinleyici.stop(); } catch (e) {}
-        }
-        basKonusSuruyor = false;
-        btnBasKonus.classList.remove('kayit-aktif');
-        btnBasKonus.innerText = '🎙️ Bas-Konuş (AI Dinlesin)';
-    }
-
-    btnBasKonus.addEventListener('mousedown', basKonusBaslat);
-    btnBasKonus.addEventListener('mouseup', basKonusBitir);
-    btnBasKonus.addEventListener('touchstart', (e) => { e.preventDefault(); basKonusBaslat(); });
-    btnBasKonus.addEventListener('touchend', (e) => { e.preventDefault(); basKonusBitir(); });
+    // BAS-KONUŞ (MEDIA RECORDER) DEĞİŞKENLERİ
+    let mediaRecorder = null;
+    let audioChunks = [];
 
     async function dukkanlariYukleAdmin() {
         try {
@@ -1048,7 +861,7 @@
         playClickSound();
         socket.emit('leave_dukkan', { dukkan: seciliDukkan });
         seciliDukkan = kod;
-        yoneticiOdayaGir();
+        socket.emit('join_dukkan', { dukkan: seciliDukkan });
 
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         const activeTab = document.getElementById(`tab_${kod}`);
@@ -1066,6 +879,96 @@
         veriCekAdmin();
         adminUrunAra();
     }
+
+    // BAS-KONUŞ MİKROFON KURULUMU
+    const btnBasKonus = document.getElementById('btnBasKonus');
+
+    async function basKonusBaslat() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const formData = new FormData();
+                formData.append('ses', audioBlob, 'admin_ses.webm');
+                formData.append('dukkan', seciliDukkan);
+
+                fetch('/api/admin/bas-konus-ses', {
+                    method: 'POST',
+                    body: formData
+                }).then(r => r.json()).then(res => {
+                    console.log("Ses iletildi:", res);
+                });
+
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            btnBasKonus.classList.add('kayit-aktif');
+            btnBasKonus.innerText = "🔴 Dinliyor... Bırakın!";
+        } catch (err) {
+            alert("Mikrofon erişim izni verilmedi: " + err);
+        }
+    }
+
+    function basKonusBitir() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        btnBasKonus.classList.remove('kayit-aktif');
+        btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+    }
+
+    btnBasKonus.addEventListener('mousedown', basKonusBaslat);
+    btnBasKonus.addEventListener('mouseup', basKonusBitir);
+    btnBasKonus.addEventListener('touchstart', (e) => { e.preventDefault(); basKonusBaslat(); });
+    btnBasKonus.addEventListener('touchend', (e) => { e.preventDefault(); basKonusBitir(); });
+
+    // CANLI SOHBET VE AHMET USTA AKIŞI
+    socket.on("yeni_canli_yorum", function(data) {
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+
+        toplamYorumSayisi++;
+        document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
+
+        let platformRenk = "#38bdf8";
+        let platformAd = data.platform || "Web";
+        let logoSvg = "💬";
+
+        if (platformAd === "Ahmet Usta AI") {
+            platformRenk = "var(--accent-gold)";
+            logoSvg = "🤖";
+        } else if (platformAd.includes("TikTok")) {
+            platformRenk = "#ef4444";
+            logoSvg = "🔴";
+        }
+
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        const yeniSatir = document.createElement("div");
+        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
+
+        yeniSatir.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: bold; color: ${platformRenk};">
+                    ${logoSvg} [${platformAd}] ${data.kullanici}
+                </span>
+                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
+            </div>
+            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
+                ${data.mesaj}
+            </div>
+        `;
+
+        sohbetKutusu.appendChild(yeniSatir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    });
 
     // YASAL VE HUKUKİ SÖZLEŞME İŞLEMLERİ
     function sozlesmeModalAc() {
@@ -1234,7 +1137,6 @@
     function playClickSound() {
         try {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            window.audioCtx = audioCtx;
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
@@ -1527,12 +1429,6 @@
         if(data && data.dukkan === seciliDukkan) {
             if(data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
             if(data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
-            const peyImza = ["pey", data.kazanan, data.pey, data.urun_id].join("|");
-            if (gorulenCanliYorumlar.indexOf(peyImza) === -1) {
-                gorulenCanliYorumlar.push(peyImza);
-                if (gorulenCanliYorumlar.length > 40) gorulenCanliYorumlar.shift();
-                adminAkisaSatirEkle("🔨 Pey", `${data.kazanan || "İzleyici"} → ${data.pey} TL`, "#34d399");
-            }
         }
     });
 
@@ -1551,6 +1447,52 @@
             }, 1000);
         }
     });
+
+    function onayBekleyenSatiriEkle(m) {
+        const onayListesi = document.getElementById('onayBekleyenlerListesi');
+        if (!onayListesi || !m || !m.id) return;
+        if (document.getElementById('bekleyen-satir-' + m.id)) return;
+        if ((onayListesi.textContent || '').indexOf('yok') !== -1) onayListesi.innerHTML = '';
+        const div = document.createElement('div');
+        div.className = 'item-row';
+        div.id = 'bekleyen-satir-' + m.id;
+        div.innerHTML = `
+            <span><b>${m.ad}</b> (${m.tel}) <small style="color:#94a3b8;">IP: ${m.ip || '-'}</small></span>
+            <div class="actions">
+                <button class="btn btn-green btn-sm" onclick="musteriDurumDegistir(${m.id}, 'onayli')">Onayla</button>
+                <button class="btn btn-red btn-sm" onclick="musteriDurumDegistir(${m.id}, 'engellendi')">Banla</button>
+                <button class="btn btn-red btn-sm" onclick="musteriSil(${m.id})">Sil</button>
+            </div>
+        `;
+        onayListesi.prepend(div);
+        const rozet = document.getElementById('bekleyenSayisiRozet');
+        const adet = onayListesi.querySelectorAll('.item-row').length;
+        if (rozet) rozet.innerText = adet + ' Bekleyen';
+    }
+
+    function elestiriSatiriEkle(k) {
+        const tablo = document.getElementById('sikayetOneriTablo');
+        if (!tablo || !k) return;
+        if ((tablo.textContent || '').indexOf('bulunmuyor') !== -1) tablo.innerHTML = '';
+        const kaynak = k.kaynak || 'elestiri';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${k.tarih || '-'}</td>
+            <td><b>${k.musteri_adi || 'Misafir'}</b></td>
+            <td><span style="color:#38bdf8;">${k.tur || 'Eleştiri'}</span></td>
+            <td><b>${k.konu || '-'}:</b> ${k.mesaj || ''}</td>
+            <td><small>${k.ip || '-'}</small></td>
+            <td>
+                <span style="color:#d4af37; font-weight:bold;">${k.durum || 'Yeni'}</span>
+                <button class="btn btn-green btn-sm" style="margin-left:4px;" onclick="itirazDuzeltBildir(${k.id}, '${kaynak}')">✅ Düzelt & Bildir</button>
+                <button class="btn btn-red btn-sm" style="margin-left:2px;" onclick="sikayetSil(${k.id}, '${kaynak}')">Sil</button>
+            </td>
+        `;
+        tablo.prepend(tr);
+    }
+
+    socket.on('yeni_kayit_talebi', onayBekleyenSatiriEkle);
+    socket.on('yeni_elestiri', elestiriSatiriEkle);
 
     socket.on('izleyici_sayisi_guncelle', function(data) {
         if(data && data.dukkan === seciliDukkan && data.sayi !== undefined) {
@@ -1705,7 +1647,7 @@
                             <span><b>${m.ad}</b> (${m.tel}) <small style="color:#94a3b8;">IP: ${m.ip}</small></span>
                             <div class="actions">
                                 <button class="btn btn-green btn-sm" onclick="musteriDurumDegistir(${m.id}, 'onayli')">Onayla</button>
-                                <button class="btn btn-red btn-sm" onclick="musteriDurumDegistir(${m.id}, 'engellendi')">Engelle</button>
+                                <button class="btn btn-red btn-sm" onclick="musteriDurumDegistir(${m.id}, 'engellendi')">Banla</button>
                                 <button class="btn btn-red btn-sm" onclick="musteriSil(${m.id})">Sil</button>
                             </div>
                         `;
@@ -1823,6 +1765,40 @@
         });
     }
 
+    function excelRaporSil() {
+        playClickSound();
+        if (!confirm('Kayıtlı Excel raporu silinsin mi?')) return;
+        fetch('/excel-rapor-sil', { method: 'POST' }).then(r => r.json()).then(d => alert(d.mesaj || 'Silindi.'));
+    }
+
+    function excelRaporSifirla() {
+        playClickSound();
+        if (!confirm('Excel raporu boş sayfa olarak sıfırlansın mı?')) return;
+        fetch('/excel-rapor-sifirla', { method: 'POST' }).then(r => r.json()).then(d => alert(d.mesaj || 'Sıfırlandı.'));
+    }
+
+    function excelRaporYukle(input) {
+        if (!input.files || !input.files[0]) return;
+        const formData = new FormData();
+        formData.append('dosya', input.files[0]);
+        fetch('/excel-rapor-yukle', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(d => alert(d.mesaj || 'Güncellendi.'));
+        input.value = '';
+    }
+
+    function xmlLinkiTemizle() {
+        playClickSound();
+        fetch('/xml-link-temizle', { method: 'POST' })
+            .then(r => r.json())
+            .then(d => {
+                const urlInput = document.getElementById('topluUrl');
+                const durum = document.getElementById('topluDurum');
+                if (urlInput) urlInput.value = '';
+                if (durum) durum.innerText = d.mesaj || 'XML linki silindi.';
+            });
+    }
+
     function topluUrunYukle(e) {
         e.preventDefault();
         playClickSound();
@@ -1926,8 +1902,8 @@
                     <td><small>${k.ip || '-'}</small></td>
                     <td>
                         ${badge}
-                        <button class="btn btn-green btn-sm" style="margin-left:4px;" onclick="itirazDuzeltBildir(${k.id})">✅ Düzelt & Bildir</button>
-                        <button class="btn btn-red btn-sm" style="margin-left:2px;" onclick="sikayetSil(${k.id})">Sil</button>
+                        <button class="btn btn-green btn-sm" style="margin-left:4px;" onclick="itirazDuzeltBildir(${k.id}, '${k.kaynak || "sikayet"}')">✅ Düzelt & Bildir</button>
+                        <button class="btn btn-red btn-sm" style="margin-left:2px;" onclick="sikayetSil(${k.id}, '${k.kaynak || "sikayet"}')">Sil</button>
                     </td>
                 `;
                 tablo.appendChild(tr);
@@ -1935,12 +1911,12 @@
         }).catch(() => {});
     }
 
-    function itirazDuzeltBildir(id) {
+    function itirazDuzeltBildir(id, kaynak) {
         playClickSound();
         fetch('/itiraz-duzelt-bildir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id })
+            body: JSON.stringify({ id: id, kaynak: kaynak || 'sikayet' })
         }).then(res => res.json()).then(d => {
             if(d.success) {
                 alert("✅ İtiraz düzeltildi ve müşterinin ekranına anlık bildirim iletildi.");
@@ -1949,13 +1925,13 @@
         });
     }
 
-    function sikayetSil(id) {
+    function sikayetSil(id, kaynak) {
         playClickSound();
         if(!confirm("Bu itiraz/şikayet kaydını silmek istiyor musunuz?")) return;
         fetch('/sikayet-oneri-sil', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id })
+            body: JSON.stringify({ id: id, kaynak: kaynak || 'sikayet' })
         }).then(res => res.json()).then(d => {
             if(d.success) sikayetleriGetir();
         });

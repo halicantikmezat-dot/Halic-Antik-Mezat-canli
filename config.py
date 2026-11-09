@@ -1,5 +1,29 @@
 import os
 
+def _dotenv_yukle():
+    yol = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.isfile(yol):
+        return
+    with open(yol, encoding="utf-8") as dosya:
+        for satir in dosya:
+            satir = satir.strip()
+            if not satir or satir.startswith("#") or "=" not in satir:
+                continue
+            ad, deger = satir.split("=", 1)
+            ad = ad.strip()
+            deger = deger.strip()
+            if len(deger) >= 2 and deger[0] in "\"'" and deger.find(deger[0], 1) > 0:
+                deger = deger[1:deger.find(deger[0], 1)]
+            else:
+                pay = deger.find(" #")
+                if pay >= 0:
+                    deger = deger[:pay]
+                deger = deger.strip().strip('"').strip("'")
+            if ad and not os.environ.get(ad):
+                os.environ[ad] = deger
+
+_dotenv_yukle()
+
 def _env(*adlar):
     for ad in adlar:
         deger = os.environ.get(ad)
@@ -22,6 +46,11 @@ class Config:
 
     # Gemini. Anahtar ortamda GEMINI_API_KEY olarak duruyor.
     GEMINI_API_KEY = _env("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_KEY")
+
+    # Canlı mezat sesi. Anahtar yalnızca ortamdan okunur, koda yazılmaz.
+    OPENAI_API_KEY = _env("OPENAI_API_KEY")
+    OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL") or "tts-1-hd"
+    OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE") or "nova"
 
     # BizimHesap API
     BIZIMHESAP_TOKEN = os.environ.get('BIZIMHESAP_TOKEN') or '6A35AAEBF1024183BA5DBE39BD4667A0'

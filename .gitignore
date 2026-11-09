@@ -1,4 +1,11 @@
+.env
+.env.*
+*.env
+__pycache__/
+*.pyc
+mezat_raporu.xlsx
+
 instagram_profile/  
 fb_profile/ 
 kamera_test.py  
-otomatik_klasor_yukle.py 
+otomatik_klasor_yukle.py

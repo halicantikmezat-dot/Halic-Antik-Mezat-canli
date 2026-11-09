@@ -1,4 +1,5 @@
 import urllib.parse
+from datetime import datetime, timezone
 from flask import Blueprint, jsonify, render_template_string, request
 from sqlalchemy import text
 
@@ -69,6 +70,9 @@ def init_pazaryeri(app, db, admin_required_decorator):
             th { background: #0b1120; color: #94a3b8; }
             input, select, textarea { background: #0f172a; border: 1px solid #475569; color: #fff; padding: 8px 12px; border-radius: 6px; }
             button, .btn { background: #f59e0b; color: #000; border: none; padding: 8px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; font-size: 13px; }
+            .btn-kucuk { padding: 5px 8px; margin: 2px; }
+            .btn-iptal { background: #475569; color: #fff; }
+            .btn-sil { background: #dc2626; color: #fff; }
             button:hover, .btn:hover { background: #d97706; }
             .btn-wa { background: #25D366; color: #fff; margin-right: 5px; }
             .btn-wa:hover { background: #1ebe5d; }
@@ -128,10 +132,11 @@ def init_pazaryeri(app, db, admin_required_decorator):
                         <th>Durum</th>
                         <th>Kargo Takip</th>
                         <th>WhatsApp Hızlı İşlem</th>
+                        <th>İşlem</th>
                     </tr>
                 </thead>
                 <tbody id="siparisTbody">
-                    <tr><td colspan="8">Yükleniyor...</td></tr>
+                    <tr><td colspan="9">Yükleniyor...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -177,7 +182,7 @@ def init_pazaryeri(app, db, admin_required_decorator):
                 });
 
                 if (filtrelenmis.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8;">Aramaya uygun sipariş bulunamadı.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8;">Aramaya uygun sipariş bulunamadı.</td></tr>';
                     return;
                 }
 
@@ -206,6 +211,11 @@ def init_pazaryeri(app, db, admin_required_decorator):
                         <td>
                             <a href="https://wa.me/?text=${aliciMesaj}" target="_blank" class="btn btn-wa">📲 Alıcıya Bildir</a>
                             ${saticiTel ? `<a href="https://wa.me/${saticiTel}?text=${saticiMesaj}" target="_blank" class="btn btn-wa" style="background:#0284c7;">📦 Satıcıya Bildir</a>` : ''}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-kucuk" onclick="siparisDuzenle(${s.id})">Düzenle</button>
+                            <button type="button" class="btn btn-kucuk btn-iptal" onclick="siparisIptal(${s.id})">İptal Et</button>
+                            <button type="button" class="btn btn-kucuk btn-sil" onclick="siparisSil(${s.id})">Sil</button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -272,6 +282,41 @@ def init_pazaryeri(app, db, admin_required_decorator):
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ urun_id: urunId, kargo_takip_no: takipNo })
                 });
+            }
+
+            async function siparisDuzenle(urunId) {
+                const s = tumSiparisler.find(x => x.id === urunId);
+                if (!s) return;
+                const kargo = prompt('Kargo takip kodu', s.kargo_takip || '');
+                if (kargo === null) return;
+                const durum = prompt('Durum (Odeme_Bekliyor, Kargoda, Teslim_Edildi, Tamamlandi, Iptal)', s.durum || 'Odeme_Bekliyor');
+                if (durum === null) return;
+                await fetch('/admin/pazaryeri/api/siparis-duzenle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ urun_id: urunId, kargo_takip_no: kargo, durum: durum })
+                });
+                verileriGetir();
+            }
+
+            async function siparisIptal(urunId) {
+                if (!confirm('Bu sipariş iptal edilsin mi? Ürün satış havuzuna döner.')) return;
+                await fetch('/admin/pazaryeri/api/siparis-iptal', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ urun_id: urunId })
+                });
+                verileriGetir();
+            }
+
+            async function siparisSil(urunId) {
+                if (!confirm('Bu sipariş çöp kutusuna taşınsın mı?')) return;
+                await fetch('/admin/pazaryeri/api/siparis-sil', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ urun_id: urunId })
+                });
+                verileriGetir();
             }
 
             verileriGetir();
@@ -382,6 +427,52 @@ def init_pazaryeri(app, db, admin_required_decorator):
         db.session.execute(
             text("UPDATE urun SET kargo_takip_no = :takip WHERE id = :urun_id"),
             {"takip": v.get("kargo_takip_no"), "urun_id": v.get("urun_id")},
+        )
+        db.session.commit()
+        return jsonify({"success": True})
+
+    @pazaryeri_bp.route("/api/siparis-duzenle", methods=["POST"])
+    @admin_required_decorator
+    def api_siparis_duzenle():
+        v = request.json or {}
+        db.session.execute(
+            text(
+                "UPDATE urun SET siparis_durumu = :durum, kargo_takip_no = :takip "
+                "WHERE id = :urun_id"
+            ),
+            {
+                "durum": v.get("durum") or "Odeme_Bekliyor",
+                "takip": v.get("kargo_takip_no") or "",
+                "urun_id": v.get("urun_id"),
+            },
+        )
+        db.session.commit()
+        return jsonify({"success": True})
+
+    @pazaryeri_bp.route("/api/siparis-iptal", methods=["POST"])
+    @admin_required_decorator
+    def api_siparis_iptal():
+        v = request.json or {}
+        db.session.execute(
+            text(
+                "UPDATE urun SET siparis_durumu = 'Iptal', durum = 'Aktif', "
+                "kazanan_adi = 'Yok', kazanan_id = NULL WHERE id = :urun_id"
+            ),
+            {"urun_id": v.get("urun_id")},
+        )
+        db.session.commit()
+        return jsonify({"success": True})
+
+    @pazaryeri_bp.route("/api/siparis-sil", methods=["POST"])
+    @admin_required_decorator
+    def api_siparis_sil():
+        v = request.json or {}
+        db.session.execute(
+            text(
+                "UPDATE urun SET silindi_mi = 1, silinme_tarihi = :simdi "
+                "WHERE id = :urun_id"
+            ),
+            {"urun_id": v.get("urun_id"), "simdi": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")},
         )
         db.session.commit()
         return jsonify({"success": True})

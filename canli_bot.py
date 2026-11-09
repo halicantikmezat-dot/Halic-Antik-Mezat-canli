@@ -83,7 +83,6 @@ MODEL_ADI = "gemini-3.8-flash"
 WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000").rstrip("/")
 
 KOK_DIZIN = os.path.abspath(os.path.dirname(__file__))
-AHMET_SES_CIKIS = os.path.abspath(os.path.join(KOK_DIZIN, "ahmet_ses_cikis.wav"))
 _ses_kilit = threading.Lock()
 
 client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
@@ -383,41 +382,10 @@ def _ses_dosyasini_birak():
         pass
 
 def ahmet_sesi_bellege_sentezle(metin):
-    if not speech_config:
-        return None
-    try:
-        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-        result = synthesizer.speak_text_async(metin).get()
-        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-            audio_data = result.audio_data
-            _ses_dosyasini_birak()
-            with open(AHMET_SES_CIKIS, "wb") as f:
-                f.write(audio_data)
-            return audio_data
-        else:
-            print(f"[SES HATA] Azure sentez başarısız: {result.reason}")
-            return None
-    except Exception as e:
-        print(f"[SES HATA] Azure API çağrısı patladı: {e}")
-        return None
+    return None
 
 def bellekten_ses_cal(audio_bytes):
-    if not pygame or not pygame.mixer.get_init() or not audio_bytes:
-        return
-    if not os.path.isfile(AHMET_SES_CIKIS):
-        return
-    try:
-        pygame.mixer.music.load(AHMET_SES_CIKIS)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            if stop_signal or patron_konusuyor:
-                pygame.mixer.music.stop()
-                break
-            time.sleep(0.02)
-    except Exception as e:
-        print(f"Ses Çalma Hatası: {e}")
-    finally:
-        _ses_dosyasini_birak()
+    return
 
 def kuyrugu_guvenli_bosalt():
     while not spiker_kuyrugu.empty():
