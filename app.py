@@ -140,6 +140,7 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode="gevent",
+    manage_session=False,
     ping_timeout=60,
     ping_interval=25,
 )
@@ -1295,9 +1296,9 @@ def dukkan_otonom_dongusu(dukkan):
                     },
                 )
 
-            socketio.emit("yeni_sahne_urunu", secilen_urun.to_dict(), room=dukkan)
-            socketio.emit(
-                "pey_guncellendi",
+            sahneyi_herkese_yayinla(
+                dukkan,
+                secilen_urun.to_dict(),
                 {
                     "dukkan": dukkan,
                     "urun_id": secilen_urun.id,
@@ -1305,7 +1306,6 @@ def dukkan_otonom_dongusu(dukkan):
                     "kazanan": oda["durum"]["kazanan"],
                     "kazanan_id": oda["durum"]["kazanan_id"],
                 },
-                room=dukkan,
             )
 
             bota_haber_ver(
@@ -3137,49 +3137,51 @@ def sahneye_al():
         db.session.commit()
 
     takipciler = UrunTakip.query.filter_by(urun_id=urun.id).all()
-    for t in takipciler:
-        socketio.emit(
-            "urun_takip_bildirimi",
-            {
-                "urun_id": urun.id,
-                "mesaj": f"Takip ettiğiniz Lot #{urun.lot_no} ({urun.urun_adi}) sahneye alındı!",
-            },
-        )
+    urun_paket = urun.to_dict()
+    takip_metin = f"Takip ettiğiniz Lot #{urun.lot_no} ({urun.urun_adi}) sahneye alındı!"
+    db.session.remove()
 
-    socketio.emit("yeni_sahne_urunu", urun.to_dict(), room=dukkan)
-    socketio.emit(
-        "pey_guncellendi",
+    sahneyi_herkese_yayinla(
+        dukkan,
+        urun_paket,
         {
             "dukkan": dukkan,
-            "urun_id": urun.id,
+            "urun_id": urun_paket["id"],
             "pey": oda["durum"]["pey"],
             "kazanan": oda["durum"]["kazanan"],
             "kazanan_id": oda["durum"]["kazanan_id"],
         },
-        room=dukkan,
     )
+    for t in takipciler:
+        socketio.emit(
+            "urun_takip_bildirimi",
+            {
+                "urun_id": urun_paket["id"],
+                "mesaj": takip_metin,
+            },
+        )
 
     bota_haber_ver(
         "urun_sahneye_aldi",
         {
             "dukkan": dukkan,
-            "lot": urun.lot_no,
-            "baslik": urun.urun_adi,
-            "acilis": urun.acilis_fiyati or 0,
+            "lot": urun_paket["lot"],
+            "baslik": urun_paket["ad"],
+            "acilis": urun_paket["fiyat"],
             "guncel_fiyat": oda["durum"]["pey"],
-            "hemen_al": urun.hemen_al_fiyati or 0,
-            "tanitim_yazisi": urun.tanitim_yazisi or "",
+            "hemen_al": urun_paket["hemen_al_fiyat"],
+            "tanitim_yazisi": urun_paket["tanitim_yazisi"],
         },
     )
 
     ahmet_secere_seslendir(
         dukkan,
-        urun.urun_adi,
-        urun.tanitim_yazisi or "",
+        urun_paket["ad"],
+        urun_paket["tanitim_yazisi"],
         oda["durum"]["pey"],
     )
 
-    return jsonify({"success": True, "urun": urun.to_dict()})
+    return jsonify({"success": True, "urun": urun_paket})
 
 
 @app.route("/mezat-baslat", methods=["POST"])
@@ -3588,7 +3590,7 @@ def urun_guncelle():
         db.session.commit()
 
         if oda["aktif_urun_id"] == urun.id and eski_dukkan == yeni_dukkan:
-            socketio.emit("yeni_sahne_urunu", urun.to_dict(), room=eski_dukkan)
+            sahneyi_herkese_yayinla(eski_dukkan, urun.to_dict())
         return jsonify({"success": True, "mesaj": "Ürün başarıyla güncellendi."})
     except Exception as e:
         db.session.rollback()
@@ -4200,19 +4202,25 @@ def wc_orders():
 # ==========================================
 @socketio.on("connect")
 def handle_connect():
-    aktif_izleyiciler.add(request.sid)
-    izleyici_sayisini_yayinla()
-    emit(
-        "izleyici_sayisi_guncelle",
-        {"sayi": len(aktif_izleyiciler), "dukkan": "gumus"},
-    )
+    try:
+        aktif_izleyiciler.add(request.sid)
+        izleyici_sayisini_yayinla()
+        emit(
+            "izleyici_sayisi_guncelle",
+            {"sayi": len(aktif_izleyiciler), "dukkan": "gumus"},
+        )
+    finally:
+        db.session.remove()
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    aktif_izleyiciler.discard(request.sid)
-    izleyici_adlari.pop(request.sid, None)
-    izleyici_sayisini_yayinla()
+    try:
+        aktif_izleyiciler.discard(request.sid)
+        izleyici_adlari.pop(request.sid, None)
+        izleyici_sayisini_yayinla()
+    finally:
+        db.session.remove()
 
 
 @socketio.on("join_admin")
@@ -4223,20 +4231,23 @@ def handle_join_admin():
 
 @socketio.on("join_dukkan")
 def handle_join_dukkan(data):
-    veri = data or {}
-    dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
-    ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
-    izleyici_adlari[request.sid] = ad
-    join_room(dukkan)
-    izleyici_sayisini_yayinla()
-    emit(
-        "izleyici_sayisi_guncelle",
-        {
-            "dukkan": dukkan,
-            "sayi": len(aktif_izleyiciler),
-            "isimler": list(dict.fromkeys(izleyici_adlari.values())),
-        },
-    )
+    try:
+        veri = data or {}
+        dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
+        ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
+        izleyici_adlari[request.sid] = ad
+        join_room(dukkan)
+        izleyici_sayisini_yayinla()
+        emit(
+            "izleyici_sayisi_guncelle",
+            {
+                "dukkan": dukkan,
+                "sayi": len(aktif_izleyiciler),
+                "isimler": list(dict.fromkeys(izleyici_adlari.values())),
+            },
+        )
+    finally:
+        db.session.remove()
 
 
 @socketio.on("leave_dukkan")
@@ -4382,6 +4393,15 @@ def itiraz_duzelt_bildir():
 
 aktif_izleyiciler = set()
 izleyici_adlari = {}
+
+
+def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None):
+    """Sahne değişimini odaya ve bağlı tüm istemcilere duyurur."""
+    socketio.emit("yeni_sahne_urunu", urun_paket, room=dukkan)
+    socketio.emit("yeni_sahne_urunu", urun_paket)
+    if pey_paket:
+        socketio.emit("pey_guncellendi", pey_paket, room=dukkan)
+        socketio.emit("pey_guncellendi", pey_paket)
 
 
 def izleyici_sayisini_yayinla():

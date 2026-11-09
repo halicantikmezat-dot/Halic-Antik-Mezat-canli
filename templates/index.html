@@ -1406,18 +1406,17 @@
     function mezatSocketAdresi() {
         const host = window.location.hostname;
         if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000';
-        if (host === 'halicantikcanli.com' || host === 'www.halicantikcanli.com') {
-            return 'https://halic-antik-mezat-canli.onrender.com';
-        }
         return window.location.origin;
     }
 
     const socket = io(mezatSocketAdresi(), { 
-        transports: ['websocket', 'polling'], 
+        transports: ['websocket', 'polling'],
+        secure: mezatSocketAdresi().indexOf('https://') === 0,
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
-        upgrade: true
+        upgrade: true,
+        rememberUpgrade: true
     });
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -2500,10 +2499,19 @@
     });
 
     socket.on('yeni_sahne_urunu', function(urun) {
-        if(urun && urun.dukkan === aktifDukkan) {
+        const dukkan = urun && (urun.dukkan || urun.dukkan_kodu);
+        if (urun && (!dukkan || dukkan === aktifDukkan)) {
             secilenArsivUrunId = null;
-            document.getElementById('secilenUrunOnizleme').style.display = 'none';
-            sahneyiGuncelle(urun, "Bekliyor", urun.fiyat, "Yok");
+            const onizleme = document.getElementById('secilenUrunOnizleme');
+            if (onizleme) onizleme.style.display = 'none';
+            sahneyiGuncelle(urun, urun.durum || "Bekliyor", urun.guncel_fiyat || urun.fiyat, urun.kazanan || "Yok");
+            try {
+                sesBaglaminiAc();
+                if (window.aktifSes && typeof window.aktifSes.play === 'function') {
+                    const cal = window.aktifSes.play();
+                    if (cal && typeof cal.catch === 'function') cal.catch(function () {});
+                }
+            } catch (e) {}
         }
     });
 
