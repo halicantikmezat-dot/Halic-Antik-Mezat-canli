@@ -2169,6 +2169,7 @@
     }
 
     function anonsuCal(data) {
+        if (window.moderatorKonusuyor) return;
         const imza = String((data && (data.nesil || data.audio_url || "")) || "");
         const simdi = Date.now();
         if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
@@ -2183,6 +2184,54 @@
         audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
     }
 
+    let moderatorSesi = null;
+    let moderatorKuyruk = [];
+    let moderatorCaliyor = false;
+    let moderatorSonSira = 0;
+    let moderatorSusma = null;
+
+    function moderatorSiradaki() {
+        if (moderatorCaliyor || !moderatorKuyruk.length) {
+            if (!moderatorCaliyor && !moderatorKuyruk.length) {
+                clearTimeout(moderatorSusma);
+                moderatorSusma = setTimeout(function () { window.moderatorKonusuyor = false; }, 700);
+            }
+            return;
+        }
+        const data = moderatorKuyruk.shift();
+        const mime = (data && data.mime) || "audio/webm";
+        const audio = new Audio("data:" + mime + ";base64," + data.parca);
+        moderatorSesi = audio;
+        moderatorCaliyor = true;
+        window.moderatorKonusuyor = true;
+        audio.onended = function () {
+            moderatorCaliyor = false;
+            moderatorSiradaki();
+        };
+        audio.onerror = function () {
+            moderatorCaliyor = false;
+            moderatorSiradaki();
+        };
+        audio.play().catch(function (e) {
+            console.log("Ses oynatma engeli:", e);
+            moderatorCaliyor = false;
+        });
+    }
+
+    socket.on("izleyici_moderator_sesi", function (data) {
+        if (!data || !data.parca) return;
+        if (data.dukkan && data.dukkan !== aktifDukkan) return;
+        const sira = Number(data.sira || 0);
+        if (sira && sira <= moderatorSonSira) return;
+        if (sira) moderatorSonSira = sira;
+        window.moderatorKonusuyor = true;
+        if (currentAudio && !currentAudio.paused) {
+            try { currentAudio.pause(); } catch (e) {}
+        }
+        moderatorKuyruk.push(data);
+        moderatorSiradaki();
+    });
+
     socket.on("ses_oynat", function (data) {
         const dukkan = data && (data.dukkan || data.dukkan_kodu);
         if (dukkan && dukkan !== aktifDukkan) return;
@@ -2190,10 +2239,62 @@
     });
 
     document.addEventListener("pointerdown", function () {
-        if (currentAudio && currentAudio.paused) {
+        ekranKilidiniAcikTut();
+        if (currentAudio && currentAudio.paused && !window.moderatorKonusuyor) {
             currentAudio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
         }
     });
+
+    let wakeLock = null;
+    function sessizTuvalYedegi() {
+        if (window.__sessizTuval) return;
+        window.__sessizTuval = true;
+        const tuval = document.createElement("canvas");
+        tuval.width = 1;
+        tuval.height = 1;
+        tuval.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;";
+        document.body.appendChild(tuval);
+        const ctx = tuval.getContext("2d");
+        let video = null;
+        try {
+            const akis = tuval.captureStream(1);
+            video = document.createElement("video");
+            video.muted = true;
+            video.setAttribute("playsinline", "");
+            video.playsInline = true;
+            video.loop = true;
+            video.srcObject = akis;
+            video.style.cssText = tuval.style.cssText;
+            document.body.appendChild(video);
+        } catch (e) {}
+        function ciz() {
+            if (ctx) {
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, 1, 1);
+            }
+            requestAnimationFrame(ciz);
+        }
+        ciz();
+        if (video) video.play().catch(function () {});
+    }
+    async function ekranKilidiniAcikTut() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log("Ekran uyanık kalma kilidi aktif.");
+                return;
+            }
+        } catch (err) {
+            console.log("Wake Lock hatası:", err);
+        }
+        sessizTuvalYedegi();
+    }
+    document.addEventListener('visibilitychange', async () => {
+        if (wakeLock !== null && document.visibilityState === 'visible') {
+            await ekranKilidiniAcikTut();
+        }
+    });
+    ekranKilidiniAcikTut();
 
     socket.on("ahmet_usta_kayan_yazi", function(data) {
         if (data && data.dukkan === aktifDukkan) {

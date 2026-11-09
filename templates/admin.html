@@ -957,55 +957,111 @@
         adminUrunAra();
     }
 
-    // BAS-KONUŞ MİKROFON KURULUMU
+    // BAS-KONUŞ: moderatör mikrofonu canlı olarak izleyiciye gider
     const btnBasKonus = document.getElementById('btnBasKonus');
+    let moderatorAkis = null;
+    let moderatorBasili = false;
+    let moderatorSira = 0;
 
-    async function basKonusBaslat() {
+    function moderatorMime() {
+        const adaylar = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+        if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+        for (let i = 0; i < adaylar.length; i++) {
+            if (MediaRecorder.isTypeSupported(adaylar[i])) return adaylar[i];
+        }
+        return "";
+    }
+
+    function blobBase64(blob) {
+        return new Promise(function (resolve) {
+            const okuyucu = new FileReader();
+            okuyucu.onloadend = function () {
+                const sonuc = String(okuyucu.result || "");
+                const virgul = sonuc.indexOf(",");
+                resolve(virgul >= 0 ? sonuc.slice(virgul + 1) : "");
+            };
+            okuyucu.onerror = function () { resolve(""); };
+            okuyucu.readAsDataURL(blob);
+        });
+    }
+
+    function moderatorDilimiBaslat() {
+        if (!moderatorBasili || !moderatorAkis) return;
+        const mime = moderatorMime();
+        const rec = mime ? new MediaRecorder(moderatorAkis, { mimeType: mime }) : new MediaRecorder(moderatorAkis);
+        mediaRecorder = rec;
+        const parcalar = [];
+        rec.ondataavailable = function (ev) {
+            if (ev.data && ev.data.size > 0) parcalar.push(ev.data);
+        };
+        rec.onstop = async function () {
+            const blob = new Blob(parcalar, { type: rec.mimeType || mime || "audio/webm" });
+            if (blob.size > 80) {
+                const parca = await blobBase64(blob);
+                if (parca) {
+                    moderatorSira += 1;
+                    socket.emit("moderator_ses_parcasi", {
+                        dukkan: seciliDukkan,
+                        parca: parca,
+                        mime: blob.type || "audio/webm",
+                        sira: moderatorSira
+                    });
+                }
+            }
+            if (moderatorBasili) {
+                moderatorDilimiBaslat();
+                return;
+            }
+            if (moderatorAkis) {
+                moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
+                moderatorAkis = null;
+            }
+        };
+        rec.start();
+        setTimeout(function () {
+            if (rec.state === "recording") rec.stop();
+        }, 350);
+    }
+
+    async function basKonusBaslat(e) {
+        if (e) e.preventDefault();
+        if (moderatorBasili) return;
+        moderatorBasili = true;
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = e => {
-                if (e.data.size > 0) audioChunks.push(e.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('ses', audioBlob, 'admin_ses.webm');
-                formData.append('dukkan', seciliDukkan);
-
-                fetch('/api/admin/bas-konus-ses', {
-                    method: 'POST',
-                    body: formData
-                }).then(r => r.json()).then(res => {
-                    console.log("Ses iletildi:", res);
-                });
-
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
+            moderatorAkis = await navigator.mediaDevices.getUserMedia({ audio: true });
+            moderatorDilimiBaslat();
             btnBasKonus.classList.add('kayit-aktif');
-            btnBasKonus.innerText = "🔴 Dinliyor... Bırakın!";
+            btnBasKonus.innerText = "🔴 Canlı... Bırakın!";
         } catch (err) {
+            moderatorBasili = false;
             alert("Mikrofon erişim izni verilmedi: " + err);
         }
     }
 
     function basKonusBitir() {
+        moderatorBasili = false;
         if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+            try { mediaRecorder.stop(); } catch (e) {}
+        } else if (moderatorAkis) {
+            moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
+            moderatorAkis = null;
         }
-        btnBasKonus.classList.remove('kayit-aktif');
-        btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+        mediaRecorder = null;
+        if (btnBasKonus) {
+            btnBasKonus.classList.remove('kayit-aktif');
+            btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+        }
     }
 
-    btnBasKonus.addEventListener('mousedown', basKonusBaslat);
-    btnBasKonus.addEventListener('mouseup', basKonusBitir);
-    btnBasKonus.addEventListener('touchstart', (e) => { e.preventDefault(); basKonusBaslat(); });
-    btnBasKonus.addEventListener('touchend', (e) => { e.preventDefault(); basKonusBitir(); });
+    if (btnBasKonus) {
+        btnBasKonus.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            try { btnBasKonus.setPointerCapture(e.pointerId); } catch (err) {}
+            basKonusBaslat(e);
+        });
+        btnBasKonus.addEventListener('pointerup', basKonusBitir);
+        btnBasKonus.addEventListener('pointercancel', basKonusBitir);
+    }
 
     // CANLI SOHBET VE AHMET USTA AKIŞI
     socket.on("yeni_canli_yorum", function(data) {

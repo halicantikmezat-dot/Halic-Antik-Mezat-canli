@@ -4248,6 +4248,36 @@ def handle_join_admin():
         join_room("admin_room")
 
 
+@socketio.on("moderator_ses_parcasi")
+def moderator_ses_parcasi(veri):
+    """Moderatörün canlı mikrofon parçasını odadaki izleyicilere iletir."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        parca = str(veri.get("parca") or "")
+        if not parca or len(parca) > 400000:
+            return
+        dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
+        try:
+            sira = int(veri.get("sira") or 0)
+        except (TypeError, ValueError):
+            sira = 0
+        socketio.emit(
+            "izleyici_moderator_sesi",
+            {
+                "dukkan": dukkan,
+                "parca": parca,
+                "mime": str(veri.get("mime") or "audio/webm")[:80],
+                "sira": sira,
+            },
+            room=dukkan,
+            skip_sid=request.sid,
+        )
+    finally:
+        db.session.remove()
+
+
 @socketio.on("join_dukkan")
 def handle_join_dukkan(data):
     try:
