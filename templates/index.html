@@ -274,6 +274,21 @@
             overflow: hidden; 
             position: relative; 
         }
+        .sahne-bekleme {
+            position: absolute;
+            left: 50%;
+            top: 14px;
+            transform: translateX(-50%);
+            z-index: 8;
+            background: rgba(15, 23, 42, 0.9);
+            color: #fde68a;
+            border: 1px solid rgba(251, 191, 36, 0.5);
+            border-radius: 999px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            pointer-events: none;
+        }
         
         .stage-media-box img, .stage-media-box video {
             width: 100%;
@@ -428,6 +443,56 @@
 
         .timer-digits-mini { position: relative; font-size: 13px; font-weight: 900; color: #ffffff; line-height: 1; }
         .urgent .timer-digits-mini { color: #f43f5e; }
+        .timer-digits-mini.pazarlik-sayac { font-size: 9px; }
+        .timer-digits-mini.satildi-yazi { color: #f43f5e !important; font-size: 6.5px; letter-spacing: -0.4px; }
+        .pazarlik-popup {
+            display: none;
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 12000;
+            background: linear-gradient(160deg, #14532d, #052e16);
+            color: #fef9c3;
+            border: 2px solid var(--accent-gold);
+            border-radius: 14px;
+            padding: 14px 16px;
+            text-align: center;
+            max-width: 280px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+        }
+        .pazarlik-popup.acik { display: block; }
+        .pazarlik-popup b { display: block; font-size: 14px; color: #fde68a; margin-bottom: 4px; }
+        .pazarlik-popup span { font-size: 11px; line-height: 1.35; }
+        #zaferKonfeti { position: fixed; inset: 0; pointer-events: none; z-index: 13000; overflow: hidden; }
+        #zaferKonfeti i {
+            position: absolute; top: -16px; width: 8px; height: 14px; border-radius: 2px; opacity: 0.95;
+            animation: zaferDus 2.8s ease-in forwards;
+        }
+        @keyframes zaferDus { to { transform: translateY(105vh) rotate(520deg); opacity: 0; } }
+        .zafer-kart {
+            display: none; position: fixed; left: 50%; top: 42%; z-index: 13001;
+            width: min(92vw, 420px); text-align: center; padding: 22px 18px; border-radius: 18px;
+            transform: translate(-50%, -50%) scale(0.86);
+            background: radial-gradient(circle at 50% 0%, #fff7d6, #fbbf24 42%, #b45309 78%);
+            color: #1c1917; border: 2px solid #fffbeb;
+            box-shadow: 0 0 48px rgba(251, 191, 36, 0.62);
+        }
+        .zafer-kart.acik { display: block; animation: zaferPat 0.45s ease-out forwards; }
+        @keyframes zaferPat { to { transform: translate(-50%, -50%) scale(1); } }
+        .zafer-kart h2 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; }
+        .zafer-kart p { margin: 6px 0; font-weight: 800; font-size: 15px; line-height: 1.35; }
+        .zafer-kart .zafer-fiyat { font-size: 18px; color: #7c2d12; }
+        .zafer-muhur {
+            display: none; position: fixed; left: 50%; top: 36%; z-index: 13001;
+            transform: translate(-50%, -50%) rotate(-8deg);
+            padding: 16px 18px; border: 4px solid #b91c1c; color: #b91c1c;
+            background: rgba(255, 251, 235, 0.94); border-radius: 10px; text-align: center;
+            font-weight: 900; letter-spacing: 0.6px; box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+        }
+        .zafer-muhur.acik { display: block; }
+        .zafer-muhur b { display: block; font-size: 22px; }
+        .zafer-muhur span { display: block; margin-top: 4px; font-size: 16px; }
         .timer-status-text { font-size: 8px; font-weight: 800; color: var(--accent-gold); text-align: right; max-width: 70px; line-height: 1.1; }
         .urgent .timer-status-text { color: #f43f5e; }
 
@@ -1039,6 +1104,20 @@
 <body onclick="sesKilidiAc()">
 
 <div id="liveToast"></div>
+<div id="pazarlikPopup" class="pazarlik-popup" onclick="this.classList.remove('acik')">
+    <b>Pazarlık Başarılı - Ürün Satıldı!</b>
+    <span id="pazarlikPopupDetay"></span>
+</div>
+<div id="zaferKonfeti"></div>
+<div id="zaferKart" class="zafer-kart">
+    <h2>🎯 TAM 12'DEN VURDUNUZ!</h2>
+    <p id="zaferAlt">Tebrikler!</p>
+    <p class="zafer-fiyat" id="zaferFiyat"></p>
+</div>
+<div id="zaferMuhur" class="zafer-muhur">
+    <b>SATILDI</b>
+    <span id="zaferMuhurAd"></span>
+</div>
 
 <div class="mobile-container">
     <div id="audioUnlockPrompt" onclick="sesKilidiManuelAc()">
@@ -1085,6 +1164,7 @@
             <div class="stage-media-box" id="medyaKapsayici">
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
             </div>
+            <div id="sahneBeklemeRozeti" class="sahne-bekleme" style="display:none;">Yeni ürün sahneye bekleniyor...</div>
             
             <span id="cornerAcilisFiyat" hidden>0</span>
             <span id="cornerIzleyici" hidden>0</span>
@@ -1354,8 +1434,8 @@
 <div id="fahisPeyModal" class="modal">
     <div class="modal-content" style="text-align:left; background:#07090e;">
         <p id="fahisPeyMetni" style="font-size:16px; color:#ffffff; line-height:1.45;"></p>
-        <button type="button" onclick="fahisPeyKapat(true)" class="btn-bid btn-action-green" style="width:100%; margin-top:8px; font-size:16px;">Onaylıyorum / Eminim</button>
-        <button type="button" onclick="fahisPeyKapat(false)" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;">İptal</button>
+        <button type="button" onclick="fahisPeyKapat(true)" class="btn-bid btn-action-green" style="width:100%; margin-top:8px; font-size:16px;">Evet, Eminim</button>
+        <button type="button" onclick="fahisPeyKapat(false)" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:4px;">Düzelt</button>
     </div>
 </div>
 
@@ -1442,11 +1522,15 @@
     let secilenArsivUrunId = null;
     let aktifSahneUrunId = null;
     let sahnedekiUrunSatildiMi = false;
+    let sahneKapali = false;
+    let sahneBeklemeMetni = "Yeni ürün sahneye bekleniyor...";
     let sonBulunanUrunler = [];
     let audioCtx = null;
     let hlsInstance = null;
     let sonYuklenenSahneMedyaUrl = null;
     let sonGorulenPey = 0;
+    let aktifAcilisFiyati = 0;
+    let serbestArtis = false;
     let aktifUrunMedyalari = [];
     let peyGonderiliyorMu = false;
     let aramaZamanlayici = null;
@@ -1635,9 +1719,16 @@
     }
 
     function sahneAnlatiminiBaslat() {
+        if (sahneKapali || sahnedekiUrunSatildiMi || !aktifSahneUrunId) {
+            showToast("Bu ürün satılmıştır, sıradaki eser sahneye alınacaktır.");
+            return;
+        }
         const tanitim = document.getElementById('tanitimMetni');
         const okunacak = ((tanitim && tanitim.textContent) || '').trim();
-        if (!okunacak || /sahnede ürün bulunmamaktadır/i.test(okunacak)) return;
+        if (!okunacak || /sahnede ürün bulunmamaktadır|sahneye bekleniyor|hazırlanıyor/i.test(okunacak)) {
+            showToast("Bu ürün satılmıştır, sıradaki eser sahneye alınacaktır.");
+            return;
+        }
         socket.emit('ahmet_ses_iste', { dukkan: aktifDukkan, metin: okunacak });
     }
 
@@ -1767,6 +1858,11 @@
         if (data && data.dukkan === aktifDukkan) {
             tanitimModuAktif = true;
             sahnedekiUrunSatildiMi = false;
+            setTimeout(kenBurnsBaslat, 400);
+            if (data.pazarlik) {
+                serbestArtis = true;
+                return;
+            }
 
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
@@ -1774,11 +1870,12 @@
             const dial = document.getElementById('futuristicDial');
 
             if (cockpit) cockpit.classList.remove('urgent');
-            if (digits) digits.innerText = "🔍";
+            if (digits) {
+                digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+                digits.innerText = "🔍";
+            }
             if (statusTitle) statusTitle.innerText = "ESER İNCELENİYOR";
             if (dial) dial.style.strokeDashoffset = 0;
-
-            setTimeout(kenBurnsBaslat, 400);
         }
     });
 
@@ -1787,6 +1884,7 @@
             tanitimModuAktif = false;
             kenBurnsDurdur();
             zoomEfektiDurdur();
+            serbestArtis = false;
 
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
@@ -2157,9 +2255,10 @@
 
     socket.on("ses_kes", function (data) {
         if (!data || data.dukkan !== aktifDukkan) return;
+        const zorunlu = data.zorunlu || data.tur === "satis" || data.tur === "sahne" || data.tur === "yeni_urun";
+        if (!zorunlu) return;
         sesNesil = data.nesil;
-        sesAkisiniKes();
-        calanSesiDurdur();
+        sesKuyrugunuTemizle();
         sesBaglaminiAc();
         if (data.tur === 'satis') cekicVur();
     });
@@ -2177,6 +2276,83 @@
     let currentAudio = null;
     let sonSesImza = "";
     let sonSesAni = 0;
+    let anonsKuyrugu = [];
+    let anonsMesgul = false;
+
+    function sesKuyrugunuTemizle() {
+        anonsKuyrugu = [];
+        anonsMesgul = false;
+        calanSesiDurdur();
+    }
+
+    function anonsSiradaki() {
+        const sonraki = anonsKuyrugu.shift();
+        if (sonraki) {
+            anonsBaslat(sonraki);
+            return;
+        }
+        anonsMesgul = false;
+        if (!window.moderatorKonusuyor) muzigiNormaleDondur();
+    }
+
+    function anonsBaslat(data) {
+        if (window.moderatorKonusuyor) {
+            anonsKuyrugu.unshift(data);
+            anonsMesgul = false;
+            return;
+        }
+        const kaynak = sesKaynagi(data);
+        if (!kaynak) {
+            anonsSiradaki();
+            return;
+        }
+        anonsMesgul = true;
+        const audio = new Audio(kaynak);
+        currentAudio = audio;
+        window.aktifSes = audio;
+        audio.dataset.tur = (data && data.tur) || "";
+        muzigiKis();
+        audio.onended = function () {
+            const zaferdi = audio.dataset.tur === "zafer";
+            if (currentAudio === audio) {
+                currentAudio = null;
+                if (window.aktifSes === audio) window.aktifSes = null;
+            }
+            if (zaferdi) window.zaferMuzikKilit = false;
+            anonsSiradaki();
+        };
+        audio.onerror = audio.onended;
+        const oynat = audio.play();
+        if (oynat && typeof oynat.catch === "function") {
+            oynat.catch(function (e) {
+                console.log("Ses oynatma engeli:", e);
+                if (typeof audio.onended === "function") audio.onended();
+            });
+        }
+    }
+
+    function anonsuCal(data) {
+        if (data && data.zorunlu) {
+            anonsKuyrugu = [];
+            calanSesiDurdur();
+            anonsMesgul = false;
+        } else if (window.moderatorKonusuyor) {
+            anonsKuyrugu.push(data);
+            return;
+        }
+        if (data && data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
+        sesBaglaminiAc();
+        const imza = String((data && (data.nesil || data.audio_url || "")) || "");
+        const simdi = Date.now();
+        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
+        sonSesImza = imza;
+        sonSesAni = simdi;
+        if (anonsMesgul && !(data && data.zorunlu)) {
+            anonsKuyrugu.push(data);
+            return;
+        }
+        anonsBaslat(data);
+    }
 
     function calanSesiDurdur() {
         if (currentAudio) {
@@ -2254,33 +2430,23 @@
     }
 
     function muzigiNormaleDondur() {
+        if (window.zaferMuzikKilit) return;
         muzikKisitli = false;
         muzikYumusat(MUZIK_TAVAN);
     }
 
-    function anonsuCal(data) {
-        if (window.moderatorKonusuyor) return;
-        if (data && data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
-        sesBaglaminiAc();
-        const imza = String((data && (data.nesil || data.audio_url || "")) || "");
-        const simdi = Date.now();
-        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
-        sonSesImza = imza;
-        sonSesAni = simdi;
-        const kaynak = sesKaynagi(data);
-        if (!kaynak) return;
-        calanSesiDurdur();
-        const audio = new Audio(kaynak);
-        currentAudio = audio;
-        window.aktifSes = audio;
-        muzigiKis();
-        audio.onended = function () {
-            if (!window.moderatorKonusuyor) muzigiNormaleDondur();
-        };
-        audio.play().catch(function (e) {
-            console.log("Ses oynatma engeli:", e);
-            if (!window.moderatorKonusuyor) muzigiNormaleDondur();
-        });
+    function anonsuDevamEt() {
+        window.moderatorKonusuyor = false;
+        if (currentAudio && currentAudio.paused && currentAudio.src) {
+            const oynat = currentAudio.play();
+            if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
+            return;
+        }
+        if (anonsKuyrugu.length && !anonsMesgul) {
+            anonsBaslat(anonsKuyrugu.shift());
+            return;
+        }
+        if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
     }
 
     let moderatorAkisSesi = null;
@@ -2417,8 +2583,7 @@
         }
         clearTimeout(moderatorSusma);
         moderatorSusma = setTimeout(function () {
-            window.moderatorKonusuyor = false;
-            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+            anonsuDevamEt();
         }, 1200);
     });
 
@@ -2511,22 +2676,19 @@
             try { currentAudio.pause(); } catch (e) {}
         }
         snd.onended = function () {
-            window.moderatorKonusuyor = false;
-            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+            anonsuDevamEt();
         };
         snd.play().catch(function (e) {
             console.log("Ses oynatma engeli:", e);
-            window.moderatorKonusuyor = false;
-            muzigiNormaleDondur();
+            anonsuDevamEt();
         });
     });
 
     socket.on("play_admin_voice", function (data) {
         if (!data) return;
         if (data.bitti) {
-            window.moderatorKonusuyor = false;
             clearTimeout(moderatorSusma);
-            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+            anonsuDevamEt();
             return;
         }
         if (!data.parca) return;
@@ -2555,8 +2717,7 @@
         }
         clearTimeout(moderatorSusma);
         moderatorSusma = setTimeout(function () {
-            window.moderatorKonusuyor = false;
-            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+            anonsuDevamEt();
         }, 1200);
     });
 
@@ -3001,14 +3162,26 @@
             const onizleme = document.getElementById('secilenUrunOnizleme');
             if (onizleme) onizleme.style.display = 'none';
             sahneyiGuncelle(urun, urun.durum || "Bekliyor", urun.guncel_fiyat || urun.fiyat, urun.kazanan || "Yok");
-            try {
-                sesBaglaminiAc();
-                if (window.aktifSes && typeof window.aktifSes.play === 'function') {
-                    const cal = window.aktifSes.play();
-                    if (cal && typeof cal.catch === 'function') cal.catch(function () {});
-                }
-            } catch (e) {}
         }
+    });
+
+    socket.on('yeni_urun_sahneye_alindi', function (data) {
+        if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
+        sesKuyrugunuTemizle();
+        sahneKapali = false;
+        sahnedekiUrunSatildiMi = false;
+        const rozet = document.getElementById('sahneBeklemeRozeti');
+        if (rozet) rozet.style.display = 'none';
+        const kart = document.getElementById('zaferKart');
+        const muhur = document.getElementById('zaferMuhur');
+        if (kart) kart.classList.remove('acik');
+        if (muhur) muhur.classList.remove('acik');
+        clearTimeout(window.zaferKartZaman);
+    });
+
+    socket.on('sahne_bosta', function (data) {
+        if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
+        sahneyiBosalt(data && data.mesaj);
     });
 
     socket.on('pey_guncellendi', function(data) {
@@ -3016,15 +3189,13 @@
             let fiyat = parseFloat(data.pey || data.guncel_fiyat || 0);
             let kisi = data.ad || data.kazanan || data.kazanan_ad || "Yok";
             if (fiyat > sonGorulenPey) {
-                if (window.aktifSes) {
-                    window.aktifSes.pause();
-                    window.aktifSes.currentTime = 0;
+                if (!(currentAudio && !currentAudio.paused)) {
+                    muzigiKis();
+                    clearTimeout(window.peyMuzikZaman);
+                    window.peyMuzikZaman = setTimeout(function () {
+                        if (!window.moderatorKonusuyor && !(currentAudio && !currentAudio.paused) && !anonsMesgul) muzigiNormaleDondur();
+                    }, 1200);
                 }
-                muzigiKis();
-                clearTimeout(window.peyMuzikZaman);
-                window.peyMuzikZaman = setTimeout(function () {
-                    if (!window.moderatorKonusuyor && !(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
-                }, 1200);
                 peyBandinaYaz(data.platform || data.kazanan, kisi, fiyat);
             }
             sonGorulenPey = fiyat;
@@ -3040,13 +3211,148 @@
         }
     });
 
+    function pazarlikPopupKapat() {
+        const pop = document.getElementById('pazarlikPopup');
+        if (pop) pop.classList.remove('acik');
+    }
+
+    function peyVermeButonlariniKilitle() {
+        sahnedekiUrunSatildiMi = true;
+        const btnYuzdeOn = document.getElementById('btnYuzdeOn');
+        const btnSerbest = document.getElementById('btnSerbestPey');
+        const btnHemenAl = document.getElementById('btnHemenAl');
+        if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
+        if (btnSerbest) btnSerbest.classList.add('btn-disabled-sold');
+        if (btnHemenAl) {
+            btnHemenAl.classList.add('btn-disabled-sold');
+            btnHemenAl.innerText = "🔒 BU ÜRÜN SATILDI";
+        }
+    }
+
+    socket.on('urun_satildi_erken', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        zoomEfektiDurdur();
+        kenBurnsDurdur();
+        tanitimModuAktif = false;
+        const digits = document.getElementById('timerDigits');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        const cockpit = document.getElementById('mezatSayaci');
+        if (cockpit) cockpit.classList.add('urgent');
+        if (digits) {
+            digits.classList.remove('pazarlik-sayac');
+            digits.classList.add('satildi-yazi');
+            digits.innerText = "SATILDI";
+        }
+        if (statusTitle) statusTitle.innerText = "SATILDI";
+        if (data.fiyat !== undefined) {
+            const bid = document.getElementById('currentBid');
+            if (bid) bid.innerText = Math.round(parseFloat(data.fiyat) || 0).toLocaleString('tr-TR');
+        }
+        if (data.kazanan) {
+            const kazanan = document.getElementById('aktif_kazanan');
+            if (kazanan) kazanan.innerText = kisaIsim(data.kazanan);
+        }
+        const detay = document.getElementById('pazarlikPopupDetay');
+        if (detay) detay.innerText = data.mesaj || "Tebrikler! Ürün sahibini buldu.";
+        const pop = document.getElementById('pazarlikPopup');
+        if (pop) pop.classList.add('acik');
+        const soldBanner = document.getElementById('soldBanner');
+        if (soldBanner) {
+            soldBanner.style.display = 'block';
+            soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
+            soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(data.kazanan || '')}</span> (${formatFiyat(data.fiyat || 0)})`;
+        }
+        peyVermeButonlariniKilitle();
+        sahneyiBosalt("Sıradaki ürün hazırlanıyor...");
+        zaferKutlamasiniAc(data);
+    });
+
+    function zaferKonfetiBirak() {
+        const alan = document.getElementById('zaferKonfeti');
+        if (!alan) return;
+        alan.innerHTML = "";
+        const renkler = ["#fbbf24", "#fde68a", "#fffbeb", "#f59e0b", "#fcd34d"];
+        for (let i = 0; i < 32; i++) {
+            const parc = document.createElement("i");
+            parc.style.left = (Math.random() * 100) + "%";
+            parc.style.background = renkler[i % renkler.length];
+            parc.style.animationDelay = (Math.random() * 0.35) + "s";
+            parc.style.animationDuration = (2.2 + Math.random() * 1.1) + "s";
+            alan.appendChild(parc);
+        }
+        setTimeout(function () { alan.innerHTML = ""; }, 3400);
+    }
+
+    function zaferKutlamasiniAc(data) {
+        const ad = (data && data.kazanan) ? String(data.kazanan) : "Misafir";
+        const fiyat = Math.round(parseFloat((data && data.fiyat) || 0) || 0).toLocaleString("tr-TR");
+        const kart = document.getElementById("zaferKart");
+        const alt = document.getElementById("zaferAlt");
+        const fiyatYazi = document.getElementById("zaferFiyat");
+        const muhur = document.getElementById("zaferMuhur");
+        const muhurAd = document.getElementById("zaferMuhurAd");
+        if (alt) alt.textContent = "Tebrikler Sayın " + ad + ", Pazarlık Gizli Eşiğini Yakaladınız!";
+        if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL ile Eser Sizin Oldu!";
+        if (muhurAd) muhurAd.textContent = ad;
+        if (muhur) muhur.classList.remove("acik");
+        if (kart) kart.classList.add("acik");
+        window.zaferMuzikKilit = true;
+        muzigiKis();
+        zaferKonfetiBirak();
+        clearTimeout(window.zaferKartZaman);
+        clearTimeout(window.zaferMuzikZaman);
+        window.zaferKartZaman = setTimeout(function () {
+            if (kart) kart.classList.remove("acik");
+            if (muhur) muhur.classList.add("acik");
+        }, 4500);
+        window.zaferMuzikZaman = setTimeout(function () {
+            window.zaferMuzikKilit = false;
+            if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
+        }, 20000);
+    }
+
+    socket.on('pazarlik_kapandi', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        serbestArtis = false;
+        sahnedekiUrunSatildiMi = false;
+        const fiyat = parseFloat(data.pey || 0);
+        sonGorulenPey = fiyat;
+        const bid = document.getElementById('currentBid');
+        if (bid) bid.innerText = Math.round(fiyat).toLocaleString('tr-TR');
+        const kazanan = document.getElementById('aktif_kazanan');
+        if (kazanan) kazanan.innerText = 'Yok';
+        const statusTitle = document.getElementById('timerStatusTitle');
+        if (statusTitle) statusTitle.innerText = 'SON 60 SANİYE';
+        if (typeof showToast === 'function') showToast(data.mesaj || 'Pazarlık bitti, son karar süresi başladı');
+    });
+
     socket.on('sayac_guncelle', function(data) {
         if (data && data.dukkan === aktifDukkan) {
-            let kalan = data.kalan;
+            let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             const digits = document.getElementById('timerDigits');
             const cockpit = document.getElementById('mezatSayaci');
             const dial = document.getElementById('futuristicDial');
             const statusTitle = document.getElementById('timerStatusTitle');
+
+            if (data.asama === 'pazarlik') {
+                serbestArtis = true;
+                if (digits) {
+                    digits.classList.remove('satildi-yazi');
+                    digits.classList.add('pazarlik-sayac');
+                    const sn = Math.max(0, parseInt(kalan, 10) || 0);
+                    digits.innerText = Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
+                }
+                const toplamSure = data.toplam || 120;
+                const progressPercent = Math.max(0, Math.min(1, kalan / toplamSure));
+                if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
+                if (cockpit) cockpit.classList.toggle('urgent', kalan <= 15);
+                if (statusTitle) statusTitle.innerText = kalan <= 15 ? "PAZARLIK SON " + kalan : "PAZARLIK";
+                if (kalan > 0 && kalan <= 15) mekanikTikTakSesiCal(true);
+                return;
+            }
+
+            if (digits) digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+            serbestArtis = false;
 
             if (!data.sayac_gorunsun || kalan > 60) {
                 if (digits) digits.innerText = "🔍";
@@ -3090,6 +3396,7 @@
     socket.on('sayac_bitti', function(data) {
         if (data && data.dukkan === aktifDukkan) {
             zoomEfektiDurdur();
+            serbestArtis = false;
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
             const cockpit = document.getElementById('mezatSayaci');
@@ -3124,8 +3431,18 @@
                     btnHemenAl.innerText = satildi ? "🔒 BU ÜRÜN SATILDI" : "🔒 ÜRÜN GERİ ÇEKİLDİ";
                 }
             }
+            sahneyiBosalt(satildi ? "Sıradaki ürün hazırlanıyor..." : "Yeni ürün sahneye bekleniyor...");
         }
     });
+
+    function sahneyiBosalt(mesaj) {
+        sahneBeklemeMetni = mesaj || "Sıradaki ürün hazırlanıyor...";
+        sesKuyrugunuTemizle();
+        zoomEfektiDurdur();
+        if (typeof kenBurnsDurdur === "function") kenBurnsDurdur();
+        tanitimModuAktif = false;
+        sahneyiGuncelle(null);
+    }
 
     function sahneyiGuncelle(urunObj, durum, peyTutar, kazananKisi, kaynak) {
         if (kaynak !== "inceleme") {
@@ -3138,22 +3455,32 @@
         let btnSerbest = document.getElementById('btnSerbestPey');
         let btnHemenAl = document.getElementById('btnHemenAl');
 
-        if (!urunObj) {
+            if (!urunObj) {
             aktifSahneUrunId = null;
-            sahnedekiUrunSatildiMi = false;
+            sahnedekiUrunSatildiMi = true;
+            sahneKapali = true;
+            serbestArtis = false;
             aktifHemenAlStatik = 0;
-            document.getElementById('aktif_baslik').innerText = "Sahnede aktif ürün yok";
+            document.getElementById('aktif_baslik').innerText = sahneBeklemeMetni;
             document.getElementById('currentBid').innerText = "0";
             document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(0);
             document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(0);
             document.getElementById('cornerLotNo').innerText = "LOT #000";
-            document.getElementById('tanitimMetni').innerText = "Şu an sahnede ürün bulunmamaktadır.";
-            document.getElementById('timerStatusTitle').innerText = "MEZAT BEKLENİYOR";
+            document.getElementById('tanitimMetni').innerText = sahneBeklemeMetni;
+            document.getElementById('timerStatusTitle').innerText = "SAHNE BOŞ";
             soldBanner.style.display = 'none';
             thumbsDiv.style.display = 'none';
+            const rozet = document.getElementById('sahneBeklemeRozeti');
+            if (rozet) {
+                rozet.style.display = 'block';
+                rozet.textContent = sahneBeklemeMetni;
+            }
             if (btnYuzdeOn) btnYuzdeOn.classList.add('btn-disabled-sold');
             if (btnSerbest) btnSerbest.classList.add('btn-disabled-sold');
-            if (btnHemenAl) btnHemenAl.classList.add('btn-disabled-sold');
+            if (btnHemenAl) {
+                btnHemenAl.classList.add('btn-disabled-sold');
+                btnHemenAl.innerText = "🔒 Sıradaki ürün bekleniyor";
+            }
             
             if (hlsInstance) {
                 hlsInstance.detachMedia();
@@ -3173,7 +3500,14 @@
             aktifUrunMedyalari = [];
         } else {
         aktifSahneUrunId = urunObj.id;
+        if (durum !== "Satıldı" && urunObj.durum !== "Satıldı" && durum !== "Pas") {
+            sahneKapali = false;
+            sahnedekiUrunSatildiMi = false;
+            const rozet = document.getElementById('sahneBeklemeRozeti');
+            if (rozet) rozet.style.display = 'none';
+        }
         aktifHemenAlStatik = parseFloat(urunObj.hemen_al_fiyati || urunObj.hemen_al_fiyat || 0);
+        aktifAcilisFiyati = parseFloat(urunObj.fiyat || urunObj.acilis_fiyati || 0);
         document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(urunObj.fiyat || 0);
         let aktifPey = parseFloat(peyTutar || urunObj.guncel_fiyat || urunObj.fiyat || 0);
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(aktifPey, aktifHemenAlStatik);
@@ -3193,6 +3527,7 @@
             }
         } else {
             sahnedekiUrunSatildiMi = false;
+            pazarlikPopupKapat();
             soldBanner.style.display = 'none';
             document.getElementById('currentBid').innerText = Math.round(aktifPey).toLocaleString('tr-TR');
             document.getElementById('aktif_kazanan').innerText = kisaIsim(kazananKisi || "Henüz Yok");
@@ -3384,16 +3719,26 @@
         if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         
         let current = sonGorulenPey || 0;
-        let gerekenArtis = asgariArtisHesapla(current);
-        let minKabulFiyat = current + gerekenArtis;
+        let minKabulFiyat = serbestArtis
+            ? Math.max(current + 1, aktifAcilisFiyati || 0)
+            : current + asgariArtisHesapla(current);
         
         let miktar = prompt(`Mevcut Fiyat: ${current.toLocaleString('tr-TR')} TL\nMinimum Teklif: ${minKabulFiyat.toLocaleString('tr-TR')} TL\n\nTeklifinizi yazın (TL):`);
         if (!miktar) return;
         
         let tutar = parseFloat(miktar.replace(/\./g, '').replace(/,/g, '.'));
-        if (isNaN(tutar)) return alert(gecersizPeyUyarisi(minKabulFiyat));
+        if (isNaN(tutar)) {
+            alert(serbestArtis ? "Geçerli bir tutar yazın." : gecersizPeyUyarisi(minKabulFiyat));
+            return;
+        }
+        if (serbestArtis && aktifAcilisFiyati > 0 && tutar < aktifAcilisFiyati) {
+            alert("Teklif açılış fiyatının (" + Math.round(aktifAcilisFiyati).toLocaleString('tr-TR') + " TL) altına inemez.");
+            return;
+        }
         if (current > 0 && tutar < minKabulFiyat) {
-            alert(gecersizPeyUyarisi(minKabulFiyat));
+            alert(serbestArtis
+                ? "Teklif en az " + Math.round(minKabulFiyat).toLocaleString('tr-TR') + " TL olmalıdır."
+                : gecersizPeyUyarisi(minKabulFiyat));
             return;
         }
 
@@ -3403,15 +3748,19 @@
     let fahisOnayKuyrugu = null;
 
     function fahisPeyKontrol(tutar, onaylaninca) {
-        const current = sonGorulenPey || 0;
-        if (!(current > 0 && tutar >= current * 10)) {
+        const current = Number(sonGorulenPey) || 0;
+        const acilis = Number(aktifAcilisFiyati) || 0;
+        const hemen = Number(aktifHemenAlStatik) || 0;
+        const ucKatAsildi = (current > 0 && tutar > current * 3) || (acilis > 0 && tutar > acilis * 3);
+        const hemenAsildi = hemen > 0 && tutar > hemen * 1.5;
+        if (!ucKatAsildi && !hemenAsildi) {
             onaylaninca();
             return;
         }
         const yazi = document.getElementById("fahisPeyMetni");
         const tutarYazi = Math.round(tutar).toLocaleString("tr-TR");
         if (yazi) {
-            yazi.textContent = "⚠️ Dikkat: Ürün fiyatının çok üzerinde bir teklif girdiniz (" + tutarYazi + " TL). Bilginiz dahilinde mi, bu teklifi onaylıyor musunuz?";
+            yazi.textContent = "⚠️ Dikkat: Yüksek Teklif! " + tutarYazi + " TL teklif vermek üzeresiniz. Sehven fazla sıfır basmış olabilir misiniz? Teklifinizi onaylıyor musunuz?";
         }
         fahisOnayKuyrugu = onaylaninca;
         const modal = document.getElementById("fahisPeyModal");
@@ -3995,7 +4344,13 @@
             sonDokunus = zaman;
             if (hareket > 12) return;
             clearTimeout(anlatimZaman);
-            anlatimZaman = setTimeout(sahneAnlatiminiBaslat, 300);
+            anlatimZaman = setTimeout(function () {
+                if (sahneKapali || sahnedekiUrunSatildiMi || !aktifSahneUrunId) {
+                    showToast("Bu ürün satılmıştır, sıradaki eser sahneye alınacaktır.");
+                    return;
+                }
+                sahneAnlatiminiBaslat();
+            }, 300);
         }
 
         kutu.addEventListener('pointerup', parmakBirak);

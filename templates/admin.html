@@ -281,10 +281,35 @@
             from { transform: scale(1); }
             to { transform: scale(1.05); }
         }
+        .pazarlik-popup {
+            display: none;
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 12000;
+            background: linear-gradient(160deg, #14532d, #052e16);
+            color: #fef9c3;
+            border: 2px solid var(--accent-gold);
+            border-radius: 14px;
+            padding: 16px 18px;
+            text-align: center;
+            max-width: 360px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+            cursor: pointer;
+        }
+        .pazarlik-popup.acik { display: block; }
+        .pazarlik-popup b { display: block; font-size: 16px; color: #fde68a; margin-bottom: 6px; }
+        .pazarlik-popup span { font-size: 13px; line-height: 1.4; }
+        #aktifDurum.satildi-yazi { color: #f43f5e; font-weight: 800; }
     </style>
 </head>
 <body>
 
+<div id="pazarlikPopup" class="pazarlik-popup" onclick="this.classList.remove('acik')">
+    <b>Pazarlık Başarılı - Ürün Satıldı!</b>
+    <span id="pazarlikPopupDetay"></span>
+</div>
 <div class="container">
     <div class="header">
         <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
@@ -1630,7 +1655,9 @@
             document.getElementById('aktifUrunAdi').innerText = `LOT #${urun.lot} - ${urun.ad}`;
             document.getElementById('aktifFiyat').innerText = `${urun.fiyat} TL`;
             document.getElementById('aktifKazanan').innerText = "Yok";
-            document.getElementById('aktifDurum').innerText = "Bekliyor";
+            const durumKutusu = document.getElementById('aktifDurum');
+            durumKutusu.classList.remove('satildi-yazi');
+            durumKutusu.innerText = "Bekliyor";
         }
     });
 
@@ -1643,17 +1670,62 @@
 
     socket.on('sayac_guncelle', function(data) {
         if(data && data.dukkan === seciliDukkan && data.kalan !== undefined) {
-            document.getElementById('aktifDurum').innerText = `Geri Sayım: ${data.kalan} sn`;
+            const durum = document.getElementById('aktifDurum');
+            durum.classList.remove('satildi-yazi');
+            const kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
+            const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
+            durum.innerText = `${etiket}: ${kalan} sn`;
         }
+    });
+
+    socket.on('pazarlik_kapandi', function(data) {
+        if (!data || data.dukkan !== seciliDukkan) return;
+        const durum = document.getElementById('aktifDurum');
+        if (durum) {
+            durum.classList.remove('satildi-yazi');
+            durum.innerText = data.mesaj || 'Pazarlık bitti, son karar süresi başladı';
+        }
+        if (data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
+        document.getElementById('aktifKazanan').innerText = 'Yok';
+    });
+
+    socket.on('urun_satildi_erken', function(data) {
+        if (!data || data.dukkan !== seciliDukkan) return;
+        const durum = document.getElementById('aktifDurum');
+        if (durum) {
+            durum.classList.add('satildi-yazi');
+            durum.innerText = 'SATILDI';
+        }
+        if (data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || 'Yok';
+        if (data.fiyat !== undefined) document.getElementById('aktifFiyat').innerText = `${data.fiyat} TL`;
+        const detay = document.getElementById('pazarlikPopupDetay');
+        if (detay) detay.innerText = data.mesaj || 'Pazarlık Başarılı - Ürün Satıldı!';
+        const pop = document.getElementById('pazarlikPopup');
+        if (pop) pop.classList.add('acik');
     });
 
     socket.on('sayac_bitti', function(data) {
         if(data && data.dukkan === seciliDukkan) {
-            document.getElementById('aktifDurum').innerText = data.satildi_mi ? "Satıldı" : "Pas Geçildi";
+            document.getElementById('aktifDurum').innerText = data.satildi_mi ? "Satıldı — sıradaki ürün hazırlanıyor" : "Pas — yeni ürün bekleniyor";
             setTimeout(() => {
                 veriCekAdmin();
                 adminUrunAra();
             }, 1000);
+        }
+    });
+
+    socket.on('sahne_bosta', function(data) {
+        if (!data || data.dukkan !== seciliDukkan) return;
+        const durum = document.getElementById('aktifDurum');
+        if (durum) durum.innerText = data.mesaj || "Sıradaki ürün hazırlanıyor...";
+    });
+
+    socket.on('yeni_urun_sahneye_alindi', function(data) {
+        if (!data || data.dukkan !== seciliDukkan) return;
+        const durum = document.getElementById('aktifDurum');
+        if (durum) {
+            durum.classList.remove('satildi-yazi');
+            durum.innerText = "Bekliyor";
         }
     });
 
@@ -1814,7 +1886,9 @@
                 document.getElementById('aktifUrunAdi').innerText = "Sahnede aktif ürün yok";
                 document.getElementById('aktifFiyat').innerText = "0 TL";
                 document.getElementById('aktifKazanan').innerText = "Yok";
-                document.getElementById('aktifDurum').innerText = "Bekliyor";
+                const bosDurum = document.getElementById('aktifDurum');
+                bosDurum.classList.remove('satildi-yazi');
+                bosDurum.innerText = "Bekliyor";
             }
 
             if(data.on_teklifler) {
