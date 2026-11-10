@@ -14,7 +14,7 @@ except Exception:
 # ==========================================
 # GEVENT VE ASENKRON MOTOR (EN BAŞTA OLMALI)
 # ==========================================
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import functools
 import hashlib
 import io
@@ -145,6 +145,7 @@ socketio = SocketIO(
     manage_session=False,
     ping_timeout=60,
     ping_interval=25,
+    max_http_buffer_size=8000000,
 )
 
 totp = pyotp.TOTP(ADMIN_2FA_SECRET)
@@ -172,8 +173,11 @@ _openai_istemci = None
 _ses_nesil = 0
 SES_ORNEKLEME = 24000
 SES_BLOK = 4800
+TURKCE_DIREKTIF = "Her koşulda sadece Türkçe telaffuz et, asla yabancı dile geçme"
 SES_DIL_KURALI = (
-    "Yalnızca akıcı İstanbul Türkçesi ile seslendir. "
+    'language="tr". '
+    + TURKCE_DIREKTIF + ". "
+    "Yalnızca akıcı İstanbul Türkçesi ile yaz ve seslendir. "
     "Cihaz dili İngilizce veya başka bir dil olsa bile asla yabancı dile geçme. "
     "Hanımefendi sunucu gibi kibar, samimi ve net konuş. Şive taklidi yapma."
 )
@@ -190,8 +194,23 @@ def ses_metnini_temizle(metin):
     s = re.sub(r"https?://\S+", " ", s)
     s = re.sub(r"(?im)^\s*(system|assistant|user|json)\s*:\s*", " ", s)
     s = re.sub(r"[*_#`~|]+", " ", s)
+    s = re.sub(r"[$€£¥]|NaN", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"\b(USD|EUR|GBP|VIP|OK|AI|TTS|NFT)\b", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"[^0-9A-Za-zÇĞİÖŞÜçğıöşü\s.,!?:;'%\-]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s[:4096]
+
+
+def _pey_tts_sablonu(metin):
+    """Pey sesi serbest cümle olmaz; tek kalıp Türkçe cümle okunur."""
+    temiz = ses_metnini_temizle(metin)
+    if re.search(r"geçersiz|minimum", temiz, re.IGNORECASE):
+        return temiz
+    sayi = re.search(r"(\d+)", temiz)
+    tutar = sayi.group(1) if sayi else "0"
+    ad = re.split(r"\s+pey\b", temiz, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    ad = re.sub(r"[^0-9A-Za-zÇĞİÖŞÜçğıöşü\s]", "", ad).strip() or "Misafir"
+    return f"{ad} pey verdi, güncel fiyat {tutar} Türk Lirası."
 
 
 def ses_icin_fonetik(metin):
@@ -241,24 +260,39 @@ def _mp3_kaydet(veri, nesil):
 
 
 _son_ses_paketi = {"imza": "", "an": 0.0}
+_ses_kuyruk = {}
+_ses_kuyruk_kilit = threading.Lock()
 
 
 def _openai_mp3(istemci, model, ses, soylenen):
-    yanit = istemci.audio.speech.create(
-        model=model,
-        voice=ses,
-        input=soylenen,
-        response_format="mp3",
-    )
+    """Okunan metin şablondur. tts-1-hd yönerge alanını sesli okuduğu için talimat girdiye yazılmaz."""
+    ortak = {"model": model, "voice": ses, "input": soylenen, "response_format": "mp3"}
+    if model not in ("tts-1", "tts-1-hd"):
+        ortak["instructions"] = 'language="tr". ' + TURKCE_DIREKTIF
+    try:
+        yanit = istemci.audio.speech.create(**ortak, extra_body={"language": "tr"})
+    except Exception:
+        ortak.pop("instructions", None)
+        yanit = istemci.audio.speech.create(**ortak)
     if hasattr(yanit, "read"):
         return yanit.read()
     return bytes(getattr(yanit, "content", b"") or b"")
 
 
+def _ses_modeli():
+    model = getattr(Config, "OPENAI_TTS_MODEL", "") or "tts-1-hd"
+    if model not in ("tts-1", "tts-1-hd"):
+        model = "tts-1-hd"
+    ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
+    return model, ses
+
+
 def ahmet_ses_akisi(dukkan, metin, tur="anons"):
-    """Panelde görünen anonsu nova sesiyle üretip tek paket olarak yollar."""
+    """Son geçerli anonsu tutar; hızlı peyde eskimiş ses üretimini düşürür."""
     global _ses_nesil
     temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
+    if tur == "pey":
+        temiz = _pey_tts_sablonu(temiz)
     if not temiz:
         return
     imza = f"{dukkan}:{temiz}"
@@ -267,37 +301,75 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons"):
         return
     _son_ses_paketi["imza"] = imza
     _son_ses_paketi["an"] = simdi
-    _ses_nesil += 1
-    nesil = _ses_nesil
+    with _ses_kuyruk_kilit:
+        _ses_nesil += 1
+        nesil = _ses_nesil
+        onceki = _ses_kuyruk.get(dukkan)
+        calisiyor = bool(onceki and onceki.get("calisiyor"))
+        _ses_kuyruk[dukkan] = {
+            "metin": temiz,
+            "tur": tur,
+            "nesil": nesil,
+            "calisiyor": True,
+        }
     socketio.emit("ses_kes", {"dukkan": dukkan, "nesil": nesil, "tur": tur}, room=dukkan)
+    if not calisiyor:
+        socketio.start_background_task(_ses_kuyrugunu_bosalt, dukkan)
 
-    def _akitar():
+
+def _ses_kuyrugunu_bosalt(dukkan):
+    while True:
+        with _ses_kuyruk_kilit:
+            paket = _ses_kuyruk.get(dukkan)
+            if not paket:
+                return
+            metin = paket["metin"]
+            tur = paket["tur"]
+            nesil = paket["nesil"]
         istemci = _openai_ses_istemcisi()
         if istemci is None:
             print("[SES] OPENAI_API_KEY tanımlı değil; ses akışı başlamadı.")
+            with _ses_kuyruk_kilit:
+                kayit = _ses_kuyruk.get(dukkan)
+                if kayit and kayit.get("nesil") == nesil:
+                    kayit["calisiyor"] = False
             return
-        if nesil != _ses_nesil:
-            return
-        model = getattr(Config, "OPENAI_TTS_MODEL", "") or "tts-1-hd"
-        if model not in ("tts-1", "tts-1-hd"):
-            model = "tts-1-hd"
-        ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
+        with _ses_kuyruk_kilit:
+            guncel = _ses_kuyruk.get(dukkan)
+            if not guncel or guncel.get("nesil") != nesil:
+                continue
+        model, ses = _ses_modeli()
         try:
-            veri = _openai_mp3(istemci, model, ses, temiz)
-            if nesil != _ses_nesil or not veri:
-                return
-            adres = _mp3_kaydet(veri, nesil)
-            socketio.emit("ses_oynat", {
-                "dukkan": dukkan,
-                "nesil": nesil,
-                "tur": tur,
-                "audio_url": adres,
-            })
-            print(f"[SES] anons yayında, {len(temiz)} karakter, model {model}, ses {ses}")
+            veri = _openai_mp3(istemci, model, ses, metin)
         except Exception as hata:
             print(f"[SES HATA] OpenAI akış: {hata}")
-
-    socketio.start_background_task(_akitar)
+            veri = None
+        with _ses_kuyruk_kilit:
+            guncel = _ses_kuyruk.get(dukkan)
+            if not guncel or guncel.get("nesil") != nesil:
+                continue
+            if not veri:
+                guncel["calisiyor"] = False
+                return
+        adres = _mp3_kaydet(veri, nesil)
+        with _ses_kuyruk_kilit:
+            guncel = _ses_kuyruk.get(dukkan)
+            if not guncel or guncel.get("nesil") != nesil:
+                continue
+        socketio.emit("ses_oynat", {
+            "dukkan": dukkan,
+            "nesil": nesil,
+            "tur": tur,
+            "audio_url": adres,
+        })
+        print(f"[SES] anons yayında, {len(metin)} karakter, model {model}, ses {ses}")
+        with _ses_kuyruk_kilit:
+            guncel = _ses_kuyruk.get(dukkan)
+            if guncel and guncel.get("nesil") != nesil:
+                continue
+            if guncel:
+                guncel["calisiyor"] = False
+        return
 
 
 def _satis_disi_sadelestir(metin, tur):
@@ -312,8 +384,25 @@ def _satis_disi_sadelestir(metin, tur):
     return s.strip(" ,")
 
 
+def _patron_papaganini_sil(metin):
+    s = str(metin or "")
+    s = re.sub(r"pardon efendim,?\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(
+        r"sayın yöneticimin\s*/\s*patronun belirttiği üzere\s*",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    )
+    s = re.sub(r"sayın yöneticimin belirttiği üzere\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"patronun belirttiği üzere\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"patronun dediği üzere\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"yöneticimin belirttiği gibi\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" ,")
+
+
 def ahmet_usta_anons_yap(dukkan, metin, yedek_dene=True, tur="anons", kesinti=False):
-    temiz = _satis_disi_sadelestir(metin, tur)
+    temiz = _patron_papaganini_sil(_satis_disi_sadelestir(metin, tur))
     if not temiz:
         return
     socketio.emit("yeni_canli_yorum", {
@@ -433,10 +522,9 @@ def _hanim_mi(kisi):
 
 
 def ahmet_pey_cumlesi(platform, kisi, tutar, urun_adi=""):
-    ad = ahmet_kisa_ad(kisi)
+    ad = re.sub(r"[^0-9A-Za-zÇĞİÖŞÜçğıöşü\s]", "", ahmet_kisa_ad(kisi)).strip() or "Misafir"
     fiyat = int(round(float(tutar or 0)))
-    hitap = "Hanımdan" if _hanim_mi(kisi) else "Beyden"
-    return f"{ad} {hitap} {fiyat} TL geldi! Var mı artıran efendim?"
+    return f"{ad} pey verdi, güncel fiyat {fiyat} Türk Lirası."
 
 
 def ahmet_satis_cumlesi(lot, urun_adi, kisi):
@@ -530,6 +618,34 @@ AHMET_SISTEM = (
     + SES_DIL_KURALI
 )
 
+def _patron_sistemi(aktif_urun, patron_komut):
+    return f"""
+Sen Haliç Antik Mezat'ın profesyonel, coşkulu ve esprili canlı yayın sunucusu Ahmet Usta'sın.
+Şu an sahnede olan aktif ürün bilgileri:
+- Ürün Adı: {aktif_urun.get('baslik', 'Antika Eser')}
+- Açıklama: {aktif_urun.get('aciklama', '')}
+- Başlangıç Fiyatı: {aktif_urun.get('baslangic_fiyati', 0)} TL
+- Güncel Pey: {aktif_urun.get('anlik_fiyat', 0)} TL
+
+PATRON SANA ŞU ANONS TALİMATINI VERDİ: "{patron_komut}"
+
+KURALLAR:
+1. ASLA patronun sözlerini papağan gibi tekrarlama!
+2. "Patronun dediği üzere", "Yöneticimin belirttiği gibi", "Pardon efendim" gibi lafları KESİNLİKLE KULLANMA.
+3. Patron "fiyatı söyle / kaç para" dediyse doğrudan izleyicilere dönüp güncel pey/fiyatı söyle ve yeni teklif iste.
+4. Patron "ürünü tanıt / anlat" dediyse ürünün antika hikayesini, detaylarını öne çıkararak heyecanla tanıt.
+5. Doğrudan canlı yayındaki izleyicilere hitap et (Örn: "Evet değerli koleksiyonerler, elimizdeki bu nadide parça...").
+6. Yanıtın kısa, net, mezat ortamına yakışır ve en fazla 2-3 cümle olsun.
+Yalnızca Türkçe yaz. {TURKCE_DIREKTIF}.
+"""
+
+
+def _sistem_turkce(sistem):
+    metin = str(sistem or "").strip()
+    if TURKCE_DIREKTIF not in metin:
+        metin = f'language="tr". {TURKCE_DIREKTIF}. {metin}'
+    return metin
+
 
 def _openai_metin_iste(sistem, kullanici_metni):
     istemci = _openai_ses_istemcisi()
@@ -540,7 +656,7 @@ def _openai_metin_iste(sistem, kullanici_metni):
         temperature=0.8,
         max_tokens=180,
         messages=[
-            {"role": "system", "content": sistem},
+            {"role": "system", "content": _sistem_turkce(sistem)},
             {"role": "user", "content": kullanici_metni},
         ],
     )
@@ -744,6 +860,9 @@ class Kullanici(db.Model):
     onayli_mi = db.Column(db.Boolean, default=False)
     is_verified = db.Column(db.Boolean, default=False)
     dogrulama_kodu = db.Column(db.String(6), nullable=True)
+    otp_code = db.Column(db.String(6), nullable=True)
+    otp_bitis = db.Column(db.DateTime, nullable=True)
+    is_banned = db.Column(db.Boolean, default=False, index=True)
     durum = db.Column(db.String(20), default="bekliyor", index=True)
     sozlesme_onay = db.Column(db.Boolean, default=True)
     ip_adresi = db.Column(db.String(50), nullable=True)
@@ -1418,6 +1537,23 @@ def veritabani_tablolari_onar():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            for kolon_sql in (
+                "ALTER TABLE kullanici ADD COLUMN otp_code VARCHAR(6)",
+                "ALTER TABLE kullanici ADD COLUMN otp_bitis TIMESTAMP",
+                "ALTER TABLE kullanici ADD COLUMN is_banned BOOLEAN DEFAULT FALSE",
+            ):
+                try:
+                    db.session.execute(text(kolon_sql))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            try:
+                db.session.execute(text(
+                    "UPDATE kullanici SET is_banned = 1 WHERE durum = 'engellendi'"
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             for tablo, kolon, tip in kolonlar:
                 try:
                     db.session.execute(
@@ -1814,6 +1950,134 @@ def kategoriler_listesi():
 # ==========================================
 # CANLI CHAT, SESLİ BAS-KONUŞ VE AHMET USTA KÖPRÜSÜ
 # ==========================================
+KAYIT_PEY_MESAJI = "Teklif verebilmek için lütfen önce kayıt olun ve giriş yapın"
+BAN_MESAJI = "Hesabınız yönetici tarafından askıya alınmıştır. Detaylar için mezat yönetimi ile iletişime geçin"
+UYGUNSUZ_KELIMELER = (
+    "amk", "aq", "orospu", "orosp", "pic", "piç", "siktir", "sikeyim", "sikerim",
+    "yarrak", "yarak", "gotveren", "götveren", "pezevenk", "kahpe", "amina",
+    "amına", "amcik", "amcık", "fuck", "shit", "bitch",
+)
+kullanici_soketleri = {}
+
+
+def kullanici_banli_mi(kullanici):
+    if not kullanici:
+        return False
+    return bool(getattr(kullanici, "is_banned", False) or kullanici.durum == "engellendi")
+
+
+def pey_yetkisi(kullanici):
+    if not kullanici or kullanici.silindi_mi:
+        return False, KAYIT_PEY_MESAJI, {"kayit_gerekli": True}
+    if kullanici_banli_mi(kullanici):
+        return False, BAN_MESAJI, {"ban": True}
+    if not bool(getattr(kullanici, "is_verified", False)):
+        return False, KAYIT_PEY_MESAJI, {"kayit_gerekli": True, "dogrulama_gerekli": True}
+    return True, "", {}
+
+
+def metin_uygunsuz_mu(metin):
+    ham = str(metin or "").casefold()
+    sik = re.sub(r"[^a-z0-9çğıöşü]", "", ham)
+    for kelime in UYGUNSUZ_KELIMELER:
+        k = kelime.casefold()
+        if k in ham or k in sik:
+            return True
+    return False
+
+
+def sokete_kullanici_bagla(sid, kullanici_id):
+    try:
+        kid = int(kullanici_id)
+    except (TypeError, ValueError):
+        return
+    kullanici_soketleri.setdefault(kid, set()).add(sid)
+
+
+def soketten_kullanici_kopar(sid):
+    for sids in kullanici_soketleri.values():
+        sids.discard(sid)
+
+
+def kullanici_soketlerini_kes(kullanici_id):
+    for sid in list(kullanici_soketleri.get(int(kullanici_id), ())):
+        try:
+            socketio.server.disconnect(sid)
+        except Exception:
+            pass
+    kullanici_soketleri.pop(int(kullanici_id), None)
+
+
+def kullaniciyi_otomatik_banla(kullanici):
+    if not kullanici:
+        return
+    kullanici.is_banned = True
+    kullanici.durum = "engellendi"
+    kullanici.onayli_mi = False
+    db.session.commit()
+    socketio.emit(
+        "kullanici_engellendi",
+        {"kullanici_id": kullanici.id, "ban": True, "mesaj": BAN_MESAJI},
+    )
+    socketio.emit(
+        "yeni_elestiri",
+        {
+            "kaynak": "ban",
+            "tarih": time.strftime("%d.%m.%Y %H:%M"),
+            "musteri_adi": kullanici.ad_soyad,
+            "tur": "Otomatik Engel",
+            "konu": "Uygunsuz davranış",
+            "mesaj": "Uygunsuz davranış sebebiyle otomatik engellendi",
+            "durum": "Yeni",
+        },
+        room="admin_room",
+    )
+    kullanici_soketlerini_kes(kullanici.id)
+
+
+def otp_kodu_uret():
+    return f"{random.randint(0, 999999):06d}"
+
+
+def otp_eposta_gonder(alici, kod):
+    print(f"[TEST-OTP] {kod}")
+    host = os.environ.get("SMTP_HOST", "").strip()
+    if not host or not alici:
+        return
+    try:
+        import smtplib
+        from email.message import EmailMessage
+        ileti = EmailMessage()
+        ileti["Subject"] = "Haliç Antik doğrulama kodu"
+        ileti["From"] = os.environ.get("SMTP_FROM", "").strip() or os.environ.get("SMTP_USER", "")
+        ileti["To"] = alici
+        ileti.set_content(
+            f"Haliç Antik Mezat doğrulama kodunuz: {kod}\n"
+            "Kod 10 dakika geçerlidir."
+        )
+        port = int(os.environ.get("SMTP_PORT", "587") or 587)
+        with smtplib.SMTP(host, port, timeout=12) as smtp:
+            if os.environ.get("SMTP_TLS", "1") != "0":
+                smtp.starttls()
+            kullanici = os.environ.get("SMTP_USER", "")
+            sifre = os.environ.get("SMTP_PASSWORD", "")
+            if kullanici:
+                smtp.login(kullanici, sifre)
+            smtp.send_message(ileti)
+    except Exception as hata:
+        print(f"[OTP] E-posta gönderilemedi: {hata}")
+
+
+def otp_kaydet(kullanici):
+    kod = otp_kodu_uret()
+    bitis = suan_utc() + timedelta(minutes=10)
+    kullanici.otp_code = kod
+    kullanici.dogrulama_kodu = kod
+    kullanici.otp_bitis = bitis
+    kullanici.is_verified = False
+    return kod
+
+
 @app.route("/api/chat/mesaj-gonder", methods=["POST"])
 def chat_mesaj_gonder():
     veri = request.json or {}
@@ -1834,8 +2098,20 @@ def chat_mesaj_gonder():
 
     if kullanici_id:
         k_obj = db.session.get(Kullanici, kullanici_id)
-        if k_obj and k_obj.durum == "engellendi":
-            return jsonify({"success": False, "mesaj": "Mesaj gönderme yetkiniz askıya alınmıştır."}), 403
+        if k_obj and kullanici_banli_mi(k_obj):
+            return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+        if k_obj and metin_uygunsuz_mu(mesaj):
+            kullaniciyi_otomatik_banla(k_obj)
+            return jsonify({
+                "success": False,
+                "ban": True,
+                "mesaj": "Uygunsuz davranış sebebiyle otomatik engellendi",
+            }), 403
+    elif metin_uygunsuz_mu(mesaj):
+        return jsonify({
+            "success": False,
+            "mesaj": "Bu mesaj yayın kurallarına aykırı olduğu için iletilmedi.",
+        }), 403
 
     zaman_damgasi = time.strftime("%H:%M:%S")
 
@@ -1846,6 +2122,10 @@ def chat_mesaj_gonder():
     aktif_urun_id = oda.get("aktif_urun_id")
 
     if teklif_tutari and teklif_tutari > 0 and aktif_urun_id:
+        k_obj = db.session.get(Kullanici, kullanici_id) if kullanici_id else None
+        uygun, uyari, ek = pey_yetkisi(k_obj)
+        if not uygun:
+            return jsonify({"success": False, "mesaj": uyari, **ek})
         mevcut_fiyat = float(oda["durum"].get("pey", 0) or 0)
         if mevcut_fiyat > 0:
             gereken = minimum_pey_tabani(mevcut_fiyat)
@@ -1923,8 +2203,8 @@ def izleyici_bas_konus_ses():
     if not kullanici or kullanici.silindi_mi:
         return jsonify({"success": False, "mesaj": "Kullanıcı kaydı bulunamadı."}), 403
 
-    if kullanici.durum == "engellendi":
-        return jsonify({"success": False, "mesaj": "Mikrofon yetkiniz yönetici tarafından kapatılmıştır."}), 403
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
 
     ses_dosyasi = request.files.get("ses")
     if not ses_dosyasi:
@@ -2343,26 +2623,19 @@ def pey_ver():
     if not kullanici or kullanici.silindi_mi:
         return jsonify({
             "success": False,
-            "mesaj": "Teklif verebilmek için profilinizi oluşturunuz.",
+            "kayit_gerekli": True,
+            "mesaj": KAYIT_PEY_MESAJI,
         })
 
-    if kullanici.durum == "engellendi":
-        return jsonify({
-            "success": False,
-            "mesaj": "Hesabınız engellendiği için teklif veremezsiniz.",
-        })
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
 
     if not bool(getattr(kullanici, "is_verified", False)):
         return jsonify({
             "success": False,
+            "kayit_gerekli": True,
             "dogrulama_gerekli": True,
-            "mesaj": "Pey verebilmek için lütfen telefon ve e-posta doğrulamanızı tamamlayınız",
-        })
-
-    if kullanici.durum == "bekliyor" or not kullanici.onayli_mi:
-        return jsonify({
-            "success": False,
-            "mesaj": "Kaydınız yönetici onayında. Onaylanınca pey verebilirsiniz.",
+            "mesaj": KAYIT_PEY_MESAJI,
         })
 
     etiket_ad = f"[Web] {kullanici.ad_soyad}"
@@ -2678,15 +2951,13 @@ def kayit_ol():
         kullanici.cihaz_kodu = fingerprint
         kullanici.ip_adresi = client_ip
         kullanici.silindi_mi = False
-        if kullanici.durum == "engellendi":
-            pass
-        elif kullanici.onayli_mi and kullanici.durum == "onayli":
+        if kullanici.durum == "engellendi" or getattr(kullanici, "is_banned", False):
+            return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+        elif kullanici.is_verified:
             pass
         else:
             kullanici.durum = "bekliyor"
             kullanici.onayli_mi = False
-            kullanici.is_verified = False
-            kullanici.dogrulama_kodu = "145320"
             yeni_talep = True
     else:
         kullanici = Kullanici(
@@ -2697,7 +2968,6 @@ def kayit_ol():
             sozlesme_onay=sozlesme,
             onayli_mi=False,
             is_verified=False,
-            dogrulama_kodu="145320",
             durum="bekliyor",
             cihaz_kodu=fingerprint,
             ip_adresi=client_ip,
@@ -2708,25 +2978,23 @@ def kayit_ol():
     db.session.commit()
 
     if yeni_talep:
-        talep = {
+        socketio.emit("yeni_kayit_talebi", {
             "id": kullanici.id,
             "ad": kullanici.ad_soyad,
             "tel": kullanici.telefon or "-",
             "mail": kullanici.email or "-",
             "ip": kullanici.ip_adresi or "-",
-            "durum": "bekliyor",
-        }
-        socketio.emit("yeni_kayit_talebi", talep, room="admin_room")
-        socketio.emit("veri_guncellendi", {"kaynak": "kayit"}, room="admin_room")
+            "durum": kullanici.durum,
+        }, room="admin_room")
 
-    dogrulama_gerekli = not bool(kullanici.is_verified)
+    dogrulama_gerekli = not bool(kullanici.is_verified) and not kullanici_banli_mi(kullanici)
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
     if dogrulama_gerekli:
-        kullanici.dogrulama_kodu = "145320"
+        kod = otp_kaydet(kullanici)
         db.session.commit()
-        print("Test Doğrulama Kodu: 145320")
-        mesaj = "Kayıt alındı. Telefon ve e-posta doğrulamasını tamamlayın."
-    elif kullanici.durum == "bekliyor":
-        mesaj = "Kaydınız alındı. Yönetici onayından sonra pey verebilirsiniz."
+        otp_eposta_gonder(kullanici.email, kod)
+        mesaj = "Kayıt alındı. E-postanıza gelen 6 haneli doğrulama kodunu girin."
     else:
         mesaj = "Bilgileriniz kaydedildi."
     return jsonify({
@@ -2736,7 +3004,6 @@ def kayit_ol():
         "onayli_mi": bool(kullanici.onayli_mi),
         "is_verified": bool(kullanici.is_verified),
         "dogrulama_gerekli": dogrulama_gerekli,
-        "test_kodu": "145320" if dogrulama_gerekli else "",
         "mesaj": mesaj,
     })
 
@@ -2753,6 +3020,8 @@ def dogrulama_durum():
         "success": True,
         "is_verified": bool(kullanici.is_verified),
         "onayli_mi": bool(kullanici.onayli_mi),
+        "is_banned": kullanici_banli_mi(kullanici),
+        "mesaj": BAN_MESAJI if kullanici_banli_mi(kullanici) else "",
     })
 
 
@@ -2766,10 +3035,21 @@ def dogrulama_tamamla():
         kullanici = None
     if not kullanici or kullanici.silindi_mi:
         return jsonify({"success": False, "mesaj": "Kayıt bulunamadı."})
-    if kod != (kullanici.dogrulama_kodu or ""):
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+    bitis = getattr(kullanici, "otp_bitis", None)
+    if bitis is not None:
+        if bitis.tzinfo is None:
+            bitis = bitis.replace(tzinfo=timezone.utc)
+        if bitis < suan_utc():
+            return jsonify({"success": False, "mesaj": "Doğrulama kodunun süresi doldu. Yeniden kayıt olun."})
+    beklenen = (getattr(kullanici, "otp_code", None) or kullanici.dogrulama_kodu or "")
+    if not beklenen or kod != beklenen:
         return jsonify({"success": False, "mesaj": "Doğrulama kodu hatalı."})
     kullanici.is_verified = True
+    kullanici.otp_code = None
     kullanici.dogrulama_kodu = None
+    kullanici.otp_bitis = None
     db.session.commit()
     return jsonify({
         "success": True,
@@ -2810,6 +3090,9 @@ def on_teklif_ver():
             "kayit_gerekli": True,
             "mesaj": "⚠️ Ön teklif verebilmek için Ad, Telefon ve E-posta ile kayıt olmanız zorunludur!",
         })
+    uygun, uyari, ek = pey_yetkisi(kullanici)
+    if not uygun:
+        return jsonify({"success": False, "mesaj": uyari, **ek})
 
     urun = db.session.get(Urun, urun_id)
     if not urun or urun.silindi_mi or urun.durum == "Satıldı":
@@ -3652,10 +3935,20 @@ def musteri_durum_guncelle():
     if kullanici:
         kullanici.durum = yeni_durum
         kullanici.onayli_mi = yeni_durum == "onayli"
+        if yeni_durum == "engellendi":
+            kullanici.is_banned = True
+            kullanici.onayli_mi = False
+        elif yeni_durum == "onayli":
+            kullanici.is_banned = False
         db.session.commit()
 
         if yeni_durum == "engellendi":
-            socketio.emit("kullanici_engellendi", {"kullanici_id": kullanici.id})
+            socketio.emit("kullanici_engellendi", {
+                "kullanici_id": kullanici.id,
+                "ban": True,
+                "mesaj": BAN_MESAJI,
+            })
+            kullanici_soketlerini_kes(kullanici.id)
             
         return jsonify({"success": True, "mesaj": f"Müşteri durumu {yeni_durum} olarak güncellendi."})
     return jsonify({"success": False, "mesaj": "Kullanıcı bulunamadı."})
@@ -4237,6 +4530,7 @@ def handle_disconnect():
     try:
         aktif_izleyiciler.discard(request.sid)
         izleyici_adlari.pop(request.sid, None)
+        soketten_kullanici_kopar(request.sid)
         izleyici_sayisini_yayinla()
     finally:
         db.session.remove()
@@ -4251,14 +4545,100 @@ def handle_join_admin():
 _son_duzeltme_ani = {}
 
 
+def _patron_yazi_sade(metin):
+    s = str(metin or "").casefold()
+    for eski, yeni in (
+        ("ı", "i"), ("ş", "s"), ("ğ", "g"), ("ü", "u"), ("ö", "o"), ("ç", "c"), ("â", "a"),
+    ):
+        s = s.replace(eski, yeni)
+    return s
+
+
+def _patron_emir_turu(metin):
+    s = _patron_yazi_sade(metin)
+    if any(k in s for k in (
+        "3 dakika", "uc dakika", "sureyi ac", "sureyi baslat",
+        "sayaci baslat", "sayac baslat", "sayaci ac", "sayaci ac",
+    )):
+        return "sayac"
+    if any(k in s for k in ("kac para", "fiyat", "ne kadar", "kactan", "kaca", "kac lir")):
+        return "fiyat"
+    if any(k in s for k in (
+        "tanit", "bastan anlat", "bir daha anlat", "tekrar anlat", "hikaye", "ozellig",
+    )):
+        return "tanitim"
+    return "genel"
+
+
+def _sahne_urun_bilgisi(dukkan):
+    oda = odalar.get(dukkan) or {}
+    urun_id = oda.get("aktif_urun_id")
+    urun = db.session.get(Urun, urun_id) if urun_id else None
+    try:
+        pey = float((oda.get("durum") or {}).get("pey") or 0)
+    except (TypeError, ValueError):
+        pey = 0
+    acilis = float(getattr(urun, "acilis_fiyati", 0) or 0) if urun else 0
+    guncel = pey if pey > 0 else acilis
+    ad = (getattr(urun, "urun_adi", None) or "Eser").strip() if urun else ""
+    aciklama = (getattr(urun, "tanitim_yazisi", None) or "").strip() if urun else ""
+    return urun, ad, aciklama, int(round(acilis)), int(round(guncel))
+
+
+def _sayaci_tetikle(dukkan):
+    oda = odalar[dukkan]
+    if not oda.get("aktif_urun_id"):
+        return False
+    with oda_kilitleri[dukkan]:
+        oda["durum"]["durum"] = "Sayim"
+        oda["durum"]["sure_bitis"] = time.time() + 180
+        oda["sayac_gorev_id"] += 1
+        oda["sayac_aktif"] = True
+        gorev = oda["sayac_gorev_id"]
+    socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev)
+    socketio.emit("mezat_basladi_muzik", room=dukkan)
+    return True
+
+
+def _patron_emrini_uygula(dukkan, metin):
+    with app.app_context():
+        try:
+            patron_komut = _patron_papaganini_sil(metin).strip()
+            if len(patron_komut) < 2:
+                return
+            if _patron_emir_turu(patron_komut) == "sayac":
+                _sayaci_tetikle(dukkan)
+            _urun, ad, aciklama, acilis, guncel = _sahne_urun_bilgisi(dukkan)
+            aktif_urun = {
+                "baslik": ad or "Antika Eser",
+                "aciklama": aciklama or "",
+                "baslangic_fiyati": acilis,
+                "anlik_fiyat": guncel,
+            }
+            try:
+                yanit = _openai_metin_iste(
+                    _patron_sistemi(aktif_urun, patron_komut),
+                    "Canlı yayındaki izleyicilere söyleyeceğin anonsu yaz.",
+                )
+            except Exception as hata:
+                print(f"[PATRON] {hata}")
+                yanit = ""
+            yanit = _patron_papaganini_sil(yanit)
+            if not yanit or yanit.casefold() == patron_komut.casefold():
+                return
+            ahmet_usta_anons_yap(dukkan, yanit, tur="anons")
+        finally:
+            db.session.remove()
+
+
 @socketio.on("yonetici_duzeltmesi")
 def yonetici_duzeltmesi(veri):
-    """Patronun söylediği düzeltmeyi Ahmet Usta'nın sonraki cümlesine bağlar."""
+    """Patronun emrini sahneye uygular. Söylenen cümleyi aynen okumaz."""
     try:
         if not session.get("is_admin"):
             return
         veri = veri or {}
-        metin = ses_metnini_temizle(veri.get("metin"))
+        metin = _patron_papaganini_sil(ses_metnini_temizle(veri.get("metin")))
         if len(metin) < 2:
             return
         dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
@@ -4267,11 +4647,73 @@ def yonetici_duzeltmesi(veri):
         if simdi - _son_duzeltme_ani.get(anahtar, 0) < 8:
             return
         _son_duzeltme_ani[anahtar] = simdi
-        ahmet_usta_anons_yap(
-            dukkan,
-            f"Pardon efendim, sayın yöneticimin/patronun belirttiği üzere {metin}",
-            tur="anons",
+        socketio.start_background_task(_patron_emrini_uygula, dukkan, metin)
+    finally:
+        db.session.remove()
+
+
+def _patron_sesini_metne_cevir(yol):
+    istemci = _openai_ses_istemcisi()
+    if istemci is None:
+        print("[PATRON SESİ] Ses anlaşılmadı, OpenAI anahtarı yok.")
+        return ""
+    with open(yol, "rb") as dosya:
+        cevap = istemci.audio.transcriptions.create(
+            model="whisper-1",
+            file=dosya,
+            language="tr",
         )
+    return str(getattr(cevap, "text", "") or "").strip()
+
+
+def _patron_sesini_isle(dukkan, ses_b64, uzanti):
+    import tempfile
+    yol = ""
+    try:
+        try:
+            ham = base64.b64decode(ses_b64)
+        except Exception:
+            print("[PATRON SESİ] Ses anlaşılmadı, kayıt bozuk.")
+            return
+        if len(ham) < 80:
+            print("[PATRON SESİ] Ses anlaşılmadı, kayıt çok kısa.")
+            return
+        fd, yol = tempfile.mkstemp(prefix="temp_patron_voice_", suffix="." + uzanti)
+        os.close(fd)
+        with open(yol, "wb") as dosya:
+            dosya.write(ham)
+        metin = _patron_papaganini_sil(_patron_sesini_metne_cevir(yol))
+        if len(metin) < 2:
+            print("[PATRON SESİ] Ses anlaşılmadı, metin boş.")
+            return
+        print(f"[PATRON SESİ METNE ÇEVRİLDİ]: '{metin}'")
+        _patron_emrini_uygula(dukkan, metin)
+    except Exception as hata:
+        print(f"[PATRON SESİ] Ses anlaşılmadı: {hata}")
+    finally:
+        if yol and os.path.exists(yol):
+            try:
+                os.remove(yol)
+            except OSError:
+                pass
+
+
+@socketio.on("patron_ses_komut")
+def patron_ses_komut(veri):
+    """Bas-konuş kaydını Türkçe metne çevirir ve emri sahneye uygular."""
+    try:
+        if not session.get("is_admin"):
+            print("[PATRON SESİ] Yönetici oturumu yok, ses işlenmedi.")
+            return
+        veri = veri or {}
+        ses = str(veri.get("audio") or "")
+        if not ses or len(ses) > 8000000:
+            print("[PATRON SESİ] Ses anlaşılmadı, paket boş.")
+            return
+        mime = str(veri.get("mime") or "audio/webm")
+        uzanti = "wav" if "wav" in mime else "webm"
+        dukkan = dukkan_dogrula(veri.get("room") or veri.get("dukkan") or "gumus")
+        socketio.start_background_task(_patron_sesini_isle, dukkan, ses, uzanti)
     finally:
         db.session.remove()
 
@@ -4291,12 +4733,19 @@ def moderator_ses_parcasi(veri):
             sira = int(veri.get("seq") if veri.get("seq") is not None else (veri.get("sira") or 0))
         except (TypeError, ValueError):
             sira = 0
+        try:
+            ornek_hizi = int(veri.get("rate") or 16000)
+        except (TypeError, ValueError):
+            ornek_hizi = 16000
+        if ornek_hizi < 8000 or ornek_hizi > 48000:
+            ornek_hizi = 16000
         emit(
             "izleyici_moderator_sesi",
             {
                 "dukkan": dukkan,
                 "parca": parca,
                 "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
+                "rate": ornek_hizi,
                 "seq": sira,
                 "sira": sira,
             },
@@ -4308,6 +4757,64 @@ def moderator_ses_parcasi(veri):
         db.session.remove()
 
 
+@socketio.on("admin_voice_broadcast")
+def admin_voice_broadcast(veri):
+    """Bas-konuş bitince gelen tek ses kaydını bütün izleyicilere yollar."""
+    try:
+        veri = veri or {}
+        ses = str(veri.get("audio") or "")
+        if not ses or len(ses) > 8000000:
+            return
+        if not session.get("is_admin"):
+            print("[MIC SOKET] Yönetici oturumu yok, ses iletilmedi.")
+            return
+        emit("play_admin_audio_blob", veri, broadcast=True)
+        print("[MIC SOKET] Yönetici sesi izleyicilere iletildi.")
+    finally:
+        db.session.remove()
+
+
+@socketio.on("admin_voice_chunk")
+def admin_voice_chunk(veri):
+    """Yönetici mikrofon parçasını gecikmesiz olarak bütün izleyicilere yollar."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        parca = veri.get("parca") or veri.get("chunk") or veri.get("data") or ""
+        if isinstance(parca, bytes):
+            parca = base64.b64encode(parca).decode("ascii")
+        parca = str(parca or "")
+        if not parca or len(parca) > 400000:
+            return
+        try:
+            sira = int(veri.get("seq") or 0)
+        except (TypeError, ValueError):
+            sira = 0
+        emit(
+            "play_admin_voice",
+            {
+                "parca": parca,
+                "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
+                "seq": sira,
+            },
+            broadcast=True,
+            include_self=False,
+        )
+    finally:
+        db.session.remove()
+
+
+@socketio.on("admin_voice_end")
+def admin_voice_end(veri=None):
+    try:
+        if not session.get("is_admin"):
+            return
+        emit("play_admin_voice", {"bitti": True}, broadcast=True, include_self=False)
+    finally:
+        db.session.remove()
+
+
 @socketio.on("join_dukkan")
 def handle_join_dukkan(data):
     try:
@@ -4315,6 +4822,7 @@ def handle_join_dukkan(data):
         dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
         izleyici_adlari[request.sid] = ad
+        sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
         join_room(dukkan)
         izleyici_sayisini_yayinla()
         emit(
@@ -4369,6 +4877,25 @@ def elestiri_gonder():
     mesaj = (veri.get("mesaj") or "").strip()
     if len(mesaj) < 3:
         return jsonify({"success": False, "mesaj": "Eleştiri metni çok kısa."})
+    try:
+        kullanici = db.session.get(Kullanici, int(veri.get("musteri_id") or 0))
+    except Exception:
+        kullanici = None
+    if not kullanici or kullanici.silindi_mi or not bool(getattr(kullanici, "is_verified", False)):
+        return jsonify({
+            "success": False,
+            "kayit_gerekli": True,
+            "mesaj": "Görüş bildirmek için giriş yapmalısınız",
+        })
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+    if metin_uygunsuz_mu(mesaj):
+        kullaniciyi_otomatik_banla(kullanici)
+        return jsonify({
+            "success": False,
+            "ban": True,
+            "mesaj": "Uygunsuz davranış sebebiyle otomatik engellendi",
+        })
 
     hedef = (veri.get("hedef") or "Mezat").strip()
     if hedef not in ("Ürün", "Satıcı", "Mezat"):
