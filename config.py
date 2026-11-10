@@ -31,9 +31,23 @@ def _env(*adlar):
             return str(deger).strip()
     return ""
 
+def _veritabani_adresi():
+    """Render DATABASE_URL. postgres:// adresi SQLAlchemy için postgresql:// olur."""
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url and database_url.strip():
+        database_url = database_url.strip()
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        return database_url
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    sqlite_yol = os.path.join(basedir, "instance", "halic_mezat.db").replace("\\", "/")
+    return "sqlite:///" + sqlite_yol
+
+
 class Config:
-    # Bulutta (Render) DATABASE_URL gelir; yerelde sqlite veya varsayılan db kullanılır
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///halic_mezat.db'
+    # Bulutta (Render) DATABASE_URL gelir; yerelde yalnız SQLite kullanılır
+    SQLALCHEMY_DATABASE_URI = _veritabani_adresi()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'halic_hamid_antik_mezat_gizli_anahtar_1453'

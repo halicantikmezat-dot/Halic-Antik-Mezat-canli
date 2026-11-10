@@ -97,11 +97,19 @@ DUKKANLAR = {
 # ==========================================
 # VERİTABANI VE UYGULAMA YAPILANDIRMASI
 # ==========================================
-db_url = os.environ.get("DATABASE_URL", "sqlite:///halic_mezat.db")
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+basedir = os.path.abspath(os.path.dirname(__file__))
+database_url = os.environ.get("DATABASE_URL")
+if database_url and database_url.strip():
+    database_url = database_url.strip()
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    db_url = database_url
+else:
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    sqlite_yol = os.path.join(basedir, "instance", "halic_mezat.db").replace("\\", "/")
+    db_url = "sqlite:///" + sqlite_yol
 
-IS_SQLITE = "sqlite" in db_url
+IS_SQLITE = db_url.startswith("sqlite")
 
 ADMIN_PASSWORD_HASH = os.environ.get(
     "ADMIN_PASSWORD_HASH",
