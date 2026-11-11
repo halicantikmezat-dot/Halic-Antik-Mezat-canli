@@ -2568,7 +2568,7 @@ def otp_kaydet(kullanici):
 def chat_mesaj_gonder():
     veri = request.json or {}
     dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
-    kullanici_id_raw = veri.get("kullanici_id")
+    kullanici_id_raw = veri.get("kullanici_id") or veri.get("musteri_id") or session.get("kullanici_id") or session.get("musteri_id")
     kullanici_id = None
     if kullanici_id_raw not in (None, "", "null"):
         try:
@@ -3131,7 +3131,7 @@ def pey_ver():
     dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
     oda = odalar[dukkan]
 
-    musteri_id = veri.get("musteri_id")
+    musteri_id = veri.get("musteri_id") or veri.get("kullanici_id") or session.get("kullanici_id") or session.get("musteri_id")
     musteri_adi = (veri.get("musteri_adi") or veri.get("isim") or "").strip()
     telefon = (veri.get("telefon") or "").strip()
 
@@ -3499,9 +3499,25 @@ def kayit_ol():
         }
 
     def yanit(kayit):
+        session.permanent = True
+        session["kullanici_id"] = kayit.id
+        session["kullanici_adi"] = kayit.ad_soyad or ad
         session["musteri_id"] = kayit.id
         session["musteri_ad"] = kayit.ad_soyad or ad
-        govde = kart(kayit)
+        govde = {
+            "id": kayit.id,
+            "ad_soyad": kayit.ad_soyad or ad,
+            "ad": kayit.ad_soyad or ad,
+            "telefon": kayit.telefon or tel,
+            "tel": kayit.telefon or tel,
+            "email": kayit.email or mail,
+            "mail": kayit.email or mail,
+            "adres": kayit.adres or adres or "",
+            "onayli_mi": 1,
+            "durum": "onayli",
+            "is_verified": 1,
+            "is_banned": 0,
+        }
         return jsonify({
             "status": "success",
             "message": "Giriş başarılı",
