@@ -4120,25 +4120,21 @@
     function hesabiTamamenSil() {
         if (!confirm("Hesabınızı sıfırlayıp yeniden kayıt olmak istiyor musunuz?")) return;
         const id = kullaniciId;
-        const bitir = function () {
-            localStorage.clear();
-            sessionStorage.clear();
-            document.cookie.split(";").forEach(function (parca) {
-                const ad = parca.split("=")[0].trim();
-                if (!ad) return;
-                document.cookie = ad + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-            });
-            window.location.reload();
-        };
-        if (!id) {
-            bitir();
-            return;
-        }
-        fetch('/hesap_sifirla', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ musteri_id: id })
-        }).finally(bitir);
+        localStorage.clear();
+        sessionStorage.clear();
+        document.cookie.split(";").forEach(function (parca) {
+            const ad = parca.split("=")[0].trim();
+            if (!ad) return;
+            document.cookie = ad + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        });
+        const istek = id
+            ? fetch('/hesap_sifirla', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ musteri_id: id })
+            })
+            : Promise.resolve();
+        istek.finally(function () { window.location.reload(); });
     }
 
     function elestiriGonder() {
