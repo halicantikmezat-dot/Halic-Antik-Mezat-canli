@@ -2068,6 +2068,11 @@ def izleyici_index():
     return render_template("index.html", secili_dukkan=dukkan, dukkanlar=DUKKANLAR)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return ("", 204)
+
+
 @app.route("/dukkan/<string:dukkan_adi>")
 def dukkan_sayfasi(dukkan_adi):
     dukkan = dukkan_dogrula(dukkan_adi)

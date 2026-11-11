@@ -3150,7 +3150,7 @@
 
     window.onload = function() {
         dukkanMenuYukle();
-        const kayitId = localStorage.getItem('kullanici_id') || sessionStorage.getItem('kullanici_id') || localStorage.getItem('halic_antik_id');
+        const kayitId = localStorage.getItem('kullanici_id') || sessionStorage.getItem('kullanici_id') || localStorage.getItem('musteri_id') || localStorage.getItem('halic_antik_id');
         const kayitAd = localStorage.getItem('kullanici_adi') || sessionStorage.getItem('kullanici_adi') || localStorage.getItem('halic_antik_ad');
         const kayitTel = localStorage.getItem('kullanici_tel') || sessionStorage.getItem('kullanici_tel') || localStorage.getItem('halic_antik_tel');
         const kayitMail = localStorage.getItem('halic_antik_mail') || sessionStorage.getItem('halic_antik_mail');
@@ -3677,16 +3677,31 @@
     }
 
     function oturumVarMi() {
-        const id = localStorage.getItem('kullanici_id') || sessionStorage.getItem('kullanici_id') || localStorage.getItem('halic_antik_id');
-        const ad = localStorage.getItem('kullanici_adi') || sessionStorage.getItem('kullanici_adi') || localStorage.getItem('halic_antik_ad');
-        const tel = localStorage.getItem('kullanici_tel') || sessionStorage.getItem('kullanici_tel') || localStorage.getItem('halic_antik_tel');
-        const giris = localStorage.getItem('giris_yapildi') === 'true' || sessionStorage.getItem('giris_yapildi') === 'true';
+        const bellek = window.mevcutKullanici || window.currentUser || null;
+        const bellekId = bellek && typeof bellek === 'object' ? bellek.id : bellek;
+        const id = localStorage.getItem('kullanici_id')
+            || sessionStorage.getItem('kullanici_id')
+            || localStorage.getItem('musteri_id')
+            || sessionStorage.getItem('musteri_id')
+            || localStorage.getItem('halic_antik_id')
+            || bellekId;
+        const ad = localStorage.getItem('kullanici_adi')
+            || sessionStorage.getItem('kullanici_adi')
+            || localStorage.getItem('halic_antik_ad')
+            || (bellek && bellek.ad_soyad)
+            || (bellek && bellek.ad);
+        const tel = localStorage.getItem('kullanici_tel')
+            || sessionStorage.getItem('kullanici_tel')
+            || localStorage.getItem('halic_antik_tel')
+            || (bellek && (bellek.telefon || bellek.tel));
         const sayi = parseInt(id || '', 10);
         if (sayi) kullaniciId = sayi;
-        if (ad && ad !== 'null' && ad !== 'undefined') kullaniciAdi = ad.replace(/^\[.*?\]\s*/, '').trim();
+        if (ad && ad !== 'null' && ad !== 'undefined') kullaniciAdi = String(ad).replace(/^\[.*?\]\s*/, '').trim();
         if (tel) kullaniciTel = tel;
-        if ((giris || sayi) && kullaniciAdi && kullaniciAdi !== 'Misafir') {
+        if (sayi || bellek) {
             kullaniciDogrulandi = true;
+            window.mevcutKullanici = window.mevcutKullanici || { id: sayi || id, ad_soyad: kullaniciAdi, telefon: kullaniciTel };
+            window.currentUser = window.currentUser || window.mevcutKullanici;
             return true;
         }
         return false;
@@ -3708,11 +3723,10 @@
     }
 
     function dogrulamaKontrol() {
-        if (!oturumVarMi()) {
-            kayitUyarisiAc();
-            return false;
-        }
-        return true;
+        if (oturumVarMi()) return true;
+        const kayit = document.getElementById('authRegisterModal') || document.getElementById('kayitModal');
+        if (kayit) kayit.style.display = 'flex';
+        return false;
     }
 
     function dogrulamayiGonder() {
@@ -4031,17 +4045,19 @@
                 }
                 return;
             }
-            const kisi = d.user || {};
-            const kayitId = kisi.id || d.musteri_id || "";
-            const kayitAd = kisi.ad_soyad || kisi.ad || ad;
+            const kisi = d.user || d || {};
+            const kayitId = kisi.id || d.user && d.user.id || d.id || d.musteri_id || "";
+            const kayitAd = kisi.ad_soyad || d.ad_soyad || kisi.ad || ad;
             const kayitTel = kisi.telefon || kisi.tel || tel;
             const kayitMail = kisi.email || kisi.mail || mail;
             const kayitAdres = kisi.adres || adres;
             localStorage.setItem('kullanici_id', kayitId);
+            localStorage.setItem('musteri_id', kayitId);
             localStorage.setItem('kullanici_adi', kayitAd);
             localStorage.setItem('kullanici_tel', kayitTel);
             localStorage.setItem('giris_yapildi', 'true');
             sessionStorage.setItem('kullanici_id', kayitId);
+            sessionStorage.setItem('musteri_id', kayitId);
             sessionStorage.setItem('kullanici_adi', kayitAd);
             sessionStorage.setItem('kullanici_tel', kayitTel);
             sessionStorage.setItem('giris_yapildi', 'true');
@@ -4056,6 +4072,8 @@
             sessionStorage.setItem('halic_antik_tel', kayitTel);
             sessionStorage.setItem('halic_antik_mail', kayitMail);
             sessionStorage.setItem('halic_antik_adres', kayitAdres);
+            window.currentUser = kisi.id ? kisi : { id: kayitId, ad_soyad: kayitAd, telefon: kayitTel, email: kayitMail };
+            window.mevcutKullanici = window.currentUser;
             kullaniciId = parseInt(kayitId, 10) || null;
             kullaniciAdi = kayitAd;
             kullaniciTel = kayitTel;
@@ -4063,8 +4081,10 @@
             kullaniciDogrulandi = true;
             const gosterge = document.getElementById('aktifKullaniciGosterge');
             if (gosterge) gosterge.innerText = kayitAd;
+            const kayitPencere = document.getElementById('kayitModal') || document.getElementById('authRegisterModal');
+            if (kayitPencere) kayitPencere.style.display = 'none';
             closeModal('authRegisterModal');
-            location.reload();
+            window.location.reload();
         }).catch(function () {
             alert("Kayıt sunucusuna ulaşılamadı.");
             if (buton) {
