@@ -3483,80 +3483,109 @@ def kayit_ol():
         return jsonify({
             "success": False, "mesaj": "Telefon numarası zorunludur.",
         })
-    if not mail or "@" not in mail or "." not in mail:
-        return jsonify({
-            "success": False,
-            "mesaj": "Geçerli bir E-posta adresi girmek zorunludur!",
-        })
 
     client_ip = get_client_ip()
     fingerprint = get_device_fingerprint()
 
     kullanici = Kullanici.query.filter_by(telefon=tel).first()
-    yeni_talep = False
+    if kullanici and kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+
     if kullanici:
         kullanici.ad_soyad = ad
-        kullanici.email = mail
-        kullanici.adres = adres
+        kullanici.email = mail or None
+        kullanici.adres = adres or None
         kullanici.sozlesme_onay = sozlesme
         kullanici.cihaz_kodu = fingerprint
         kullanici.ip_adresi = client_ip
         kullanici.silindi_mi = False
-        if kullanici.durum == "engellendi" or getattr(kullanici, "is_banned", False):
-            return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
-        elif kullanici.is_verified:
-            pass
-        else:
-            kullanici.durum = "bekliyor"
-            kullanici.onayli_mi = False
-            yeni_talep = True
+        kullanici.silinme_tarihi = None
     else:
         kullanici = Kullanici(
             ad_soyad=ad,
             telefon=tel,
-            email=mail,
-            adres=adres,
+            email=mail or None,
+            adres=adres or None,
             sozlesme_onay=sozlesme,
-            onayli_mi=False,
-            is_verified=False,
-            durum="bekliyor",
             cihaz_kodu=fingerprint,
             ip_adresi=client_ip,
         )
         db.session.add(kullanici)
-        yeni_talep = True
 
-    db.session.commit()
+    kullanici.onayli_mi = True
+    kullanici.durum = "onayli"
+    kullanici.is_verified = True
+    kullanici.is_banned = False
+    kullanici.otp_code = None
+    kullanici.dogrulama_kodu = None
+    kullanici.otp_bitis = None
 
-    if yeni_talep:
-        socketio.emit("yeni_kayit_talebi", {
-            "id": kullanici.id,
-            "ad": kullanici.ad_soyad,
-            "tel": kullanici.telefon or "-",
-            "mail": kullanici.email or "-",
-            "ip": kullanici.ip_adresi or "-",
-            "durum": kullanici.durum,
-        }, room="admin_room")
-
-    dogrulama_gerekli = not bool(kullanici.is_verified) and not kullanici_banli_mi(kullanici)
-    if kullanici_banli_mi(kullanici):
-        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
-    if dogrulama_gerekli:
-        kod = otp_kaydet(kullanici)
+    try:
         db.session.commit()
-        otp_eposta_gonder(kullanici.email, kod)
-        mesaj = "Kayıt alındı. E-postanıza gelen 6 haneli doğrulama kodunu girin."
-    else:
-        mesaj = "Bilgileriniz kaydedildi."
+    except Exception as hata:
+        db.session.rollback()
+        print(f"Kayıt hatası: {hata}")
+        return jsonify({"success": False, "mesaj": "Kayıt kaydedilemedi. Bilgileri kontrol edip yeniden deneyin."})
+
     return jsonify({
         "success": True,
         "musteri_id": kullanici.id,
         "durum": kullanici.durum,
-        "onayli_mi": bool(kullanici.onayli_mi),
-        "is_verified": bool(kullanici.is_verified),
-        "dogrulama_gerekli": dogrulama_gerekli,
-        "mesaj": mesaj,
+        "onayli_mi": True,
+        "is_verified": True,
+        "dogrulama_gerekli": False,
+        "mesaj": "Kayıt tamamlandı. Mezata hoş geldiniz.",
     })
+
+
+@app.route("/profil-guncelle", methods=["POST"])
+def profil_guncelle():
+    veri = request.json or {}
+    ad = (veri.get("ad") or "").strip()
+    tel = (veri.get("tel") or "").strip()
+    mail = (veri.get("mail") or veri.get("email") or "").strip()
+    adres = (veri.get("adres") or "").strip()
+    if not ad or not tel:
+        return jsonify({"success": False, "mesaj": "Ad ve telefon zorunludur."})
+    try:
+        kullanici = db.session.get(Kullanici, int(veri.get("musteri_id") or 0))
+    except (TypeError, ValueError):
+        kullanici = None
+    if not kullanici or kullanici.silindi_mi:
+        return jsonify({"success": False, "mesaj": "Profil bulunamadı."})
+    if kullanici_banli_mi(kullanici):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+    kullanici.ad_soyad = ad
+    kullanici.telefon = tel
+    kullanici.email = mail or None
+    kullanici.adres = adres or None
+    try:
+        db.session.commit()
+    except Exception as hata:
+        db.session.rollback()
+        print(f"Profil güncelleme hatası: {hata}")
+        return jsonify({"success": False, "mesaj": "Profil kaydedilemedi."})
+    return jsonify({"success": True, "mesaj": "Profil başarıyla güncellendi."})
+
+
+@app.route("/profil-sil", methods=["POST"])
+def profil_sil():
+    veri = request.json or {}
+    try:
+        kullanici = db.session.get(Kullanici, int(veri.get("musteri_id") or 0))
+    except (TypeError, ValueError):
+        kullanici = None
+    if kullanici and not kullanici.silindi_mi:
+        kullanici.silindi_mi = True
+        kullanici.silinme_tarihi = suan_utc()
+        kullanici.cihaz_kodu = None
+        try:
+            db.session.commit()
+        except Exception as hata:
+            db.session.rollback()
+            print(f"Profil silme hatası: {hata}")
+            return jsonify({"success": False, "mesaj": "Hesap sıfırlanamadı."})
+    return jsonify({"success": True, "mesaj": "Hesap sıfırlandı."})
 
 
 @app.route("/dogrulama-durum", methods=["GET"])

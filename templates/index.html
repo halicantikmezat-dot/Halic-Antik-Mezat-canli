@@ -733,6 +733,40 @@
 
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; z-index: 2000; padding: 10px; }
         .modal-content { background: var(--card-bg); padding: 10px; border-radius: 6px; width: 100%; max-width: 360px; text-align: center; border: 1.5px solid var(--accent-gold); max-height: 85vh; overflow-y: auto; }
+        #authRegisterModal.modal,
+        #profileModal.modal { background: rgba(0, 0, 0, 0.82); }
+        #authRegisterModal .modal-content,
+        #profileModal .modal-content {
+            width: min(92vw, 600px);
+            max-width: 600px;
+            padding: 22px 22px 18px;
+            text-align: left;
+            border: 2px solid #e8c872;
+            border-radius: 16px;
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(232, 200, 114, 0.45);
+        }
+        #authRegisterModal input,
+        #authRegisterModal textarea,
+        #profileModal input,
+        #profileModal textarea {
+            font-size: 16px;
+            padding: 12px 14px;
+            min-height: 48px;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 8px;
+        }
+        #authRegisterModal .btn-bid,
+        #profileModal .btn-bid {
+            min-height: 48px;
+            font-size: 16px;
+            font-weight: 800;
+            margin-top: 8px;
+        }
+        #profileModal .btn-profil-guncelle { background: #15803d; color: #fff; }
+        #profileModal .btn-hesap-sifirla { background: #b91c1c; color: #fff; }
+        #authRegisterModal .btn-kapat,
+        #profileModal .btn-kapat { background: #334155; color: #fff; }
         .table-custom { width: 100%; border-collapse: collapse; font-size: 9px; margin-top: 3px; }
         .table-custom th, .table-custom td { padding: 4px 3px; text-align: left; border-bottom: 1px solid var(--card-border); }
         .table-custom th { color: var(--accent-gold); }
@@ -1409,15 +1443,15 @@
 
 <div id="authRegisterModal" class="modal">
     <div class="modal-content" style="text-align: left;">
-        <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:16px; font-weight:800;">Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
+        <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size:22px; font-weight:800;">Teklif Vermek İçin Kaydolun / Giriş Yapın</h3>
         <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız (* Zorunlu)" required>
-        <label for="k_tel" style="font-size:15px; color:#ffffff;">Telefon Numarası (* Zorunlu)</label>
+        <label for="k_tel" style="font-size:16px; color:#ffffff;">Telefon Numarası (* Zorunlu)</label>
         <input type="tel" id="k_tel" placeholder="05XX XXX XX XX" required>
-        <label for="k_mail" style="font-size:15px; color:#ffffff;">E-posta (* Zorunlu)</label>
-        <input type="email" id="k_mail" placeholder="ornek@mail.com" required>
-        <textarea id="k_adres" rows="2" placeholder="Teslimat Adresiniz..."></textarea>
-        <button onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%; margin-top:4px;">💾 Onayla & Kaydol</button>
-        <button onclick="closeModal('authRegisterModal')" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;">Kapat</button>
+        <label for="k_mail" style="font-size:16px; color:#ffffff;">E-posta</label>
+        <input type="email" id="k_mail" placeholder="ornek@mail.com">
+        <textarea id="k_adres" rows="3" placeholder="Teslimat Adresiniz (isteğe bağlı)"></textarea>
+        <button id="kayitOlButonu" onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%;">💾 Onayla & Kaydol</button>
+        <button onclick="closeModal('authRegisterModal')" class="btn-bid btn-kapat" style="width:100%;">Kapat</button>
     </div>
 </div>
 
@@ -1457,14 +1491,14 @@
 
 <div id="profileModal" class="modal">
     <div class="modal-content" style="text-align: left;">
-        <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 5px; font-size:11px; font-weight:800;">👤 Profil Yönetimi</h3>
+        <h3 style="color: var(--accent-gold); text-align: center; margin-bottom: 10px; font-size:22px; font-weight:800;">👤 Profil Yönetimi</h3>
         <input type="text" id="p_ad" placeholder="Ad Soyad">
         <input type="text" id="p_tel" placeholder="05XX XXX XX XX">
         <input type="email" id="p_mail" placeholder="E-posta">
-        <textarea id="p_adres" rows="2" placeholder="Kargo Adresi"></textarea>
-        <button class="btn-bid btn-action-green" style="width:100%; margin-top:4px;" onclick="profilGuncelle()">💾 Bilgileri Güncelle</button>
-        <button class="btn-bid" style="width:100%; background:var(--btn-red); color:#fff; margin-top:3px;" onclick="hesabiTamamenSil()">🗑️ Hesabı Sıfırla</button>
-        <button class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:3px;" onclick="closeModal('profileModal')">Kapat</button>
+        <textarea id="p_adres" rows="3" placeholder="Kargo Adresi"></textarea>
+        <button class="btn-bid btn-profil-guncelle" style="width:100%;" onclick="profilGuncelle()">Profil Güncelle</button>
+        <button class="btn-bid btn-hesap-sifirla" style="width:100%;" onclick="hesabiTamamenSil()">Hesabı Sıfırla</button>
+        <button class="btn-bid btn-kapat" style="width:100%;" onclick="closeModal('profileModal')">Kapat</button>
     </div>
 </div>
 
@@ -3960,35 +3994,43 @@
         let tel = document.getElementById('k_tel').value.trim();
         let mail = document.getElementById('k_mail').value.trim();
         let adres = document.getElementById('k_adres').value.trim();
-        
+        const buton = document.getElementById('kayitOlButonu');
+
         if(!ad) return alert("Ad Soyad alanı zorunludur!");
         if(!tel) return alert("Telefon alanı zorunludur!");
-        if(!mail || !mail.includes('@') || !mail.includes('.')) return alert("Geçerli bir E-posta adresi zorunludur!");
+        if (buton) {
+            buton.disabled = true;
+            buton.textContent = "Kaydediliyor...";
+        }
 
         fetch('/kayit-ol', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ ad, tel, mail, adres, sozlesme: true })
         }).then(res => res.json()).then(d => {
-            kullaniciAdi = ad; 
-            kullaniciTel = tel;
-            kullaniciMail = mail;
-            if(d.musteri_id) kullaniciId = d.musteri_id;
-            kullaniciDogrulandi = !!d.is_verified;
-            
+            if (!d.success) {
+                if (d.ban) banEkrani(d.mesaj);
+                else alert(d.mesaj || "Kayıt tamamlanamadı.");
+                if (buton) {
+                    buton.disabled = false;
+                    buton.textContent = "💾 Onayla & Kaydol";
+                }
+                return;
+            }
             localStorage.setItem('halic_antik_ad', ad);
             localStorage.setItem('halic_antik_tel', tel);
             localStorage.setItem('halic_antik_mail', mail);
-            if(d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
-            localStorage.setItem('halic_antik_dogrulandi', kullaniciDogrulandi ? '1' : '0');
-            
-            document.getElementById('aktifKullaniciGosterge').innerText = ad;
-            closeModal('authRegisterModal');
-            sepetAdediGuncelle();
-            if (d.dogrulama_gerekli || d.is_verified === false) {
-                dogrulamaPenceresiniAc();
-            } else {
-                alert(d.mesaj || "Kayıt tamamlandı.");
+            localStorage.setItem('halic_antik_adres', adres);
+            if (d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
+            localStorage.setItem('halic_antik_dogrulandi', '1');
+            sessionStorage.setItem('halic_antik_id', d.musteri_id || '');
+            sessionStorage.setItem('halic_antik_ad', ad);
+            location.reload();
+        }).catch(function () {
+            alert("Kayıt sunucusuna ulaşılamadı.");
+            if (buton) {
+                buton.disabled = false;
+                buton.textContent = "💾 Onayla & Kaydol";
             }
         });
     }
@@ -4001,6 +4043,7 @@
             document.getElementById('p_ad').value = kullaniciAdi;
             document.getElementById('p_tel').value = kullaniciTel || '';
             document.getElementById('p_mail').value = kullaniciMail || '';
+            document.getElementById('p_adres').value = localStorage.getItem('halic_antik_adres') || '';
             document.getElementById('profileModal').style.display = 'flex';
         }
     }
@@ -4012,32 +4055,65 @@
         let mail = document.getElementById('p_mail').value.trim();
         let adres = document.getElementById('p_adres').value.trim();
         if (!yeniAd || !tel) return alert("Ad ve telefon zorunludur.");
+        if (!kullaniciId) return alert("Önce kayıt olun.");
 
-        fetch('/kayit-ol', {
+        fetch('/profil-guncelle', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ad: yeniAd, tel: tel, mail: mail, adres: adres, sozlesme: true })
+            body: JSON.stringify({
+                musteri_id: kullaniciId,
+                ad: yeniAd,
+                tel: tel,
+                mail: mail,
+                adres: adres
+            })
         }).then(res => res.json()).then(d => {
+            if (!d.success) {
+                alert(d.mesaj || "Profil güncellenemedi.");
+                return;
+            }
             localStorage.setItem('halic_antik_ad', yeniAd);
             localStorage.setItem('halic_antik_tel', tel);
             localStorage.setItem('halic_antik_mail', mail);
-            kullaniciAdi = yeniAd; 
+            localStorage.setItem('halic_antik_adres', adres);
+            kullaniciAdi = yeniAd;
             kullaniciTel = tel;
             kullaniciMail = mail;
             document.getElementById('aktifKullaniciGosterge').innerText = yeniAd;
             closeModal('profileModal');
-            alert("Profil başarıyla güncellendi.");
+            alert(d.mesaj || "Profil başarıyla güncellendi.");
             sepetAdediGuncelle();
+        }).catch(function () {
+            alert("Profil sunucusuna ulaşılamadı.");
+        });
+    }
+
+    function oturumKalintilariniSil() {
+        try { localStorage.clear(); } catch (e) {}
+        try { sessionStorage.clear(); } catch (e) {}
+        document.cookie.split(";").forEach(function (parca) {
+            const ad = parca.split("=")[0].trim();
+            if (!ad) return;
+            document.cookie = ad + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
         });
     }
 
     function hesabiTamamenSil() {
-        if (!confirm("Hesap ve tarayıcı oturum verilerinizi sıfırlamak istiyor musunuz?")) return;
-        localStorage.removeItem('halic_antik_ad');
-        localStorage.removeItem('halic_antik_id');
-        localStorage.removeItem('halic_antik_tel');
-        localStorage.removeItem('halic_antik_mail');
-        location.reload();
+        if (!confirm("Hesabınız silinecek ve tarayıcı oturumu temizlenecek. Devam edilsin mi?")) return;
+        const id = kullaniciId;
+        const bitir = function () {
+            oturumKalintilariniSil();
+            location.reload();
+        };
+        if (!id) {
+            bitir();
+            return;
+        }
+        fetch('/profil-sil', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: id })
+        }).finally(bitir);
     }
 
     function elestiriGonder() {
