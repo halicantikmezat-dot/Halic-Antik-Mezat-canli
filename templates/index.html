@@ -1447,8 +1447,8 @@
         <input type="text" id="k_ad" placeholder="Adınız ve Soyadınız (* Zorunlu)" required>
         <label for="k_tel" style="font-size:16px; color:#ffffff;">Telefon Numarası (* Zorunlu)</label>
         <input type="tel" id="k_tel" placeholder="05XX XXX XX XX" required>
-        <label for="k_mail" style="font-size:16px; color:#ffffff;">E-posta</label>
-        <input type="email" id="k_mail" placeholder="ornek@mail.com">
+        <label for="k_mail" style="font-size:16px; color:#ffffff;">E-posta (* Zorunlu)</label>
+        <input type="email" id="k_mail" placeholder="ornek@mail.com" required>
         <textarea id="k_adres" rows="3" placeholder="Teslimat Adresiniz (isteğe bağlı)"></textarea>
         <button id="kayitOlButonu" onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%;">💾 Onayla & Kaydol</button>
         <button onclick="closeModal('authRegisterModal')" class="btn-bid btn-kapat" style="width:100%;">Kapat</button>
@@ -4007,35 +4007,43 @@
         let adres = document.getElementById('k_adres').value.trim();
         const buton = document.getElementById('kayitOlButonu');
 
-        if(!ad) return alert("Ad Soyad alanı zorunludur!");
-        if(!tel) return alert("Telefon alanı zorunludur!");
+        if (!ad || !tel || !mail) return alert("Lütfen Ad, Telefon ve E-posta alanlarını eksiksiz doldurun");
         if (buton) {
             buton.disabled = true;
             buton.textContent = "Kaydediliyor...";
         }
 
-        fetch('/kayit-ol', {
+        fetch('/kayit', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ad, tel, mail, adres, sozlesme: true })
+            body: JSON.stringify({ ad, ad_soyad: ad, tel, telefon: tel, mail, email: mail, adres, sozlesme: true })
         }).then(res => res.json()).then(d => {
-            if (!d.success) {
-                if (d.ban) banEkrani(d.mesaj);
-                else alert(d.mesaj || "Kayıt tamamlanamadı.");
+            const oldu = d && (d.status === "success" || d.success);
+            if (!oldu) {
+                alert((d && (d.message || d.mesaj)) || "Kayıt tamamlanamadı.");
                 if (buton) {
                     buton.disabled = false;
                     buton.textContent = "💾 Onayla & Kaydol";
                 }
                 return;
             }
-            localStorage.setItem('halic_antik_ad', ad);
-            localStorage.setItem('halic_antik_tel', tel);
-            localStorage.setItem('halic_antik_mail', mail);
-            localStorage.setItem('halic_antik_adres', adres);
-            if (d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
+            const kisi = d.user || {};
+            const kayitId = kisi.id || d.musteri_id || "";
+            const kayitAd = kisi.ad || ad;
+            const kayitTel = kisi.tel || tel;
+            const kayitMail = kisi.mail || mail;
+            const kayitAdres = kisi.adres || adres;
+            localStorage.setItem('halic_antik_ad', kayitAd);
+            localStorage.setItem('halic_antik_tel', kayitTel);
+            localStorage.setItem('halic_antik_mail', kayitMail);
+            localStorage.setItem('halic_antik_adres', kayitAdres);
+            localStorage.setItem('halic_antik_id', kayitId);
             localStorage.setItem('halic_antik_dogrulandi', '1');
-            sessionStorage.setItem('halic_antik_id', d.musteri_id || '');
-            sessionStorage.setItem('halic_antik_ad', ad);
+            sessionStorage.setItem('halic_antik_id', kayitId);
+            sessionStorage.setItem('halic_antik_ad', kayitAd);
+            sessionStorage.setItem('halic_antik_tel', kayitTel);
+            sessionStorage.setItem('halic_antik_mail', kayitMail);
+            sessionStorage.setItem('halic_antik_adres', kayitAdres);
             location.reload();
         }).catch(function () {
             alert("Kayıt sunucusuna ulaşılamadı.");

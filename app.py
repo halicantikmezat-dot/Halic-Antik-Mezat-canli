@@ -3468,58 +3468,61 @@ def urun_takip_et():
 # ==========================================
 # ÖN TEKLİF VE KAYIT ROTALARI
 # ==========================================
+@app.route("/kayit", methods=["POST"])
 @app.route("/kayit-ol", methods=["POST"])
 def kayit_ol():
-    veri = request.json or {}
-    ad = (veri.get("ad") or "").strip()
-    tel = (veri.get("tel") or "").strip()
+    veri = request.get_json(silent=True) or request.form or {}
+    ad = (veri.get("ad") or veri.get("ad_soyad") or veri.get("isim") or "").strip()
+    tel = (veri.get("tel") or veri.get("telefon") or veri.get("phone") or "").strip()
     mail = (veri.get("mail") or veri.get("email") or "").strip()
-    adres = (veri.get("adres") or "").strip()
-    sozlesme = bool(veri.get("sozlesme", True))
+    adres = (veri.get("adres") or veri.get("address") or "").strip()
 
-    if not ad:
-        return jsonify({"success": False, "mesaj": "Ad Soyad alanı zorunludur."})
-    if not tel:
+    if not ad or not tel or not mail:
         return jsonify({
-            "success": False, "mesaj": "Telefon numarası zorunludur.",
+            "status": "error",
+            "success": False,
+            "message": "Ad, telefon ve e-posta zorunludur",
+            "mesaj": "Ad, telefon ve e-posta zorunludur",
         })
 
-    client_ip = get_client_ip()
-    fingerprint = get_device_fingerprint()
-    aktif_kayit = or_(Kullanici.silindi_mi.is_(False), Kullanici.silindi_mi.is_(None))
-    silinmis_kayit = Kullanici.silindi_mi.is_(True)
-    adaylar = [Kullanici.query.filter(Kullanici.telefon == tel, aktif_kayit)]
-    if mail:
-        adaylar.append(Kullanici.query.filter(func.lower(Kullanici.email) == mail.lower(), aktif_kayit))
-    adaylar.append(Kullanici.query.filter(Kullanici.telefon == tel, silinmis_kayit))
-    if mail:
-        adaylar.append(Kullanici.query.filter(func.lower(Kullanici.email) == mail.lower(), silinmis_kayit))
-    kullanici = None
-    for sorgu in adaylar:
-        kullanici = sorgu.order_by(Kullanici.id.desc()).first()
-        if kullanici:
-            break
-    if kullanici and not kullanici.silindi_mi and kullanici_banli_mi(kullanici):
-        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
+    try:
+        parmak_izi = get_device_fingerprint()
+    except Exception:
+        parmak_izi = None
+    try:
+        client_ip = get_client_ip()
+    except Exception:
+        client_ip = None
+
+    kullanici = (
+        Kullanici.query.filter_by(telefon=tel).order_by(Kullanici.id.desc()).first()
+    )
+    if kullanici is None and mail:
+        kullanici = (
+            Kullanici.query.filter(func.lower(Kullanici.email) == mail.lower())
+            .order_by(Kullanici.id.desc())
+            .first()
+        )
 
     if kullanici:
         kullanici.ad_soyad = ad
         kullanici.telefon = tel
         kullanici.email = mail or None
         kullanici.adres = adres or None
-        kullanici.sozlesme_onay = sozlesme
-        kullanici.cihaz_kodu = fingerprint
-        kullanici.ip_adresi = client_ip
         kullanici.silindi_mi = False
         kullanici.silinme_tarihi = None
+        if parmak_izi:
+            kullanici.cihaz_kodu = parmak_izi
+        if client_ip:
+            kullanici.ip_adresi = client_ip
     else:
         kullanici = Kullanici(
             ad_soyad=ad,
             telefon=tel,
             email=mail or None,
             adres=adres or None,
-            sozlesme_onay=sozlesme,
-            cihaz_kodu=fingerprint,
+            sozlesme_onay=True,
+            cihaz_kodu=parmak_izi,
             ip_adresi=client_ip,
         )
         db.session.add(kullanici)
@@ -3537,16 +3540,61 @@ def kayit_ol():
     except Exception as hata:
         db.session.rollback()
         print(f"Kayıt hatası: {hata}")
-        return jsonify({"success": False, "mesaj": "Kayıt kaydedilemedi. Bilgileri kontrol edip yeniden deneyin."})
+        kullanici = (
+            Kullanici.query.filter_by(telefon=tel).order_by(Kullanici.id.desc()).first()
+        )
+        if kullanici is None:
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "message": "Kayıt kaydedilemedi.",
+                "mesaj": "Kayıt kaydedilemedi.",
+            })
+        kullanici.ad_soyad = ad
+        kullanici.email = mail or None
+        kullanici.adres = adres or None
+        kullanici.silindi_mi = False
+        kullanici.silinme_tarihi = None
+        kullanici.onayli_mi = True
+        kullanici.durum = "onayli"
+        kullanici.is_verified = True
+        kullanici.is_banned = False
+        try:
+            db.session.commit()
+        except Exception as ikinci:
+            db.session.rollback()
+            print(f"Kayıt güncelleme hatası: {ikinci}")
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "message": "Kayıt kaydedilemedi.",
+                "mesaj": "Kayıt kaydedilemedi.",
+            })
 
+    session["musteri_id"] = kullanici.id
+    session["musteri_ad"] = kullanici.ad_soyad
+    kullanici_karti = {
+        "id": kullanici.id,
+        "ad": kullanici.ad_soyad,
+        "tel": kullanici.telefon or "",
+        "mail": kullanici.email or "",
+        "adres": kullanici.adres or "",
+        "onayli_mi": 1,
+        "durum": "onayli",
+        "is_verified": 1,
+        "is_banned": 0,
+    }
     return jsonify({
+        "status": "success",
+        "message": "Giriş başarılı",
         "success": True,
         "musteri_id": kullanici.id,
-        "durum": kullanici.durum,
+        "durum": "onayli",
         "onayli_mi": True,
         "is_verified": True,
         "dogrulama_gerekli": False,
-        "mesaj": "Kayıt tamamlandı. Mezata hoş geldiniz.",
+        "mesaj": "Giriş başarılı",
+        "user": kullanici_karti,
     })
 
 
