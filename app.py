@@ -3486,13 +3486,25 @@ def kayit_ol():
 
     client_ip = get_client_ip()
     fingerprint = get_device_fingerprint()
-
-    kullanici = Kullanici.query.filter_by(telefon=tel).first()
-    if kullanici and kullanici_banli_mi(kullanici):
+    aktif_kayit = or_(Kullanici.silindi_mi.is_(False), Kullanici.silindi_mi.is_(None))
+    silinmis_kayit = Kullanici.silindi_mi.is_(True)
+    adaylar = [Kullanici.query.filter(Kullanici.telefon == tel, aktif_kayit)]
+    if mail:
+        adaylar.append(Kullanici.query.filter(func.lower(Kullanici.email) == mail.lower(), aktif_kayit))
+    adaylar.append(Kullanici.query.filter(Kullanici.telefon == tel, silinmis_kayit))
+    if mail:
+        adaylar.append(Kullanici.query.filter(func.lower(Kullanici.email) == mail.lower(), silinmis_kayit))
+    kullanici = None
+    for sorgu in adaylar:
+        kullanici = sorgu.order_by(Kullanici.id.desc()).first()
+        if kullanici:
+            break
+    if kullanici and not kullanici.silindi_mi and kullanici_banli_mi(kullanici):
         return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
 
     if kullanici:
         kullanici.ad_soyad = ad
+        kullanici.telefon = tel
         kullanici.email = mail or None
         kullanici.adres = adres or None
         kullanici.sozlesme_onay = sozlesme
@@ -3569,13 +3581,15 @@ def profil_guncelle():
 
 
 @app.route("/profil-sil", methods=["POST"])
+@app.route("/profil_sil", methods=["POST"])
+@app.route("/hesap_sifirla", methods=["POST"])
 def profil_sil():
     veri = request.json or {}
     try:
         kullanici = db.session.get(Kullanici, int(veri.get("musteri_id") or 0))
     except (TypeError, ValueError):
         kullanici = None
-    if kullanici and not kullanici.silindi_mi:
+    if kullanici:
         kullanici.silindi_mi = True
         kullanici.silinme_tarihi = suan_utc()
         kullanici.cihaz_kodu = None
@@ -3584,8 +3598,14 @@ def profil_sil():
         except Exception as hata:
             db.session.rollback()
             print(f"Profil silme hatası: {hata}")
-            return jsonify({"success": False, "mesaj": "Hesap sıfırlanamadı."})
-    return jsonify({"success": True, "mesaj": "Hesap sıfırlandı."})
+            return jsonify({"status": "error", "success": False, "mesaj": "Hesap sıfırlanamadı."})
+    session.clear()
+    return jsonify({
+        "status": "success",
+        "message": "Hesap sifirlandi",
+        "success": True,
+        "mesaj": "Hesap sifirlandi",
+    })
 
 
 @app.route("/dogrulama-durum", methods=["GET"])

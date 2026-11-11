@@ -3164,11 +3164,22 @@
             sepetAdediGuncelle();
             if (kullaniciId) {
                 fetch('/dogrulama-durum?id=' + kullaniciId).then(r => r.json()).then(d => {
-                    if (d && d.is_banned) {
+                    if (!d || d.success === false) {
+                        kullaniciId = null;
+                        kullaniciAdi = "";
+                        kullaniciTel = "";
+                        kullaniciMail = "";
+                        kullaniciDogrulandi = false;
+                        oturumKalintilariniSil();
+                        const gosterge = document.getElementById('aktifKullaniciGosterge');
+                        if (gosterge) gosterge.innerText = "Misafir";
+                        return;
+                    }
+                    if (d.is_banned) {
                         banEkrani(d.mesaj);
                         return;
                     }
-                    kullaniciDogrulandi = !!(d && d.is_verified);
+                    kullaniciDogrulandi = !!d.is_verified;
                     localStorage.setItem('halic_antik_dogrulandi', kullaniciDogrulandi ? '1' : '0');
                     if (!kullaniciDogrulandi) dogrulamaPenceresiniAc();
                 }).catch(function () {});
@@ -4099,17 +4110,23 @@
     }
 
     function hesabiTamamenSil() {
-        if (!confirm("Hesabınız silinecek ve tarayıcı oturumu temizlenecek. Devam edilsin mi?")) return;
+        if (!confirm("Hesabınızı sıfırlayıp yeniden kayıt olmak istiyor musunuz?")) return;
         const id = kullaniciId;
         const bitir = function () {
-            oturumKalintilariniSil();
-            location.reload();
+            localStorage.clear();
+            sessionStorage.clear();
+            document.cookie.split(";").forEach(function (parca) {
+                const ad = parca.split("=")[0].trim();
+                if (!ad) return;
+                document.cookie = ad + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+            });
+            window.location.reload();
         };
         if (!id) {
             bitir();
             return;
         }
-        fetch('/profil-sil', {
+        fetch('/hesap_sifirla', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ musteri_id: id })
