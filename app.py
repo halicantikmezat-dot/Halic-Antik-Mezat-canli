@@ -1027,14 +1027,39 @@ def get_device_fingerprint():
     return hashlib.sha256(raw_str.encode("utf-8")).hexdigest()
 
 
+_VIDEO_UZANTILARI = {".mp4", ".mov", ".webm", ".m4v", ".ogg", ".mkv", ".avi", ".3gp"}
+_YUKLEME_MIME = {
+    ".mp4": "video/mp4",
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".ogg": "video/ogg",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".3gp": "video/3gpp",
+}
+
+
+def _dosya_uzantisi(ad):
+    return os.path.splitext(str(ad or "").lower())[1]
+
+
 def kaydet_guvenli_dosya(dosya):
     if not dosya or not dosya.filename:
         return None, None
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    orijinal_uzanti = _dosya_uzantisi(dosya.filename)
     temiz_ad = secure_filename(dosya.filename)
+    if orijinal_uzanti and _dosya_uzantisi(temiz_ad) != orijinal_uzanti:
+        kok = os.path.splitext(temiz_ad)[0] or "dosya"
+        temiz_ad = kok + orijinal_uzanti
+    if not temiz_ad:
+        temiz_ad = "dosya" + orijinal_uzanti
     benzersiz_ad = f"{uuid.uuid4().hex[:10]}_{temiz_ad}"
     dosya_yolu = os.path.join(app.config["UPLOAD_FOLDER"], benzersiz_ad)
     dosya.save(dosya_yolu)
+    if not os.path.isfile(dosya_yolu) or os.path.getsize(dosya_yolu) <= 0:
+        return None, None
     return f"/static/uploads/{benzersiz_ad}", benzersiz_ad
 
 
@@ -2117,7 +2142,11 @@ def veritabani_tablolari_onar():
 
 @app.route("/static/uploads/<path:filename>")
 def serve_uploads(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    mime = _YUKLEME_MIME.get(_dosya_uzantisi(filename))
+    ekstra = {"conditional": True}
+    if mime:
+        ekstra["mimetype"] = mime
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename, **ekstra)
 
 
 # ==========================================

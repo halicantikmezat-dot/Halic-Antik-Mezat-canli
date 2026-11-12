@@ -1909,6 +1909,29 @@
         }, 250);
     }
 
+    function onizlemeVideoMu(url) {
+        return /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i.test(String(url || "").split("?")[0]);
+    }
+
+    function onizlemeMedyaAdresi(url) {
+        try {
+            return encodeURI(String(url || "").trim());
+        } catch (e) {
+            return String(url || "").trim();
+        }
+    }
+
+    function onizlemeVideoKaynagi(urun) {
+        const video = String((urun && urun.video) || "").trim();
+        if (video) return video;
+        const fotolar = (urun && urun.fotograflar) || [];
+        for (let i = 0; i < fotolar.length; i++) {
+            const adres = String(fotolar[i] || "").trim();
+            if (onizlemeVideoMu(adres)) return adres;
+        }
+        return "";
+    }
+
     function urunOnizleModalAc(urunId) {
         playClickSound();
         const urun = tumArsivUrunleri.find(u => String(u.id) === String(urunId));
@@ -1935,11 +1958,31 @@
         const medyaAlani = document.getElementById('prevMedyaAlani');
         medyaAlani.innerHTML = "";
 
-        if (urun.video) {
+        const videoKaynak = onizlemeVideoKaynagi(urun);
+        if (videoKaynak) {
             const v = document.createElement('video');
-            v.src = urun.video; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+            v.controls = true;
+            v.autoplay = true;
+            v.muted = true;
+            v.defaultMuted = true;
+            v.loop = true;
+            v.playsInline = true;
+            v.preload = "auto";
+            v.setAttribute("controls", "");
+            v.setAttribute("autoplay", "");
+            v.setAttribute("muted", "");
+            v.setAttribute("loop", "");
+            v.setAttribute("playsinline", "");
+            v.setAttribute("preload", "auto");
+            v.style.width = "100%";
+            v.style.height = "100%";
+            v.style.objectFit = "contain";
             medyaAlani.appendChild(v);
-        } else if (urun.fotograflar && urun.fotograflar.length > 0 && urun.fotograflar[0].trim()) {
+            v.src = onizlemeMedyaAdresi(videoKaynak);
+            v.load();
+            const oynat = v.play();
+            if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
+        } else if (urun.fotograflar && urun.fotograflar.length > 0 && String(urun.fotograflar[0] || "").trim()) {
             const img = document.createElement('img');
             img.src = urun.fotograflar[0].trim();
             medyaAlani.appendChild(img);
