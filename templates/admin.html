@@ -664,7 +664,8 @@
                 <input type="text" id="studyoBoyut" placeholder="Boyut / ebat">
                 <input type="text" id="studyoSecere" placeholder="Şecere / menşei / dönem">
                 <textarea id="studyoKondisyon" rows="4" placeholder="Tahmini kondisyon ve detay açıklaması"></textarea>
-                <input type="number" id="studyoFiyat" min="0" step="1" placeholder="Önerilen başlangıç pey (TL)">
+                <input type="number" id="studyoFiyat" min="0" step="1" placeholder="Açılış Fiyatı (TL)">
+                <input type="number" id="studyoHemenAl" min="0" step="1" placeholder="Hemen Al Fiyatı (TL)">
                 <select id="studyoDukkan"></select>
                 <button type="button" class="btn btn-green" style="width:100%;" onclick="studyoAktar()">Dükkana Aktar</button>
             </div>
@@ -2744,6 +2745,7 @@
                 document.getElementById('studyoSecere').value = a.secere || "";
                 document.getElementById('studyoKondisyon').value = a.kondisyon || "";
                 document.getElementById('studyoFiyat').value = a.baslangic_fiyati || "";
+                document.getElementById('studyoHemenAl').value = a.hemen_al_fiyati || "";
                 if (durum) durum.textContent = "Alanlar doldu. İsterseniz düzeltip dükkana aktarın.";
             })
             .catch(() => {
@@ -2772,6 +2774,7 @@
         paket.append('secere', document.getElementById('studyoSecere').value || "");
         paket.append('kondisyon', document.getElementById('studyoKondisyon').value || "");
         paket.append('baslangic_fiyati', document.getElementById('studyoFiyat').value || "0");
+        paket.append('hemen_al_fiyati', document.getElementById('studyoHemenAl').value || "0");
         paket.append('dukkan', document.getElementById('studyoDukkan').value || "gumus");
         fetch('/api/studyo/transfer', { method: 'POST', body: paket })
             .then(r => r.json())

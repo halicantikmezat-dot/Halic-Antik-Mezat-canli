@@ -311,13 +311,14 @@ def _sahne_sesini_kes(dukkan):
     )
 
 
-def _sahneyi_bosa_al(dukkan, neden):
-    """Ürün satılınca veya geri çekilince sahneyi boşalt, sesi kes."""
+def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
+    """Ürün satılınca veya geri çekilince sahneyi boşalt. Satış tebriği kuyruktayken ses kesilmez."""
     oda = odalar.get(dukkan)
     if oda is not None:
         oda["aktif_urun_id"] = None
         oda["durum"]["durum"] = "bosta"
-    _sahne_sesini_kes(dukkan)
+    if sesi_kes:
+        _sahne_sesini_kes(dukkan)
     mesaj = (
         "Sıradaki ürün hazırlanıyor..."
         if neden == "satildi"
@@ -325,9 +326,50 @@ def _sahneyi_bosa_al(dukkan, neden):
     )
     socketio.emit(
         "sahne_bosta",
-        {"dukkan": dukkan, "neden": neden, "mesaj": mesaj},
+        {
+            "dukkan": dukkan,
+            "neden": neden,
+            "mesaj": mesaj,
+            "sesi_koru": not sesi_kes,
+        },
         room=dukkan,
     )
+
+
+def _satis_kapanisini_isaretle(dukkan, oda):
+    """Tebrik bitişini otonom döngü beklesin. Bayrak, tebrik kuyruğa girmeden açılır."""
+    oda["satis_tebrik_bekleniyor"] = True
+    if oda.get("otonom_aktif"):
+        oda["lot_kapanis"] = "satildi"
+    else:
+        oda["lot_kapanis"] = ""
+
+
+def _satis_tebrik_bitti(dukkan):
+    oda = odalar.get(dukkan)
+    if oda is None or not oda.get("satis_tebrik_bekleniyor"):
+        return
+    oda["satis_tebrik_bekleniyor"] = False
+
+
+def _satis_tebrik_bitisini_bekle(dukkan, saniye=15):
+    """İstemci anons_bitti deyene kadar bekler. Sessiz kalırsa süre dolar."""
+    oda = odalar.get(dukkan)
+    sinir = time.time() + float(saniye)
+    while time.time() < sinir:
+        if oda is None or not oda.get("satis_tebrik_bekleniyor"):
+            return
+        if not oda.get("otonom_aktif"):
+            return
+        socketio.sleep(0.3)
+    if oda is not None:
+        oda["satis_tebrik_bekleniyor"] = False
+
+
+def _otonom_disi_satisi_bosalt(dukkan, oda):
+    if oda.get("otonom_aktif"):
+        return
+    _sahneyi_bosa_al(dukkan, "satildi", sesi_kes=False)
 
 
 def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
@@ -1370,6 +1412,8 @@ for kod in DUKKANLAR.keys():
         "mevat_asama": "",
         "acilis_tabani": 0,
         "karar_pey_geldi": False,
+        "lot_kapanis": "",
+        "satis_tebrik_bekleniyor": False,
         "durum": {
             "durum": "Bekliyor",
             "sure_bitis": 0,
@@ -1656,6 +1700,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
     oda["durum"]["kazanan"] = etiket_ad
     oda["durum"]["kazanan_id"] = kullanici_id
     oda["durum"]["pey"] = float(tutar)
+    _satis_kapanisini_isaretle(dukkan, oda)
     biten_id = oda.get("aktif_urun_id")
     oda["aktif_urun_id"] = None
 
@@ -1695,8 +1740,8 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         "satis_bitti",
         {"dukkan": dukkan, "kazanan": etiket_ad, "fiyat": float(tutar)},
     )
-    _sahneyi_bosa_al(dukkan, "satildi")
     ahmet_zaferi_seslendir(dukkan, konusma_adi or etiket_ad)
+    _otonom_disi_satisi_bosalt(dukkan, oda)
     bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
 
 
@@ -1920,15 +1965,17 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 },
             )
 
-            _sahneyi_bosa_al(dukkan, "satildi" if pey_var_mi else "pas")
-
             if pey_var_mi:
+                _satis_kapanisini_isaretle(dukkan, oda)
                 ahmet_usta_anons_yap(
                     dukkan,
                     ahmet_satis_cumlesi(satis_lot, satis_ad, oda["durum"]["kazanan"]),
                     tur="satis",
                 )
+                _otonom_disi_satisi_bosalt(dukkan, oda)
             else:
+                oda["lot_kapanis"] = "pas"
+                _sahneyi_bosa_al(dukkan, "pas")
                 if oda.get("mevat_asama") == "karar":
                     ahmet_usta_anons_yap(
                         dukkan,
@@ -2124,7 +2171,22 @@ def dukkan_otonom_dongusu(dukkan):
                         socketio.sleep(1)
                     if not oda.get("otonom_aktif"):
                         break
-                    socketio.sleep(6)
+                    kapanis = ""
+                    with oda_kilitleri[dukkan]:
+                        kapanis = oda.get("lot_kapanis") or ""
+                        oda["lot_kapanis"] = ""
+                    if kapanis == "satildi":
+                        _satis_tebrik_bitisini_bekle(dukkan, 15)
+                        if oda.get("otonom_aktif"):
+                            ahmet_usta_anons_yap(
+                                dukkan,
+                                "Bir sonraki ürüne geçiyorum.",
+                                tur="sayac",
+                            )
+                            socketio.sleep(3.5)
+                            _sahneyi_bosa_al(dukkan, "satildi")
+                    else:
+                        socketio.sleep(6)
                 except Exception as hata:
                     db.session.rollback()
                     print(f"[OTONOM] {dukkan}: {hata}")
@@ -3433,6 +3495,7 @@ def pey_ver():
                 oda["durum"]["kazanan"] = etiket_ad
                 oda["durum"]["kazanan_id"] = kullanici.id
                 oda["durum"]["pey"] = hemen_al_fiyat
+                _satis_kapanisini_isaretle(dukkan, oda)
                 biten_id = oda["aktif_urun_id"]
                 oda["aktif_urun_id"] = None
 
@@ -3481,12 +3544,12 @@ def pey_ver():
                         "fiyat": hemen_al_fiyat,
                     },
                 )
-                _sahneyi_bosa_al(dukkan, "satildi")
                 ahmet_usta_anons_yap(
                     dukkan,
                     ahmet_satis_cumlesi(urun.lot_no, urun.urun_adi, kullanici.ad_soyad),
                     tur="satis",
                 )
+                _otonom_disi_satisi_bosalt(dukkan, oda)
                 bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
 
                 return jsonify({
@@ -5461,6 +5524,12 @@ def _studyo_alanlari(veri):
         fiyat = 0.0
     if fiyat < 0:
         fiyat = 0.0
+    try:
+        hemen = float(veri.get("hemen_al_fiyati") or 0)
+    except (TypeError, ValueError):
+        hemen = 0.0
+    if hemen < 0:
+        hemen = 0.0
     return {
         "baslik": yazi("baslik")[:200],
         "malzeme": yazi("malzeme")[:100],
@@ -5468,6 +5537,7 @@ def _studyo_alanlari(veri):
         "secere": yazi("secere")[:300],
         "kondisyon": yazi("kondisyon")[:2000],
         "baslangic_fiyati": round(fiyat, 2),
+        "hemen_al_fiyati": round(hemen, 2),
     }
 
 
@@ -5482,10 +5552,11 @@ def _studyo_gorsel_analiz(mime, ham_bayt):
             "content": (
                 "Sen Haliç Antik Mezat'ın kıdemli antikacısı ve eksperisin. "
                 "Görseli mezat vitrini için incele. Emin olmadığın dönemi kesin tarih gibi yazma. "
-                "Yalnızca JSON döndür. Anahtarlar: baslik, malzeme, boyut, secere, kondisyon, baslangic_fiyati. "
+                "Yalnızca JSON döndür. Anahtarlar: baslik, malzeme, boyut, secere, kondisyon, baslangic_fiyati, hemen_al_fiyati. "
                 "baslik cezbedici ve kısa olsun. malzeme ürün cinsi ve malzemesidir. "
                 "boyut görselden tahminse yaklaşık olduğunu belirt. secere menşei ve dönemdir. "
-                "kondisyon satışa uygun Türkçe açıklamadır. baslangic_fiyati TL cinsinden sayı olsun."
+                "kondisyon satışa uygun Türkçe açıklamadır. baslangic_fiyati açılış peyidir. "
+                "hemen_al_fiyati açılışın üstünde tahmini vitrin bedelidir. İkisi de TL cinsinden sayı olsun."
             ),
         },
         {
@@ -5562,6 +5633,12 @@ def studyo_transfer():
             fiyat = 0.0
         if fiyat < 0:
             fiyat = 0.0
+        try:
+            hemen_al = float(request.form.get("hemen_al_fiyati") or 0)
+        except (TypeError, ValueError):
+            hemen_al = 0.0
+        if hemen_al < 0:
+            hemen_al = 0.0
 
         fotograflar = []
         video_url = ""
@@ -5599,7 +5676,7 @@ def studyo_transfer():
             kategori=kategori_ad_temizle(malzeme),
             acilis_fiyati=fiyat,
             guncel_fiyat=fiyat,
-            hemen_al_fiyati=0,
+            hemen_al_fiyati=hemen_al,
             tanitim_yazisi="\n".join(tanitim),
             fotograflar=fotograflar,
             video=video_url,
@@ -6320,19 +6397,38 @@ def handle_leave_dukkan(data):
     leave_room(dukkan)
 
 
+@socketio.on("anons_bitti")
+def anons_bitti(veri):
+    """Satış ve zafer anonsu bittiğinde otonom geçiş beklemesini çözer."""
+    try:
+        veri = veri or {}
+        if str(veri.get("tur") or "") not in ("satis", "zafer"):
+            return
+        dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
+        _satis_tebrik_bitti(dukkan)
+    finally:
+        db.session.remove()
+
+
 @socketio.on("ahmet_ses_iste")
 def ahmet_ses_iste(veri):
-    if not session.get("is_admin"):
-        return
-    veri = veri or {}
-    dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
-    oda = odalar.get(dukkan) or {}
-    durum = (oda.get("durum") or {}).get("durum")
-    if not oda.get("aktif_urun_id") or durum in ("bosta", "Satıldı", "Pas"):
-        return
-    metin = str(veri.get("metin") or "").strip()
-    if metin:
-        ahmet_ses_akisi(dukkan, metin, tur="tanitim", kesinti=False)
+    """Yönetici serbest metin okutur. İzleyici yalnız sahnedeki ürünün tanıtımını dinler."""
+    try:
+        veri = veri or {}
+        dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
+        oda = odalar.get(dukkan) or {}
+        durum = (oda.get("durum") or {}).get("durum")
+        if not oda.get("aktif_urun_id") or durum in ("bosta", "Satıldı", "Pas"):
+            return
+        if session.get("is_admin"):
+            metin = str(veri.get("metin") or "").strip()
+        else:
+            urun = db.session.get(Urun, oda.get("aktif_urun_id"))
+            metin = str(getattr(urun, "tanitim_yazisi", "") or "").strip()
+        if metin:
+            ahmet_ses_akisi(dukkan, metin, tur="tanitim", kesinti=False)
+    finally:
+        db.session.remove()
 
 
 @socketio.on('admin_sesli_komut')

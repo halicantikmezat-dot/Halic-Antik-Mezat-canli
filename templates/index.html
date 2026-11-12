@@ -1914,6 +1914,7 @@
     }
 
     let dinlemeAcik = false;
+    let tanitimIptal = false;
 
     function dinlemeyiDurdur() {
         sesNesil = 0;
@@ -1940,19 +1941,57 @@
         return s.replace(/\s+/g, ' ').trim();
     }
 
+    function sahneVideosu() {
+        const video = document.getElementById('stageVideo');
+        if (!video || !video.isConnected) return null;
+        const stil = window.getComputedStyle(video);
+        if (stil.display === 'none' || stil.visibility === 'hidden') return null;
+        return video;
+    }
+
+    function tanitimSesiniDurdur() {
+        tanitimIptal = true;
+        anonsKuyrugu = anonsKuyrugu.filter(function (oge) {
+            return !oge || oge.tur !== 'tanitim';
+        });
+        if (!currentAudio || currentAudio.dataset.tur !== 'tanitim') return;
+        currentAudio.onended = null;
+        currentAudio.onerror = null;
+        try {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+        } catch (e) {}
+        if (window.aktifSes === currentAudio) window.aktifSes = null;
+        currentAudio = null;
+        anonsMesgul = false;
+        if (anonsKuyrugu.length) anonsBaslat(anonsKuyrugu.shift());
+    }
+
     function bilgiKartiniAcKapa() {
+        const video = sahneVideosu();
+        if (video) {
+            video.muted = !video.muted;
+            const btn = document.getElementById('btnDinleKisa');
+            if (btn) {
+                btn.textContent = video.muted ? '🔇' : '🔊';
+                btn.title = video.muted ? 'Ses Kapalı' : 'Ses Açık';
+            }
+            return;
+        }
         const kart = document.getElementById('bilgiKarti');
         if (!kart) return;
         if (dinlemeAcik) {
             dinlemeAcik = false;
             kart.hidden = true;
-            dinlemeyiDurdur();
+            tanitimSesiniDurdur();
             dinleDugmesiniYaz('🔊 Dinle');
             return;
         }
         dinlemeAcik = true;
+        tanitimIptal = false;
         kart.hidden = false;
         dinleDugmesiniYaz('🔊 Konuşuyor...');
+        sahneAnlatiminiBaslat();
     }
 
     function sahneAnlatiminiBaslat() {
@@ -2287,10 +2326,21 @@
                 return;
             }
             const taban = sonGorulenPey || 0;
-            const minKabul = minimumPeyTabani(taban);
-            if (taban > 0 && tutar < minKabul) {
-                alert(gecersizPeyUyarisi(minKabul));
-                return;
+            if (serbestArtis) {
+                if (aktifAcilisFiyati > 0 && tutar < aktifAcilisFiyati) {
+                    alert("Teklif açılış fiyatının (" + Math.round(aktifAcilisFiyati).toLocaleString('tr-TR') + " TL) altına inemez.");
+                    return;
+                }
+                if (taban > 0 && tutar <= taban) {
+                    alert("Teklif en az " + Math.round(taban + 1).toLocaleString('tr-TR') + " TL olmalıdır.");
+                    return;
+                }
+            } else {
+                const minKabul = minimumPeyTabani(taban);
+                if (taban > 0 && tutar < minKabul) {
+                    alert(gecersizPeyUyarisi(minKabul));
+                    return;
+                }
             }
             fahisPeyKontrol(tutar, function () { peyGonder(tutar); });
             return;
@@ -2494,6 +2544,7 @@
         if (!data || data.dukkan !== aktifDukkan) return;
         const zorunlu = data.zorunlu || data.tur === "satis" || data.tur === "sahne" || data.tur === "yeni_urun";
         if (!zorunlu) return;
+        if (tebrikSuruyorMu() && data.tur !== 'satis' && data.tur !== 'zafer') return;
         sesNesil = data.nesil;
         sesKuyrugunuTemizle();
         sesBaglaminiAc();
@@ -2516,6 +2567,21 @@
     let anonsKuyrugu = [];
     let anonsMesgul = false;
 
+    function tebrikSuruyorMu() {
+        if (currentAudio && (currentAudio.dataset.tur === 'satis' || currentAudio.dataset.tur === 'zafer')) return true;
+        return anonsKuyrugu.some(function (oge) {
+            return oge && (oge.tur === 'satis' || oge.tur === 'zafer');
+        });
+    }
+
+    function anonsBittiyseBildir(data) {
+        const tur = String((data && data.tur) || '');
+        if (tur !== 'satis' && tur !== 'zafer') return;
+        if (data && data._anonsBittiGitti) return;
+        if (data) data._anonsBittiGitti = true;
+        socket.emit('anons_bitti', { dukkan: aktifDukkan, tur: tur, nesil: data && data.nesil });
+    }
+
     function sesKuyrugunuTemizle() {
         anonsKuyrugu = [];
         anonsMesgul = false;
@@ -2533,6 +2599,11 @@
     }
 
     function anonsBaslat(data) {
+        if (data && data.tur === "tanitim" && tanitimIptal) {
+            anonsMesgul = false;
+            anonsSiradaki();
+            return;
+        }
         if (window.moderatorKonusuyor) {
             anonsKuyrugu.unshift(data);
             anonsMesgul = false;
@@ -2540,6 +2611,7 @@
         }
         const kaynak = sesKaynagi(data);
         if (!kaynak) {
+            anonsBittiyseBildir(data);
             anonsSiradaki();
             return;
         }
@@ -2551,6 +2623,7 @@
         muzigiKis();
         audio.onended = function () {
             const zaferdi = audio.dataset.tur === "zafer";
+            anonsBittiyseBildir(data);
             if (currentAudio === audio) {
                 currentAudio = null;
                 if (window.aktifSes === audio) window.aktifSes = null;
@@ -3444,7 +3517,7 @@
 
     socket.on('sahne_bosta', function (data) {
         if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
-        sahneyiBosalt(data && data.mesaj);
+        sahneyiBosalt(data && data.mesaj, !!(data && data.sesi_koru));
     });
 
     socket.on('pey_guncellendi', function(data) {
@@ -3526,7 +3599,6 @@
             soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(data.kazanan || '')}</span> (${formatFiyat(data.fiyat || 0)})`;
         }
         peyVermeButonlariniKilitle();
-        sahneyiBosalt("Sıradaki ürün hazırlanıyor...");
         zaferKutlamasiniAc(data);
     });
 
@@ -3694,13 +3766,13 @@
                     btnHemenAl.innerText = satildi ? "🔒 BU ÜRÜN SATILDI" : "🔒 ÜRÜN GERİ ÇEKİLDİ";
                 }
             }
-            sahneyiBosalt(satildi ? "Sıradaki ürün hazırlanıyor..." : "Yeni ürün sahneye bekleniyor...");
+            if (!satildi) sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
         }
     });
 
-    function sahneyiBosalt(mesaj) {
+    function sahneyiBosalt(mesaj, sesiKoru) {
         sahneBeklemeMetni = mesaj || "Sıradaki ürün hazırlanıyor...";
-        sesKuyrugunuTemizle();
+        if (!sesiKoru && !tebrikSuruyorMu()) sesKuyrugunuTemizle();
         zoomEfektiDurdur();
         if (typeof kenBurnsDurdur === "function") kenBurnsDurdur();
         tanitimModuAktif = false;
