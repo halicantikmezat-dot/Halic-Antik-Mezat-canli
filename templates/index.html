@@ -1151,8 +1151,7 @@
             0% { transform: scale(1); }
             100% { transform: scale(1.1); }
         }
-        #medyaKapsayici.tanitim-zoom img,
-        #medyaKapsayici.tanitim-zoom video {
+        #medyaKapsayici.tanitim-zoom img {
             animation: kenBurnsTanitim 7s ease-in-out forwards !important;
         }
         #medyaKapsayici .kb-orta { transform-origin: center center !important; }
@@ -1166,8 +1165,12 @@
             object-fit: contain !important;
         }
         .stage-media-box video {
+            position: absolute !important;
+            inset: 0 !important;
             height: 100% !important;
-            max-height: 100% !important;
+            max-height: none !important;
+            width: 100% !important;
+            object-fit: contain !important;
             transform: none !important;
             animation: none !important;
             will-change: auto !important;
@@ -2032,7 +2035,7 @@
         if (liste.length) {
             medyaGoster(liste[tanitimSlaytAdim % liste.length]);
         }
-        const gorsel = kutu.querySelector('img, video');
+        const gorsel = kutu.querySelector('img');
         if (gorsel) {
             gorsel.className = kenBurnsKoseler[tanitimSlaytAdim % kenBurnsKoseler.length];
             gorsel.style.animation = 'none';
@@ -3920,10 +3923,13 @@
             v.setAttribute("loop", "");
             v.setAttribute("playsinline", "");
             v.setAttribute("preload", "auto");
+            v.style.position = "absolute";
+            v.style.inset = "0";
             v.style.width = "100%";
             v.style.height = "100%";
             v.style.objectFit = "contain";
             v.style.transform = "none";
+            v.style.animation = "none";
             medyaDiv.appendChild(v);
             v.src = sahneMedyaAdresi(medya.url);
             v.load();
