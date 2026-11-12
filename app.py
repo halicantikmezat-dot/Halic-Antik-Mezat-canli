@@ -4560,6 +4560,8 @@ def urun_ekle():
             silindi_mi=False,
             tedarikci_id=secili_tedarikci_id,
         )
+        if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
+            yeni_urun.eklenme_tarihi = datetime.now()
         db.session.add(yeni_urun)
         db.session.commit()
 
@@ -4865,17 +4867,534 @@ def otonom_mezat_kontrol():
     })
 
 
+MUZIK_VARSAYILAN_VIDEO = "j12l7mQANFU"
+MUZIK_ISTASYON_SIRASI = (
+    ("nostalji", "Nostalji / Taş Plak"),
+    ("tsm", "Türk Sanat Müziği"),
+    ("akustik", "Akustik / Enstrümantal"),
+    ("fon", "Dinlendirici / Fon"),
+)
+_MUZIK_ISTASYON_KILIT = threading.Lock()
+_YT_KIMLIK = re.compile(r"^[A-Za-z0-9_-]{6,128}$")
+
+
+def _muzik_istasyon_dosyasi():
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    return os.path.join(basedir, "instance", "muzik_istasyonlari.json")
+
+
+def _muzik_istasyon_varsayilan():
+    return {
+        kod: {"id": MUZIK_VARSAYILAN_VIDEO, "tur": "video", "ad": ad}
+        for kod, ad in MUZIK_ISTASYON_SIRASI
+    }
+
+
+def _youtube_kimlik_ayikla(ham):
+    metin = (ham or "").strip()
+    if not metin:
+        return "", "video"
+    if "playlist?list=" in metin or "/playlist?" in metin:
+        if "list=" in metin:
+            return metin.split("list=", 1)[1].split("&", 1)[0], "playlist"
+    if "youtu.be/" in metin:
+        parca = metin.split("youtu.be/", 1)[1]
+        return parca.split("?")[0].split("&")[0].split("/")[0], "video"
+    if "v=" in metin:
+        return metin.split("v=", 1)[1].split("&", 1)[0], "video"
+    if "list=" in metin:
+        return metin.split("list=", 1)[1].split("&", 1)[0], "playlist"
+    temiz = metin.split("?")[0].split("&")[0].split("/")[-1]
+    if temiz.startswith(("PL", "UU", "OL", "LL", "RD", "FL")) and len(temiz) > 12:
+        return temiz, "playlist"
+    return temiz, "video"
+
+
+def muzik_istasyonlarini_oku():
+    kayit = _muzik_istasyon_varsayilan()
+    yol = _muzik_istasyon_dosyasi()
+    try:
+        with open(yol, "r", encoding="utf-8") as f:
+            gelen = json.load(f)
+    except (OSError, ValueError):
+        gelen = {}
+    if not isinstance(gelen, dict):
+        gelen = {}
+    for kod, ad in MUZIK_ISTASYON_SIRASI:
+        ham = gelen.get(kod) or {}
+        if isinstance(ham, str):
+            ham = {"id": ham, "tur": "video"}
+        if not isinstance(ham, dict):
+            continue
+        kimlik = str(ham.get("id") or "").strip()
+        tur = ham.get("tur") if ham.get("tur") in ("video", "playlist") else "video"
+        if _YT_KIMLIK.match(kimlik):
+            kayit[kod] = {"id": kimlik, "tur": tur, "ad": ad}
+        else:
+            kayit[kod]["ad"] = ad
+    return kayit
+
+
+def muzik_istasyonlarini_yaz(istasyonlar):
+    yol = _muzik_istasyon_dosyasi()
+    with _MUZIK_ISTASYON_KILIT:
+        with open(yol, "w", encoding="utf-8") as f:
+            json.dump(istasyonlar, f, ensure_ascii=False, indent=2)
+    return istasyonlar
+
+
+def _muzik_istasyon_yayinla(istasyonlar, eski_video_id=None):
+    socketio.emit("canli_muzik_istasyonlari", {"istasyonlar": istasyonlar})
+    if eski_video_id:
+        socketio.emit("canli_muzik_degisti", {
+            "video_id": eski_video_id,
+            "tur": "video",
+            "kategori": "nostalji",
+        })
+
+
+@app.route("/api/muzik-istasyonlari", methods=["GET"])
+def muzik_istasyonlari():
+    return jsonify({"success": True, "istasyonlar": muzik_istasyonlarini_oku()})
+
+
 @app.route("/api/admin/muzik-link-guncelle", methods=["POST"])
 @admin_required
 def admin_muzik_link_guncelle():
     veri = request.json or {}
-    video_id = veri.get("video_id", "j12l7mQANFU").strip()
+    mevcut = muzik_istasyonlarini_oku()
 
-    if not video_id:
+    if isinstance(veri.get("istasyonlar"), dict):
+        for kod, _ad in MUZIK_ISTASYON_SIRASI:
+            ham = veri["istasyonlar"].get(kod, "")
+            if isinstance(ham, dict):
+                ham = ham.get("id") or ham.get("link") or ""
+            kimlik, tur = _youtube_kimlik_ayikla(str(ham or ""))
+            if not _YT_KIMLIK.match(kimlik):
+                return jsonify({
+                    "success": False,
+                    "mesaj": f"{mevcut[kod]['ad']} için geçerli bir YouTube video veya liste kimliği girin.",
+                }), 400
+            mevcut[kod]["id"] = kimlik
+            mevcut[kod]["tur"] = tur
+        muzik_istasyonlarini_yaz(mevcut)
+        _muzik_istasyon_yayinla(mevcut)
+        return jsonify({"success": True, "istasyonlar": mevcut})
+
+    video_id, tur = _youtube_kimlik_ayikla(veri.get("video_id", MUZIK_VARSAYILAN_VIDEO))
+    if not _YT_KIMLIK.match(video_id):
         return jsonify({"success": False, "mesaj": "Geçersiz video ID!"}), 400
 
-    socketio.emit("canli_muzik_degisti", {"video_id": video_id})
-    return jsonify({"success": True, "video_id": video_id})
+    kategori = veri.get("kategori") or "nostalji"
+    if kategori not in mevcut:
+        kategori = "nostalji"
+    mevcut[kategori]["id"] = video_id
+    mevcut[kategori]["tur"] = tur
+    muzik_istasyonlarini_yaz(mevcut)
+    _muzik_istasyon_yayinla(mevcut, eski_video_id=video_id if kategori == "nostalji" else None)
+    return jsonify({"success": True, "video_id": video_id, "istasyonlar": mevcut})
+
+
+YENI_URUN_HAVUZ = 100
+_YENI_URUN_HARIC_KILIT = threading.Lock()
+_YENI_VIDEO_UZANTILARI = (".mp4", ".webm", ".ogg", ".mov", ".m4v", ".m3u8")
+
+
+def _yeni_urun_haric_dosyasi():
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    return os.path.join(basedir, "instance", "yeni_urun_haric.json")
+
+
+def yeni_urun_haric_oku():
+    try:
+        with open(_yeni_urun_haric_dosyasi(), "r", encoding="utf-8") as f:
+            gelen = json.load(f)
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(gelen, list):
+        return set()
+    kimlikler = set()
+    for deger in gelen:
+        try:
+            kimlikler.add(int(deger))
+        except (TypeError, ValueError):
+            continue
+    return kimlikler
+
+
+def yeni_urun_haric_yaz(kimlikler):
+    yol = _yeni_urun_haric_dosyasi()
+    with _YENI_URUN_HARIC_KILIT:
+        with open(yol, "w", encoding="utf-8") as f:
+            json.dump(sorted(kimlikler), f)
+    return kimlikler
+
+
+def _yeni_video_mu(yol):
+    adres = str(yol or "").split("?", 1)[0].lower()
+    return adres.endswith(_YENI_VIDEO_UZANTILARI)
+
+
+def _yeni_medya_listesi(ham):
+    try:
+        if ham is None:
+            return []
+        if isinstance(ham, str):
+            temiz = ham.strip()
+            if not temiz:
+                return []
+            if temiz.startswith("["):
+                ham = json.loads(temiz)
+            else:
+                return [temiz]
+        if isinstance(ham, (list, tuple)):
+            return [str(oge).strip() for oge in ham if str(oge).strip()]
+    except Exception:
+        return []
+    return []
+
+
+def _yeni_urun_temel_sorgu():
+    silinmedi_kosullari = [
+        Urun.silindi_mi.is_(False),
+        Urun.silindi_mi.is_(None),
+    ]
+    if IS_SQLITE:
+        silinmedi_kosullari.append(Urun.silindi_mi == 0)
+    silinmedi = or_(*silinmedi_kosullari)
+    satilmadi = or_(Urun.durum.is_(None), Urun.durum != "Satıldı")
+    try:
+        kolonlar = {kolon.name for kolon in Urun.__table__.columns}
+    except Exception:
+        kolonlar = set()
+    if "satildi_mi" in kolonlar and hasattr(Urun, "satildi_mi"):
+        satilmadi = or_(
+            Urun.satildi_mi.is_(False),
+            Urun.satildi_mi.is_(None),
+            Urun.satildi_mi == 0,
+        )
+    return Urun.query.filter(silinmedi, satilmadi)
+
+
+def _yeni_urun_paketle(urun):
+    fotolar = _yeni_medya_listesi(getattr(urun, "fotograflar", None))
+    video = str(getattr(urun, "video", None) or "").strip()
+    if not video:
+        for adres in fotolar:
+            if _yeni_video_mu(adres):
+                video = adres
+                break
+    gorsel = ""
+    for adres in fotolar:
+        if adres and not _yeni_video_mu(adres):
+            gorsel = adres
+            break
+    if not gorsel and fotolar and not _yeni_video_mu(fotolar[0]) and not video:
+        gorsel = fotolar[0]
+    dukkan = getattr(urun, "dukkan_kodu", None) or "gumus"
+    try:
+        acilis = float(getattr(urun, "acilis_fiyati", None) or 0)
+    except (TypeError, ValueError):
+        acilis = 0.0
+    baslik = getattr(urun, "urun_adi", None) or ""
+    lot = getattr(urun, "lot_no", None)
+    return {
+        "id": urun.id,
+        "baslik": baslik,
+        "urun_adi": baslik,
+        "ad": baslik,
+        "gorsel": gorsel,
+        "video_yolu": video,
+        "video": video,
+        "fotograflar": fotolar,
+        "lot_no": lot,
+        "lot": lot,
+        "baslangic_fiyati": acilis,
+        "fiyat": acilis,
+        "dukkan_id": dukkan,
+        "dukkan": dukkan,
+        "dukkan_adi": DUKKANLAR.get(dukkan, {}).get("ad", dukkan),
+        "yeni": True,
+    }
+
+
+def yeni_urunleri_getir():
+    haric = yeni_urun_haric_oku()
+    try:
+        son_eklenenler = (
+            _yeni_urun_temel_sorgu()
+            .order_by(Urun.id.desc())
+            .limit(YENI_URUN_HAVUZ)
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        son_eklenenler = (
+            Urun.query.order_by(Urun.id.desc())
+            .limit(YENI_URUN_HAVUZ)
+            .all()
+        )
+    havuz = []
+    for urun in son_eklenenler:
+        if len(havuz) >= YENI_URUN_HAVUZ:
+            break
+        try:
+            if urun is None or urun.id in haric:
+                continue
+            if getattr(urun, "silindi_mi", 0) in (True, 1):
+                continue
+            if (getattr(urun, "durum", None) or "") == "Satıldı":
+                continue
+            if "satildi_mi" in {kolon.name for kolon in Urun.__table__.columns}:
+                if getattr(urun, "satildi_mi", False) in (True, 1):
+                    continue
+            havuz.append(_yeni_urun_paketle(urun))
+        except Exception:
+            continue
+    return havuz
+
+
+@app.route("/api/yeni-urunler", methods=["GET"])
+def yeni_urunler():
+    try:
+        cevap = jsonify({"success": True, "urunler": yeni_urunleri_getir()})
+    except Exception:
+        db.session.rollback()
+        cevap = jsonify({"success": True, "urunler": []})
+    cevap.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    cevap.headers["Pragma"] = "no-cache"
+    return cevap
+
+
+@app.route("/api/admin/yeni-urun-cikar", methods=["POST"])
+@admin_required
+def yeni_urun_cikar():
+    veri = request.json or {}
+    try:
+        urun_id = int(veri.get("urun_id"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "mesaj": "Geçersiz ürün."}), 400
+    urun = Urun.query.get(urun_id)
+    if not urun or urun.silindi_mi:
+        return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
+    haric = yeni_urun_haric_oku()
+    haric.add(urun_id)
+    yeni_urun_haric_yaz(haric)
+    socketio.emit("yeni_urunler_degisti", {"urun_id": urun_id})
+    try:
+        liste = yeni_urunleri_getir()
+    except Exception:
+        db.session.rollback()
+        liste = []
+    return jsonify({"success": True, "urunler": liste})
+
+
+_STUDYO_GORSEL = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_STUDYO_VIDEO = {".mp4", ".mov", ".webm", ".m4v", ".mkv", ".avi"}
+
+
+def _studyo_uzanti(ad):
+    return os.path.splitext(str(ad or "").lower())[1]
+
+
+def _studyo_mime(ad):
+    uzanti = _studyo_uzanti(ad)
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }.get(uzanti, "image/jpeg")
+
+
+def _studyo_json_ayikla(ham):
+    metin = (ham or "").strip()
+    if metin.startswith("```"):
+        metin = re.sub(r"^```(?:json)?", "", metin, flags=re.I).strip()
+        metin = re.sub(r"```$", "", metin).strip()
+    try:
+        veri = json.loads(metin)
+    except (TypeError, ValueError):
+        eslesen = re.search(r"\{.*\}", metin, re.S)
+        if not eslesen:
+            return {}
+        try:
+            veri = json.loads(eslesen.group(0))
+        except (TypeError, ValueError):
+            return {}
+    return veri if isinstance(veri, dict) else {}
+
+
+def _studyo_alanlari(veri):
+    def yazi(anahtar):
+        return str((veri or {}).get(anahtar) or "").strip()
+
+    try:
+        fiyat = float(veri.get("baslangic_fiyati") or 0)
+    except (TypeError, ValueError):
+        fiyat = 0.0
+    if fiyat < 0:
+        fiyat = 0.0
+    return {
+        "baslik": yazi("baslik")[:200],
+        "malzeme": yazi("malzeme")[:100],
+        "boyut": yazi("boyut")[:120],
+        "secere": yazi("secere")[:300],
+        "kondisyon": yazi("kondisyon")[:2000],
+        "baslangic_fiyati": round(fiyat, 2),
+    }
+
+
+def _studyo_gorsel_analiz(mime, ham_bayt):
+    istemci = _openai_ses_istemcisi()
+    if istemci is None:
+        return {}, "OpenAI anahtarı tanımlı değil."
+    b64 = base64.b64encode(ham_bayt).decode("ascii")
+    mesajlar = [
+        {
+            "role": "system",
+            "content": (
+                "Sen Haliç Antik Mezat'ın kıdemli antikacısı ve eksperisin. "
+                "Görseli mezat vitrini için incele. Emin olmadığın dönemi kesin tarih gibi yazma. "
+                "Yalnızca JSON döndür. Anahtarlar: baslik, malzeme, boyut, secere, kondisyon, baslangic_fiyati. "
+                "baslik cezbedici ve kısa olsun. malzeme ürün cinsi ve malzemesidir. "
+                "boyut görselden tahminse yaklaşık olduğunu belirt. secere menşei ve dönemdir. "
+                "kondisyon satışa uygun Türkçe açıklamadır. baslangic_fiyati TL cinsinden sayı olsun."
+            ),
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Bu ürün görselinden mezat kartını çıkar."},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+            ],
+        },
+    ]
+    try:
+        try:
+            yanit = istemci.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.4,
+                max_tokens=700,
+                response_format={"type": "json_object"},
+                messages=mesajlar,
+            )
+        except Exception:
+            yanit = istemci.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.4,
+                max_tokens=700,
+                messages=mesajlar,
+            )
+        ham = yanit.choices[0].message.content or ""
+    except Exception as e:
+        return {}, "Görsel analizi tamamlanamadı: " + str(e)
+    return _studyo_alanlari(_studyo_json_ayikla(ham)), ""
+
+
+@app.route("/api/studyo/analiz", methods=["POST"])
+@admin_required
+def studyo_analiz():
+    try:
+        dosya = request.files.get("gorsel")
+        if dosya is None or not getattr(dosya, "filename", ""):
+            for aday in request.files.getlist("dosyalar"):
+                if _studyo_uzanti(aday.filename) in _STUDYO_GORSEL:
+                    dosya = aday
+                    break
+        if dosya is None or _studyo_uzanti(getattr(dosya, "filename", "")) not in _STUDYO_GORSEL:
+            return jsonify({
+                "success": False,
+                "mesaj": "Şecere için bir ürün fotoğrafı seçin. Video ayrıca kaydedilir.",
+            }), 400
+        ham = dosya.read()
+        if not ham:
+            return jsonify({"success": False, "mesaj": "Dosya boş."}), 400
+        if len(ham) > 8 * 1024 * 1024:
+            return jsonify({"success": False, "mesaj": "Fotoğraf 8 MB sınırını aşıyor."}), 400
+        analiz, hata = _studyo_gorsel_analiz(_studyo_mime(dosya.filename), ham)
+        if hata:
+            return jsonify({"success": False, "mesaj": hata})
+        return jsonify({"success": True, "analiz": analiz})
+    except Exception as e:
+        return jsonify({"success": False, "mesaj": str(e)})
+
+
+@app.route("/api/studyo/transfer", methods=["POST"])
+@admin_required
+def studyo_transfer():
+    try:
+        dukkan = dukkan_dogrula(request.form.get("dukkan", "gumus"))
+        baslik = (request.form.get("baslik") or "İsimsiz Ürün").strip()[:200]
+        malzeme = (request.form.get("malzeme") or "Genel").strip()[:100] or "Genel"
+        boyut = (request.form.get("boyut") or "").strip()
+        secere = (request.form.get("secere") or "").strip()
+        kondisyon = (request.form.get("kondisyon") or "").strip()
+        try:
+            fiyat = float(request.form.get("baslangic_fiyati") or 0)
+        except (TypeError, ValueError):
+            fiyat = 0.0
+        if fiyat < 0:
+            fiyat = 0.0
+
+        fotograflar = []
+        video_url = ""
+        for dosya in request.files.getlist("dosyalar"):
+            url, temiz_ad = kaydet_guvenli_dosya(dosya)
+            if not url or not temiz_ad:
+                continue
+            uzanti = _studyo_uzanti(temiz_ad)
+            if uzanti in _STUDYO_VIDEO and not video_url:
+                video_url = url
+            fotograflar.append(url)
+        if not fotograflar:
+            return jsonify({"success": False, "mesaj": "En az bir fotoğraf veya video gerekli."}), 400
+
+        en_yuksek_lot = (
+            db.session.query(func.max(Urun.lot_no))
+            .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
+            .scalar()
+        )
+        lot_no = (en_yuksek_lot + 1) if en_yuksek_lot else 1
+        tanitim = []
+        if malzeme:
+            tanitim.append("Malzeme: " + malzeme)
+        if boyut:
+            tanitim.append("Ebat: " + boyut)
+        if secere:
+            tanitim.append("Şecere: " + secere)
+        if kondisyon:
+            tanitim.append(kondisyon)
+
+        yeni_urun = Urun(
+            dukkan_kodu=dukkan,
+            lot_no=lot_no,
+            urun_adi=baslik,
+            kategori=kategori_ad_temizle(malzeme),
+            acilis_fiyati=fiyat,
+            guncel_fiyat=fiyat,
+            hemen_al_fiyati=0,
+            tanitim_yazisi="\n".join(tanitim),
+            fotograflar=fotograflar,
+            video=video_url,
+            ses_dosyasi="",
+            durum="Aktif",
+            silindi_mi=False,
+        )
+        if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
+            yeni_urun.eklenme_tarihi = datetime.now()
+        db.session.add(yeni_urun)
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "lot_no": lot_no,
+            "dukkan": dukkan,
+            "id": yeni_urun.id,
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(e)}), 500
 
 
 @app.route("/excel-indir", methods=["GET"])

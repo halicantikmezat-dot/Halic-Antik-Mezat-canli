@@ -610,5 +610,14 @@
     "telefon": "05322755345",
     "tutar": 429.0,
     "bizimhesap_durum": "Aktarıldı"
+  },
+  {
+    "tarih": "12.11.2026 04:44",
+    "lot_no": 20,
+    "urun_adi": "Ahşap Satranç Taşı G530A",
+    "alici": "hamdullah bulut",
+    "telefon": "05322755345",
+    "tutar": 2100.0,
+    "bizimhesap_durum": "Aktarıldı"
   }
 ]

@@ -202,6 +202,32 @@
             max-height: 90vh;
             overflow-y: auto;
         }
+        .studyo-pencere { max-width: 980px !important; text-align: left; }
+        .studyo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 800px) { .studyo-grid { grid-template-columns: 1fr; } }
+        .studyo-birak {
+            border: 1.5px dashed var(--accent-gold);
+            border-radius: 10px;
+            background: #0f141c;
+            min-height: 120px;
+            padding: 16px;
+            text-align: center;
+            color: #cbd5e1;
+            cursor: pointer;
+        }
+        .studyo-birak.ustunde { background: rgba(212, 175, 55, 0.12); }
+        .studyo-onizleme {
+            margin-top: 10px;
+            min-height: 180px;
+            border-radius: 8px;
+            background: #070b12;
+            border: 1px solid var(--card-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .studyo-onizleme img, .studyo-onizleme video { max-width: 100%; max-height: 280px; object-fit: contain; }
 
         .medya-kapsayici {
             display: flex;
@@ -320,6 +346,7 @@
             <button onclick="sozlesmeModalAc()" class="btn btn-sm" style="background:#0d9488; color:#fff;">📜 Ürün Alım Sözleşmesi</button>
             <button onclick="karekodModalAc()" class="btn btn-sm" style="background:#0284c7; color:#fff;">📱 Site Karekodu</button>
             <a href="/admin/pazaryeri/" class="btn btn-yellow btn-sm" style="text-decoration: none; font-weight: bold;">📦 Tedarikçi & Kargo</a>
+            <button type="button" onclick="studyoAc()" class="btn btn-sm" style="background:#6d28d9; color:#fff;">🎙️ AI Ürün Stüdyosu</button>
             <a id="linkCanliEkran" href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
             <a id="linkVitrin" href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
             <a href="/excel-indir" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
@@ -336,6 +363,13 @@
 
     <!-- 10 DÜKKAN SEÇİM BARI -->
     <div class="shop-selector-bar" id="shopBar"></div>
+    <div id="yeniUrunlerPanel" class="card" hidden>
+        <div class="card-title">🔥 Yeni Ürünler <span id="yeniUrunSayisi" style="font-size:12px; color:#94a3b8;"></span></div>
+        <p style="font-size:12px; color:#94a3b8; margin-bottom:8px;">
+            Havuz, silinmemiş ve satılmamış ürünlerden en büyük kimliğe göre en fazla 100 kayıttır. En son yüklenen ürün listenin başında durur.
+        </p>
+        <div id="yeniUrunListesi" class="item-list" style="max-height:420px;"></div>
+    </div>
 
     <!-- MÜZİK VE TOPLU ÜRÜN YÜKLEME -->
     <div class="grid-2">
@@ -364,15 +398,27 @@
         <div class="card">
             <div class="card-title">🎵 7/24 Canlı Müzik Yayını Yönetimi</div>
             <p style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">
-                YouTube canlı yayın linkini veya Video ID'sini giriniz:
+                Her kategori için YouTube video / liste kimliği veya linki. Varsayılan yayın <b>j12l7mQANFU</b> olarak durur.
             </p>
-            <div style="display: flex; gap: 6px;">
-                <input type="text" id="adminYtMusicInput" placeholder="Örn: j12l7mQANFU veya https://youtube.com/watch?v=..." 
-                       value="j12l7mQANFU" 
-                       style="flex: 1; margin: 0;">
-                <button type="button" class="btn btn-blue" onclick="adminCanliMuzikGuncelle()" style="white-space: nowrap;">
-                    💾 Müziği Güncelle
-                </button>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <label style="font-size: 11px; color: #e2e8f0;">Nostalji / Taş Plak
+                    <input type="text" id="adminMuzikNostalji" data-muzik-kod="nostalji" value="j12l7mQANFU" placeholder="j12l7mQANFU veya YouTube linki" style="margin: 4px 0 0;">
+                </label>
+                <label style="font-size: 11px; color: #e2e8f0;">Türk Sanat Müziği
+                    <input type="text" id="adminMuzikTsm" data-muzik-kod="tsm" value="j12l7mQANFU" placeholder="Video / liste kimliği veya link" style="margin: 4px 0 0;">
+                </label>
+                <label style="font-size: 11px; color: #e2e8f0;">Akustik / Enstrümantal
+                    <input type="text" id="adminMuzikAkustik" data-muzik-kod="akustik" value="j12l7mQANFU" placeholder="Video / liste kimliği veya link" style="margin: 4px 0 0;">
+                </label>
+                <label style="font-size: 11px; color: #e2e8f0;">Dinlendirici / Fon
+                    <input type="text" id="adminMuzikFon" data-muzik-kod="fon" value="j12l7mQANFU" placeholder="Video / liste kimliği veya link" style="margin: 4px 0 0;">
+                </label>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                    <span id="adminMuzikDurum" style="font-size: 11px; color: #94a3b8;"></span>
+                    <button type="button" class="btn btn-blue" onclick="adminCanliMuzikGuncelle()" style="white-space: nowrap;">
+                        💾 İstasyonları Kaydet
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -584,6 +630,39 @@
                     <tr><td colspan="6" style="text-align: center; color: #94a3b8;">Kayıtlı bildirim bulunmuyor.</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- AI ÜRÜN STÜDYOSU -->
+<div id="modalStudyo" class="modal">
+    <div class="modal-content studyo-pencere">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="color:var(--accent-gold); margin:0; font-size:16px;">🎙️ AI Ürün Stüdyosu</h3>
+            <button type="button" onclick="modalKapat('modalStudyo')" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div class="studyo-grid">
+            <div>
+                <div id="studyoBirak" class="studyo-birak">
+                    Fotoğraf veya videoyu buraya bırakın
+                    <div style="font-size:11px; color:#94a3b8; margin-top:6px;">ya da tıklayarak seçin. Birden fazla dosya eklenebilir.</div>
+                    <input type="file" id="studyoDosya" accept="image/*,video/*" multiple hidden>
+                </div>
+                <div id="studyoDosyaOzet" style="font-size:11px; color:#94a3b8; margin-top:6px;"></div>
+                <div id="studyoOnizleme" class="studyo-onizleme"><span style="color:#64748b; font-size:12px;">Önizleme burada görünür</span></div>
+            </div>
+            <div>
+                <button type="button" class="btn btn-sm" style="background:#6d28d9; color:#fff; margin-bottom:8px;" onclick="studyoAnalizEt()">🤖 AI Şecere Çıkar</button>
+                <div id="studyoDurum" style="font-size:12px; color:#94a3b8; min-height:18px; margin-bottom:6px;"></div>
+                <input type="text" id="studyoBaslik" placeholder="Ürün başlığı">
+                <input type="text" id="studyoMalzeme" placeholder="Ürün cinsi / malzeme">
+                <input type="text" id="studyoBoyut" placeholder="Boyut / ebat">
+                <input type="text" id="studyoSecere" placeholder="Şecere / menşei / dönem">
+                <textarea id="studyoKondisyon" rows="4" placeholder="Tahmini kondisyon ve detay açıklaması"></textarea>
+                <input type="number" id="studyoFiyat" min="0" step="1" placeholder="Önerilen başlangıç pey (TL)">
+                <select id="studyoDukkan"></select>
+                <button type="button" class="btn btn-green" style="width:100%;" onclick="studyoAktar()">Dükkana Aktar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -957,6 +1036,12 @@
                 btn.onclick = () => dukkanSec(kod);
                 shopBar.appendChild(btn);
             }
+            const yeniSekme = document.createElement('div');
+            yeniSekme.className = 'shop-tab';
+            yeniSekme.id = 'tab_yeni_urunler';
+            yeniSekme.innerHTML = '🔥 Yeni Ürünler';
+            yeniSekme.onclick = () => yeniUrunlerSekmesiniAc();
+            shopBar.appendChild(yeniSekme);
             dukkanSec(seciliDukkan);
         } catch (e) {
             console.error("Dükkanlar yüklenemedi:", e);
@@ -965,6 +1050,8 @@
 
     function dukkanSec(kod) {
         playClickSound();
+        const yeniPanel = document.getElementById('yeniUrunlerPanel');
+        if (yeniPanel) yeniPanel.hidden = true;
         socket.emit('leave_dukkan', { dukkan: seciliDukkan });
         seciliDukkan = kod;
         socket.emit('join_dukkan', { dukkan: seciliDukkan });
@@ -2397,32 +2484,297 @@
         });
     }
 
+    const ADMIN_MUZIK_ALANLARI = {
+        nostalji: "adminMuzikNostalji",
+        tsm: "adminMuzikTsm",
+        akustik: "adminMuzikAkustik",
+        fon: "adminMuzikFon"
+    };
+
+    function adminMuzikIstasyonlariniYukle() {
+        fetch("/api/muzik-istasyonlari")
+            .then(r => r.json())
+            .then(res => {
+                const istasyonlar = (res && res.istasyonlar) || {};
+                Object.keys(ADMIN_MUZIK_ALANLARI).forEach(kod => {
+                    const alan = document.getElementById(ADMIN_MUZIK_ALANLARI[kod]);
+                    const kayit = istasyonlar[kod];
+                    if (alan && kayit && kayit.id) alan.value = kayit.id;
+                });
+            })
+            .catch(() => {});
+    }
+
     function adminCanliMuzikGuncelle() {
         playClickSound();
-        let inputVal = document.getElementById('adminYtMusicInput').value.trim();
-        if (!inputVal) return alert("Lütfen bir YouTube linki veya Video ID girin!");
-
-        let videoId = inputVal;
-        if (inputVal.includes("v=")) {
-            videoId = inputVal.split("v=")[1].split("&")[0];
-        } else if (inputVal.includes("youtu.be/")) {
-            videoId = inputVal.split("youtu.be/")[1].split("?")[0];
+        const istasyonlar = {};
+        for (const kod in ADMIN_MUZIK_ALANLARI) {
+            const alan = document.getElementById(ADMIN_MUZIK_ALANLARI[kod]);
+            const deger = alan ? alan.value.trim() : "";
+            if (!deger) return alert("Her kategori için bir YouTube video veya liste kimliği girin.");
+            istasyonlar[kod] = deger;
         }
-
+        const durum = document.getElementById("adminMuzikDurum");
+        if (durum) durum.textContent = "Kaydediliyor...";
         fetch('/api/admin/muzik-link-guncelle', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ video_id: videoId })
+            body: JSON.stringify({ istasyonlar: istasyonlar })
         }).then(r => r.json()).then(res => {
-            if(res.success) alert("✅ Canlı müzik güncellendi.");
-            else alert("Hata: " + res.mesaj);
+            if (res.success) {
+                if (res.istasyonlar) {
+                    Object.keys(ADMIN_MUZIK_ALANLARI).forEach(kod => {
+                        const alan = document.getElementById(ADMIN_MUZIK_ALANLARI[kod]);
+                        if (alan && res.istasyonlar[kod]) alan.value = res.istasyonlar[kod].id;
+                    });
+                }
+                if (durum) durum.textContent = "Kaydedildi";
+                alert("✅ Müzik istasyonları güncellendi.");
+            } else {
+                if (durum) durum.textContent = "";
+                alert("Hata: " + (res.mesaj || "Kayıt başarısız"));
+            }
+        }).catch(() => {
+            if (durum) durum.textContent = "";
+            alert("Müzik ayarları kaydedilemedi.");
         });
+    }
+
+    adminMuzikIstasyonlariniYukle();
+
+    function yeniUrunKartlariniBas(urunler) {
+        const liste = document.getElementById('yeniUrunListesi');
+        const sayac = document.getElementById('yeniUrunSayisi');
+        if (!liste) return;
+        const kayitlar = urunler || [];
+        if (sayac) sayac.textContent = `(${kayitlar.length})`;
+        if (!kayitlar.length) {
+            liste.innerHTML = '<div style="color:#94a3b8; font-size:12px; padding:6px;">Yeni etiketinde ürün yok.</div>';
+            return;
+        }
+        liste.innerHTML = kayitlar.map(u => {
+            const dukkanAdi = u.dukkan_adi || u.dukkan || "";
+            const baslik = u.baslik || u.urun_adi || u.ad || "";
+            const lot = u.lot_no != null ? u.lot_no : u.lot;
+            const fiyat = u.baslangic_fiyati != null ? u.baslangic_fiyati : u.fiyat;
+            return `
+                <div class="item-row">
+                    <span><b>Lot #${lot}</b> - ${baslik} (${fiyat} TL) <small style="color:#94a3b8;">[${dukkanAdi}]</small></span>
+                    <div class="actions">
+                        <button type="button" class="btn btn-red btn-sm" onclick="yeniUrundenCikar(${u.id})">Yenilerden Çıkar</button>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    function yeniUrunlerSekmesiniAc() {
+        playClickSound();
+        document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
+        const sekme = document.getElementById('tab_yeni_urunler');
+        if (sekme) sekme.classList.add('active');
+        const panel = document.getElementById('yeniUrunlerPanel');
+        if (panel) panel.hidden = false;
+        const liste = document.getElementById('yeniUrunListesi');
+        if (liste) liste.innerHTML = '<div style="color:#94a3b8; font-size:12px; padding:6px;">Yükleniyor...</div>';
+        fetch('/api/yeni-urunler?t=' + Date.now(), { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => yeniUrunKartlariniBas((data && data.urunler) || []))
+            .catch(() => {
+                if (liste) liste.innerHTML = "";
+                const sayac = document.getElementById('yeniUrunSayisi');
+                if (sayac) sayac.textContent = "(0)";
+            });
+    }
+
+    function yeniUrundenCikar(urunId) {
+        playClickSound();
+        if (!confirm("Bu ürün yeni etiketinden çıksın mı? Dükkan listesinde kalır.")) return;
+        fetch('/api/admin/yeni-urun-cikar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urun_id: urunId })
+        }).then(r => r.json()).then(data => {
+            if (!data.success) return alert(data.mesaj || "İşlem yapılamadı.");
+            yeniUrunKartlariniBas(data.urunler || []);
+        }).catch(() => alert("Yeni etiketinden çıkarılamadı."));
     }
 
     function modalKapat(id) {
         playClickSound();
         document.getElementById(id).style.display = 'none';
     }
+
+    let studyoDosyalar = [];
+    let studyoOnizlemeAdresi = "";
+
+    function studyoAc() {
+        playClickSound();
+        const pencere = document.getElementById('modalStudyo');
+        if (pencere) pencere.style.display = 'flex';
+        studyoDukkanlariDoldur();
+    }
+
+    function studyoDukkanlariDoldur() {
+        const secim = document.getElementById('studyoDukkan');
+        if (!secim) return;
+        const yaz = (kaynak) => {
+            const onceki = secim.value;
+            secim.innerHTML = "";
+            Object.keys(kaynak || {}).forEach(kod => {
+                const opt = document.createElement('option');
+                opt.value = kod;
+                opt.textContent = (kaynak[kod] && kaynak[kod].ad) ? kaynak[kod].ad : kod;
+                secim.appendChild(opt);
+            });
+            if (onceki) secim.value = onceki;
+            else if (typeof seciliDukkan !== "undefined") secim.value = seciliDukkan;
+        };
+        if (dukkanlar && Object.keys(dukkanlar).length) {
+            yaz(dukkanlar);
+            return;
+        }
+        fetch('/api/dukkanlar').then(r => r.json()).then(data => yaz(data.dukkanlar || {})).catch(() => {});
+    }
+
+    function studyoDosyaEkle(liste) {
+        const gelen = Array.from(liste || []);
+        gelen.forEach(dosya => {
+            if (dosya && (dosya.type.startsWith('image/') || dosya.type.startsWith('video/'))) {
+                studyoDosyalar.push(dosya);
+            }
+        });
+        const ozet = document.getElementById('studyoDosyaOzet');
+        if (ozet) ozet.textContent = studyoDosyalar.length ? studyoDosyalar.length + " dosya hazır" : "";
+        studyoOnizle();
+    }
+
+    function studyoOnizle() {
+        const kutu = document.getElementById('studyoOnizleme');
+        if (!kutu) return;
+        if (studyoOnizlemeAdresi) {
+            URL.revokeObjectURL(studyoOnizlemeAdresi);
+            studyoOnizlemeAdresi = "";
+        }
+        const dosya = studyoDosyalar[0];
+        if (!dosya) {
+            kutu.innerHTML = '<span style="color:#64748b; font-size:12px;">Önizleme burada görünür</span>';
+            return;
+        }
+        studyoOnizlemeAdresi = URL.createObjectURL(dosya);
+        kutu.innerHTML = "";
+        if (dosya.type.startsWith('video/')) {
+            const video = document.createElement('video');
+            video.src = studyoOnizlemeAdresi;
+            video.controls = true;
+            video.muted = true;
+            video.playsInline = true;
+            kutu.appendChild(video);
+        } else {
+            const img = document.createElement('img');
+            img.src = studyoOnizlemeAdresi;
+            img.alt = "";
+            kutu.appendChild(img);
+        }
+    }
+
+    function studyoAnalizEt() {
+        playClickSound();
+        const gorsel = studyoDosyalar.find(d => d.type.startsWith('image/'));
+        const durum = document.getElementById('studyoDurum');
+        if (!gorsel) {
+            if (durum) durum.textContent = "Şecere için bir fotoğraf ekleyin. Video kayda gider, analiz fotoğraftan yapılır.";
+            return;
+        }
+        if (durum) durum.textContent = "AI inceliyor...";
+        const paket = new FormData();
+        paket.append('gorsel', gorsel, gorsel.name);
+        fetch('/api/studyo/analiz', { method: 'POST', body: paket })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (durum) durum.textContent = data.mesaj || "Analiz tamamlanamadı.";
+                    return;
+                }
+                const a = data.analiz || {};
+                document.getElementById('studyoBaslik').value = a.baslik || "";
+                document.getElementById('studyoMalzeme').value = a.malzeme || "";
+                document.getElementById('studyoBoyut').value = a.boyut || "";
+                document.getElementById('studyoSecere').value = a.secere || "";
+                document.getElementById('studyoKondisyon').value = a.kondisyon || "";
+                document.getElementById('studyoFiyat').value = a.baslangic_fiyati || "";
+                if (durum) durum.textContent = "Alanlar doldu. İsterseniz düzeltip dükkana aktarın.";
+            })
+            .catch(() => {
+                if (durum) durum.textContent = "Analiz isteği tamamlanamadı.";
+            });
+    }
+
+    function studyoAktar() {
+        playClickSound();
+        const durum = document.getElementById('studyoDurum');
+        const baslik = (document.getElementById('studyoBaslik').value || "").trim();
+        if (!baslik) {
+            if (durum) durum.textContent = "Ürün başlığı gerekli.";
+            return;
+        }
+        if (!studyoDosyalar.length) {
+            if (durum) durum.textContent = "En az bir fotoğraf veya video ekleyin.";
+            return;
+        }
+        if (durum) durum.textContent = "Dükkana aktarılıyor...";
+        const paket = new FormData();
+        studyoDosyalar.forEach(dosya => paket.append('dosyalar', dosya, dosya.name));
+        paket.append('baslik', baslik);
+        paket.append('malzeme', document.getElementById('studyoMalzeme').value || "");
+        paket.append('boyut', document.getElementById('studyoBoyut').value || "");
+        paket.append('secere', document.getElementById('studyoSecere').value || "");
+        paket.append('kondisyon', document.getElementById('studyoKondisyon').value || "");
+        paket.append('baslangic_fiyati', document.getElementById('studyoFiyat').value || "0");
+        paket.append('dukkan', document.getElementById('studyoDukkan').value || "gumus");
+        fetch('/api/studyo/transfer', { method: 'POST', body: paket })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (durum) durum.textContent = data.mesaj || "Aktarım yapılamadı.";
+                    return;
+                }
+                if (durum) durum.textContent = "Kaydedildi. Lot #" + data.lot_no + " yeni ürün havuzuna girdi.";
+                studyoDosyalar = [];
+                studyoOnizle();
+                const ozet = document.getElementById('studyoDosyaOzet');
+                if (ozet) ozet.textContent = "";
+            })
+            .catch(() => {
+                if (durum) durum.textContent = "Aktarım isteği tamamlanamadı.";
+            });
+    }
+
+    (function studyoBirakKur() {
+        const alan = document.getElementById('studyoBirak');
+        const girdi = document.getElementById('studyoDosya');
+        if (!alan || !girdi) return;
+        alan.addEventListener('click', () => girdi.click());
+        girdi.addEventListener('change', () => {
+            studyoDosyaEkle(girdi.files);
+            girdi.value = "";
+        });
+        ['dragenter', 'dragover'].forEach(ad => {
+            alan.addEventListener(ad, (e) => {
+                e.preventDefault();
+                alan.classList.add('ustunde');
+            });
+        });
+        ['dragleave', 'drop'].forEach(ad => {
+            alan.addEventListener(ad, (e) => {
+                e.preventDefault();
+                alan.classList.remove('ustunde');
+            });
+        });
+        alan.addEventListener('drop', (e) => {
+            studyoDosyaEkle(e.dataTransfer && e.dataTransfer.files);
+        });
+    })();
 </script>
 </body>
 </html>
