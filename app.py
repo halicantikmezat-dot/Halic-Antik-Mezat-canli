@@ -17,6 +17,7 @@ except Exception:
 from datetime import datetime, timedelta, timezone
 import functools
 import hashlib
+import hmac
 import io
 import json
 import csv
@@ -115,7 +116,7 @@ ADMIN_PASSWORD_HASH = os.environ.get(
     "ADMIN_PASSWORD_HASH",
     generate_password_hash(os.environ.get("ADMIN_PASSWORD", "1453")),
 )
-ADMIN_2FA_SECRET = os.environ.get("ADMIN_2FA_SECRET", "JBSWY3DPEHPK3PXP")
+ADMIN_2FA_SECRET = os.environ.get("ADMIN_2FA_SECRET") or ""
 
 app.config["SECRET_KEY"] = os.environ.get(
     "SECRET_KEY", "halic_hamid_antik_mezat_gizli_anahtar_1453"
@@ -156,7 +157,10 @@ socketio = SocketIO(
     max_http_buffer_size=8000000,
 )
 
-totp = pyotp.TOTP(ADMIN_2FA_SECRET)
+try:
+    totp = pyotp.TOTP(ADMIN_2FA_SECRET) if ADMIN_2FA_SECRET else None
+except Exception:
+    totp = None
 BOT_API_URL = "http://127.0.0.1:5005"
 
 
@@ -910,9 +914,66 @@ def shutdown_session(exception=None):
 # ==========================================
 # GÜVENLİK VE YARDIMCI FONKSİYONLAR
 # ==========================================
+_ENTEGRASYON_YOLLARI = {
+    "/api/bizimhesap/siparisler.xml",
+    "/wp-json/wc/v3/orders",
+    "/admin/bizimhesap-aktarim-excel",
+}
+
+
+def _sabit_esit(gelen, beklenen):
+    a = str(gelen or "")
+    b = str(beklenen or "")
+    if not a or not b or len(a) != len(b):
+        return False
+    return hmac.compare_digest(a, b)
+
+
+def _entegrasyon_tokeni_gecerli():
+    """BizimHesap ve WooCommerce çekimleri yönetici oturumu yokken token ile girebilir."""
+    if request.path not in _ENTEGRASYON_YOLLARI:
+        return False
+    beklenenler = []
+    for ad in ("BIZIMHESAP_TOKEN", "ENTEGRASYON_TOKEN"):
+        deger = (os.environ.get(ad) or "").strip()
+        if deger:
+            beklenenler.append(deger)
+    if not beklenenler:
+        return False
+    gelenler = []
+    for baslik in ("X-BizimHesap-Token", "X-Entegrasyon-Token", "token"):
+        deger = (request.headers.get(baslik) or "").strip()
+        if deger:
+            gelenler.append(deger)
+    yetki = (request.headers.get("Authorization") or "").strip()
+    if yetki.lower().startswith("bearer "):
+        gelenler.append(yetki[7:].strip())
+    elif yetki.lower().startswith("basic "):
+        try:
+            cozulen = base64.b64decode(yetki.split(" ", 1)[1]).decode("utf-8", "ignore")
+            kullanici, _, sifre = cozulen.partition(":")
+            if kullanici:
+                gelenler.append(kullanici)
+            if sifre:
+                gelenler.append(sifre)
+        except Exception:
+            pass
+    for parametre in ("token", "consumer_key", "consumer_secret"):
+        deger = (request.args.get(parametre) or "").strip()
+        if deger:
+            gelenler.append(deger)
+    for gelen in gelenler:
+        for beklenen in beklenenler:
+            if _sabit_esit(gelen, beklenen):
+                return True
+    return False
+
+
 def admin_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
+        if _entegrasyon_tokeni_gecerli():
+            return f(*args, **kwargs)
         if session.get("is_admin") is True and session.get("admin_2fa_ok") is True:
             return f(*args, **kwargs)
 
@@ -2096,6 +2157,7 @@ def ahmet_tanitim_geri():
 
 
 @app.route("/ahmet-metin-oku", methods=["POST"])
+@admin_required
 def ahmet_metin_oku():
     veri = request.json or {}
     dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
@@ -2185,6 +2247,7 @@ def vitrin_urunler():
 
 
 @app.route("/admin/urun-ara", methods=["GET"])
+@admin_required
 def admin_urun_ara_api():
     try:
         dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
@@ -2255,6 +2318,7 @@ def canli_durum():
 
 
 @app.route("/durum-getir", methods=["GET"])
+@admin_required
 def durum_getir():
     dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
     oda = odalar[dukkan]
@@ -2952,8 +3016,17 @@ def sepete_ekle():
             "success": False, "mesaj": "Müşteri ve ürün bilgisi zorunludur.",
         })
 
-    kullanici = db.session.get(Kullanici, int(musteri_id))
-    urun = db.session.get(Urun, int(urun_id))
+    try:
+        musteri_no = int(musteri_id)
+        urun_no = int(urun_id)
+    except (ValueError, TypeError):
+        return jsonify({
+            "success": False,
+            "mesaj": "Geçersiz müşteri veya ürün bilgisi.",
+        }), 400
+
+    kullanici = db.session.get(Kullanici, musteri_no)
+    urun = db.session.get(Urun, urun_no)
 
     if not kullanici or not urun:
         return jsonify({
@@ -2982,12 +3055,18 @@ def sepetten_cikar():
     sepet_id = veri.get("sepet_id")
 
     item = None
-    if sepet_id:
-        item = db.session.get(SepetItem, int(sepet_id))
-    elif musteri_id and urun_id:
-        item = SepetItem.query.filter_by(
-            musteri_id=int(musteri_id), urun_id=int(urun_id)
-        ).first()
+    try:
+        if sepet_id:
+            item = db.session.get(SepetItem, int(sepet_id))
+        elif musteri_id and urun_id:
+            item = SepetItem.query.filter_by(
+                musteri_id=int(musteri_id), urun_id=int(urun_id)
+            ).first()
+    except (ValueError, TypeError):
+        return jsonify({
+            "success": False,
+            "mesaj": "Geçersiz sepet bilgisi.",
+        }), 400
 
     if item:
         db.session.delete(item)
@@ -3101,7 +3180,13 @@ def odeme_baslat():
 
     kullanici = None
     if musteri_id:
-        kullanici = db.session.get(Kullanici, int(musteri_id))
+        try:
+            kullanici = db.session.get(Kullanici, int(musteri_id))
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "mesaj": "Geçersiz müşteri bilgisi.",
+            }), 400
     elif tel:
         kullanici = Kullanici.query.filter_by(telefon=tel).first()
 
@@ -3142,7 +3227,13 @@ def pey_ver():
 
     kullanici = None
     if musteri_id:
-        kullanici = db.session.get(Kullanici, int(musteri_id))
+        try:
+            kullanici = db.session.get(Kullanici, int(musteri_id))
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "mesaj": "Geçersiz müşteri bilgisi.",
+            }), 400
     elif telefon:
         kullanici = Kullanici.query.filter_by(telefon=telefon).first()
     elif musteri_adi:
@@ -4037,7 +4128,7 @@ def admin_2fa_dogrula():
     veri = request.json or {}
     girilen_kod = str(veri.get("kod", "")).strip()
 
-    if totp.verify(girilen_kod, valid_window=1):
+    if totp is not None and totp.verify(girilen_kod, valid_window=1):
         session["is_admin"] = True
         session["admin_2fa_ok"] = True
         session.pop("admin_sifre_ok", None)
@@ -5538,6 +5629,7 @@ def toplu_urun_yukle():
 # BİZİMHESAP PERAKENDE SATIŞ CSV AKTARIM ROTASI
 # ==========================================
 @app.route("/admin/bizimhesap-aktarim-excel", methods=["GET"])
+@admin_required
 def bizimhesap_aktarim_excel():
     kuyruk_dosyasi = "bizimhesap_kuyruk.json"
     satirlar = []
@@ -5591,6 +5683,7 @@ def bizimhesap_aktarim_excel():
 # BİZİMHESAP 7/24 OTOMATİK SİPARİŞ XML MOTORU
 # ==========================================
 @app.route("/api/bizimhesap/siparisler.xml", methods=["GET"])
+@admin_required
 def bizimhesap_otomatik_xml():
     with app.app_context():
         satilanlar = Urun.query.filter(
@@ -5717,6 +5810,7 @@ def wc_system_status():
 
 
 @app.route('/wp-json/wc/v3/orders', methods=['GET', 'POST', 'OPTIONS'])
+@admin_required
 def wc_orders():
     with app.app_context():
         satilanlar = Urun.query.filter(
@@ -6094,6 +6188,8 @@ def handle_leave_dukkan(data):
 
 @socketio.on("ahmet_ses_iste")
 def ahmet_ses_iste(veri):
+    if not session.get("is_admin"):
+        return
     veri = veri or {}
     dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
     oda = odalar.get(dukkan) or {}
@@ -6107,6 +6203,8 @@ def ahmet_ses_iste(veri):
 
 @socketio.on('admin_sesli_komut')
 def handle_admin_sesli_komut(data):
+    if not session.get("is_admin"):
+        return
     dukkan = data.get('dukkan', 'gumus')
     metin = data.get('metin', '').strip()
     if metin:
@@ -6255,7 +6353,7 @@ izleyici_adlari = {}
 
 
 def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False):
-    """Sahne değişimini odaya ve bağlı tüm istemcilere duyurur."""
+    """Sahne değişimini ilgili dükkân odasına bir kez duyurur."""
     if yeni_urun:
         _sahne_sesini_kes(dukkan)
         socketio.emit(
@@ -6264,10 +6362,8 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
             room=dukkan,
         )
     socketio.emit("yeni_sahne_urunu", urun_paket, room=dukkan)
-    socketio.emit("yeni_sahne_urunu", urun_paket)
     if pey_paket:
         socketio.emit("pey_guncellendi", pey_paket, room=dukkan)
-        socketio.emit("pey_guncellendi", pey_paket)
 
 
 def izleyici_sayisini_yayinla():

@@ -52,8 +52,8 @@ class Config:
     
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'halic_hamid_antik_mezat_gizli_anahtar_1453'
 
-    # Azure Speech (Ahmet Usta TTS). Ortam değişkeni varsa o, yoksa kayıtlı anahtar.
-    AZURE_SPEECH_KEY = _env("AZURE_SPEECH_KEY", "AZURE_KEY", "SPEECH_KEY") or "5Cnv0uA4wwqdklKnQTr4LE3iguQqDQWkokCNsustV4FvuH5XAfOmJQQJ99CJACi5YpzXJ3w3AAAYACOGjTY5"
+    # Azure Speech. Anahtar yalnızca ortamdan okunur.
+    AZURE_SPEECH_KEY = _env("AZURE_SPEECH_KEY", "AZURE_KEY", "SPEECH_KEY")
     AZURE_SPEECH_REGION = _env("AZURE_SPEECH_REGION", "AZURE_REGION", "SPEECH_REGION", "REGION") or "northeurope"
     AZURE_SPEECH_LANG = "tr-TR"
     AZURE_SPEECH_VOICE = "tr-TR-AhmetNeural"
@@ -66,9 +66,9 @@ class Config:
     OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL") or "tts-1-hd"
     OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE") or "nova"
 
-    # BizimHesap API
-    BIZIMHESAP_TOKEN = os.environ.get('BIZIMHESAP_TOKEN') or '6A35AAEBF1024183BA5DBE39BD4667A0'
-    BIZIMHESAP_APP_ID = os.environ.get('BIZIMHESAP_APP_ID') or '358386'
+    # BizimHesap API. Anahtarlar yalnızca ortamdan okunur.
+    BIZIMHESAP_TOKEN = os.environ.get("BIZIMHESAP_TOKEN") or ""
+    BIZIMHESAP_APP_ID = os.environ.get("BIZIMHESAP_APP_ID") or ""
     BIZIMHESAP_API_URL = os.environ.get('BIZIMHESAP_API_URL') or 'https://bizimhesap.com/api/b2b'
 
     # Port Ayarları

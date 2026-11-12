@@ -357,7 +357,7 @@ def pey_artisi_gecerli_mi(yeni_pey, guncel_pey, dukkan="gumus"):
 # =====================================================================
 # 4. AHMET USTA AZURE IN-MEMORY STREAM (tr-TR-AhmetNeural)
 # =====================================================================
-AZURE_KEY = getattr(Config, "AZURE_SPEECH_KEY", None) or "5Cnv0uA4wwqdklKnQTr4LE3iguQqDQWkokCNsustV4FvuH5XAfOmJQQJ99CJACi5YpzXJ3w3AAAYACOGjTY5"
+AZURE_KEY = getattr(Config, "AZURE_SPEECH_KEY", None) or ""
 AZURE_REGION = getattr(Config, "AZURE_SPEECH_REGION", None) or "northeurope"
 AZURE_VOICE = "tr-TR-AhmetNeural"
 speech_config = None

@@ -11,7 +11,7 @@ def bizimhesap_siparis_aktar(alici_ad, telefon, email, adres, urun_adi, lot_no, 
     Resmi metod: POST https://bizimhesap.com/api/b2b/addinvoice
     Çağrı başarısız olsa bile satış 'bizimhesap_kuyruk.json' dosyasına yazılır.
     """
-    token = getattr(Config, 'BIZIMHESAP_TOKEN', '6A35AAEBF1024183BA5DBE39BD4667A0')
+    token = getattr(Config, "BIZIMHESAP_TOKEN", "") or ""
 
     # Alıcı adı ve telefon formatlama
     temiz_ad = str(alici_ad).replace("[Web]", "").strip() if alici_ad else "Hamdullah Bulut"
