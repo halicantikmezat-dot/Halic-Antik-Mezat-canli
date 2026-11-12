@@ -1221,6 +1221,17 @@ class Kullanici(db.Model):
     silinme_tarihi = db.Column(db.DateTime, nullable=True)
 
 
+class KaraListe(db.Model):
+    __tablename__ = "kara_liste"
+    id = db.Column(db.Integer, primary_key=True)
+    telefon = db.Column(db.String(20), nullable=True, index=True)
+    email = db.Column(db.String(100), nullable=True, index=True)
+    cihaz_kodu = db.Column(db.String(64), nullable=True, index=True)
+    ip_adresi = db.Column(db.String(50), nullable=True, index=True)
+    kaynak_id = db.Column(db.Integer, nullable=True)
+    tarih = db.Column(db.DateTime, default=suan_utc)
+
+
 class Urun(db.Model):
     __tablename__ = "urun"
     id = db.Column(db.Integer, primary_key=True)
@@ -2254,6 +2265,7 @@ def veritabani_tablolari_onar():
     with app.app_context():
         try:
             db.create_all()
+            KaraListe.__table__.create(bind=db.engine, checkfirst=True)
             kolonlar = [
                 ("kullanici", "ip_adresi", "VARCHAR(50)"),
                 ("kullanici", "cihaz_kodu", "VARCHAR(64)"),
@@ -2753,6 +2765,130 @@ def kullanici_banli_mi(kullanici):
     return bool(getattr(kullanici, "is_banned", False) or kullanici.durum == "engellendi")
 
 
+GECICI_POSTA_PARCALARI = (
+    "tempmail", "10minutemail", "guerrillamail", "mailinator", "yopmail",
+    "trashmail", "getnada", "temp-mail", "fakemail", "throwaway",
+    "sharklasers", "maildrop", "dispostable", "guerrillamailblock",
+)
+ON_ODEME_MESAJI = (
+    "Yeni katılımcı olduğunuz için 5. üründe ön ödeme yapmanız gerekmektedir; "
+    "ön ödeme tamamlanana kadar yeni alım hakkınız durdurulmuştur"
+)
+
+
+def gecici_posta_mi(mail):
+    adres = (mail or "").strip().lower()
+    if "@" not in adres:
+        return False
+    alan = adres.split("@", 1)[1]
+    return any(parca in alan for parca in GECICI_POSTA_PARCALARI)
+
+
+def istek_cihaz_kodu(veri=None):
+    veri = veri or {}
+    gelen = (veri.get("cihaz_kodu") or request.cookies.get("halic_cihaz") or "").strip()
+    if gelen:
+        return gelen[:64]
+    return get_device_fingerprint()
+
+
+def kara_listeye_yaz(kullanici):
+    if not kullanici:
+        return
+    telefon = (kullanici.telefon or "").strip() or None
+    email = (kullanici.email or "").strip().lower() or None
+    cihaz = (kullanici.cihaz_kodu or "").strip() or None
+    ip = (kullanici.ip_adresi or "").strip() or None
+    if not any((telefon, email, cihaz, ip)):
+        return
+    var = KaraListe.query.filter_by(
+        telefon=telefon, email=email, cihaz_kodu=cihaz, ip_adresi=ip
+    ).first()
+    if var:
+        return
+    db.session.add(KaraListe(
+        telefon=telefon,
+        email=email,
+        cihaz_kodu=cihaz,
+        ip_adresi=ip,
+        kaynak_id=kullanici.id,
+    ))
+
+
+def kara_liste_cakisma(telefon="", email="", cihaz="", ip=""):
+    kosullar = []
+    tel = (telefon or "").strip()
+    posta = (email or "").strip().lower()
+    cihaz_kodu = (cihaz or "").strip()
+    adres = (ip or "").strip()
+    if tel:
+        kosullar.append(KaraListe.telefon == tel)
+    if posta:
+        kosullar.append(func.lower(KaraListe.email) == posta)
+    if cihaz_kodu:
+        kosullar.append(KaraListe.cihaz_kodu == cihaz_kodu)
+    if adres:
+        kosullar.append(KaraListe.ip_adresi == adres)
+    if not kosullar:
+        return None
+    return KaraListe.query.filter(or_(*kosullar)).first()
+
+
+def kimlik_engeli(kullanici=None, telefon="", email="", cihaz="", ip=""):
+    if kullanici and kullanici_banli_mi(kullanici):
+        kara_listeye_yaz(kullanici)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return True
+    tel = telefon or (getattr(kullanici, "telefon", "") if kullanici else "")
+    posta = email or (getattr(kullanici, "email", "") if kullanici else "")
+    cihaz_kodu = cihaz or (getattr(kullanici, "cihaz_kodu", "") if kullanici else "")
+    adres = ip or (getattr(kullanici, "ip_adresi", "") if kullanici else "")
+    if not kara_liste_cakisma(tel, posta, cihaz_kodu, adres):
+        return False
+    if kullanici:
+        kullanici.is_banned = True
+        kullanici.durum = "engellendi"
+        kullanici.onayli_mi = False
+        kara_listeye_yaz(kullanici)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        kullanici_soketlerini_kes(kullanici.id)
+    return True
+
+
+def on_odeme_kilitli_mi(kullanici):
+    if not kullanici:
+        return False
+    odenmis = Urun.query.filter(
+        Urun.kazanan_id == kullanici.id,
+        Urun.silindi_mi.is_(False),
+        Urun.siparis_durumu == "Odendi",
+    ).count()
+    if odenmis > 0:
+        return False
+    bekleyen = Urun.query.filter(
+        Urun.kazanan_id == kullanici.id,
+        Urun.silindi_mi.is_(False),
+        or_(Urun.durum == "Satıldı", Urun.durum == "satildi"),
+        Urun.siparis_durumu == "Odeme_Bekliyor",
+    ).count()
+    return bekleyen >= 4
+
+
+def on_odeme_yaniti():
+    return jsonify({
+        "success": False,
+        "on_odeme_gerekli": True,
+        "mesaj": ON_ODEME_MESAJI,
+        "yonlendir": "/pos",
+    }), 403
+
+
 def pey_yetkisi(kullanici):
     if not kullanici or kullanici.silindi_mi:
         return False, KAYIT_PEY_MESAJI, {"kayit_gerekli": True}
@@ -2801,6 +2937,7 @@ def kullaniciyi_otomatik_banla(kullanici):
     kullanici.is_banned = True
     kullanici.durum = "engellendi"
     kullanici.onayli_mi = False
+    kara_listeye_yaz(kullanici)
     db.session.commit()
     socketio.emit(
         "kullanici_engellendi",
@@ -2830,7 +2967,8 @@ def otp_eposta_gonder(alici, kod):
     print(f"[TEST-OTP] {kod}")
     host = os.environ.get("SMTP_HOST", "").strip()
     if not host or not alici:
-        return
+        print("[OTP] SMTP_HOST tanımlı değil; kod yalnızca test çıktısına yazıldı.")
+        return False
     try:
         import smtplib
         from email.message import EmailMessage
@@ -2851,8 +2989,10 @@ def otp_eposta_gonder(alici, kod):
             if kullanici:
                 smtp.login(kullanici, sifre)
             smtp.send_message(ileti)
+        return True
     except Exception as hata:
         print(f"[OTP] E-posta gönderilemedi: {hata}")
+        return False
 
 
 def otp_kaydet(kullanici):
@@ -3265,6 +3405,11 @@ def sepete_ekle():
             "success": False, "mesaj": "Kullanıcı veya ürün bulunamadı.",
         })
 
+    if kimlik_engeli(kullanici, cihaz=istek_cihaz_kodu(veri), ip=get_client_ip()):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+    if on_odeme_kilitli_mi(kullanici):
+        return on_odeme_yaniti()
+
     var_mi = SepetItem.query.filter_by(
         musteri_id=kullanici.id, urun_id=urun.id
     ).first()
@@ -3434,6 +3579,14 @@ def odeme_baslat():
         db.session.add(kullanici)
         db.session.commit()
 
+    if kullanici:
+        Urun.query.filter(
+            Urun.kazanan_id == kullanici.id,
+            Urun.silindi_mi.is_(False),
+            Urun.siparis_durumu == "Odeme_Bekliyor",
+        ).update({"siparis_durumu": "Odendi"}, synchronize_session=False)
+        db.session.commit()
+
     return jsonify({
         "success": True,
         "musteri_id": kullanici.id if kullanici else None,
@@ -3493,6 +3646,16 @@ def pey_ver():
             "dogrulama_gerekli": True,
             "mesaj": KAYIT_PEY_MESAJI,
         })
+
+    if kimlik_engeli(
+        kullanici,
+        telefon=telefon,
+        cihaz=istek_cihaz_kodu(veri),
+        ip=client_ip,
+    ):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+    if on_odeme_kilitli_mi(kullanici):
+        return on_odeme_yaniti()
 
     etiket_ad = f"[Web] {kullanici.ad_soyad}"
     raw_uid = veri.get("urun_id") or oda["aktif_urun_id"]
@@ -3805,6 +3968,9 @@ def kayit_ol():
     tel = (veri.get("tel") or veri.get("telefon") or veri.get("phone") or "").strip()
     mail = (veri.get("mail") or veri.get("email") or veri.get("eposta") or "").strip()
     adres = (veri.get("adres") or veri.get("address") or "").strip()
+    sozlesme = veri.get("sozlesme") in (True, "true", "1", 1, "on")
+    cihaz = istek_cihaz_kodu(veri)
+    ip = get_client_ip()
 
     if not ad or not tel or not mail:
         return jsonify({
@@ -3813,19 +3979,20 @@ def kayit_ol():
             "message": "Ad, telefon ve e-posta zorunludur",
             "mesaj": "Ad, telefon ve e-posta zorunludur",
         })
-
-    def kart(kayit, kayit_id=None):
-        return {
-            "id": kayit_id if kayit is None else kayit.id,
-            "ad": ad if kayit is None else (kayit.ad_soyad or ad),
-            "tel": tel if kayit is None else (kayit.telefon or tel),
-            "mail": mail if kayit is None else (kayit.email or mail),
-            "adres": adres if kayit is None else (kayit.adres or adres or ""),
-            "onayli_mi": 1,
-            "durum": "onayli",
-            "is_verified": 1,
-            "is_banned": 0,
-        }
+    if not sozlesme:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "message": "Mezat şartnamesini kabul etmelisiniz",
+            "mesaj": "Mezat şartnamesini kabul etmelisiniz",
+        })
+    if gecici_posta_mi(mail):
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "message": "Geçici e-posta adresleri kabul edilmez",
+            "mesaj": "Geçici e-posta adresleri kabul edilmez",
+        })
 
     def yanit(kayit):
         session.permanent = True
@@ -3872,37 +4039,79 @@ def kayit_ol():
             .first()
         )
 
-    def onayla(kayit, telefonu_yaz=True, postayi_yaz=True):
+    def kimligi_yaz(kayit):
         kayit.ad_soyad = ad
-        if telefonu_yaz:
-            kayit.telefon = tel
-        if postayi_yaz:
-            kayit.email = mail
+        kayit.telefon = tel
+        kayit.email = mail
         kayit.adres = adres or None
-        kayit.onayli_mi = True
-        kayit.durum = "onayli"
-        kayit.is_verified = True
-        kayit.is_banned = False
+        kayit.sozlesme_onay = True
+        kayit.ip_adresi = ip
+        kayit.cihaz_kodu = cihaz
         kayit.silindi_mi = False
         kayit.silinme_tarihi = None
-        if not kayit.cihaz_kodu:
-            kayit.cihaz_kodu = str(uuid.uuid4())
         if not kayit.sifre_hash:
             kayit.sifre_hash = generate_password_hash(uuid.uuid4().hex)
 
+    def kod_yaniti(kayit, kod, gitti):
+        mesaj = "E-postanıza 6 haneli doğrulama kodu gönderildi."
+        if not gitti:
+            mesaj = "SMTP tanımlı değil. Test doğrulama kodu: " + kod
+        govde = {
+            "status": "pending",
+            "success": True,
+            "dogrulama_gerekli": True,
+            "musteri_id": kayit.id,
+            "mesaj": mesaj,
+            "message": mesaj,
+        }
+        if not gitti:
+            govde["test_kod"] = kod
+        return jsonify(govde)
+
     try:
+        if kara_liste_cakisma(tel, mail, cihaz, ip):
+            kullanici = bul()
+            if kullanici:
+                kullanici.is_banned = True
+                kullanici.durum = "engellendi"
+                kullanici.onayli_mi = False
+                kullanici.ip_adresi = ip
+                kullanici.cihaz_kodu = cihaz
+                kara_listeye_yaz(kullanici)
+                db.session.commit()
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "ban": True,
+                "mesaj": BAN_MESAJI,
+                "message": BAN_MESAJI,
+            }), 403
+
         kullanici = bul()
+        if kullanici and kullanici_banli_mi(kullanici):
+            kara_listeye_yaz(kullanici)
+            db.session.commit()
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "ban": True,
+                "mesaj": BAN_MESAJI,
+                "message": BAN_MESAJI,
+            }), 403
+
+        if (
+            kullanici
+            and bool(kullanici.is_verified)
+            and (kullanici.durum or "") == "onayli"
+            and not kullanici.silindi_mi
+        ):
+            kullanici.ip_adresi = ip
+            kullanici.cihaz_kodu = cihaz or kullanici.cihaz_kodu
+            db.session.commit()
+            return yanit(kullanici)
+
         if kullanici:
-            baska_tel = (
-                Kullanici.query.filter(Kullanici.telefon == tel, Kullanici.id != kullanici.id).first()
-            )
-            baska_mail = (
-                Kullanici.query.filter(
-                    func.lower(Kullanici.email) == mail.lower(),
-                    Kullanici.id != kullanici.id,
-                ).first()
-            )
-            onayla(kullanici, telefonu_yaz=baska_tel is None, postayi_yaz=baska_mail is None)
+            kimligi_yaz(kullanici)
         else:
             kullanici = Kullanici(
                 ad_soyad=ad,
@@ -3912,17 +4121,18 @@ def kayit_ol():
                 sifre_hash=generate_password_hash(uuid.uuid4().hex),
                 bonus=0.0,
                 puan=100.0,
-                onayli_mi=True,
-                is_verified=True,
+                onayli_mi=False,
+                is_verified=False,
                 is_banned=False,
-                durum="onayli",
+                durum="bekliyor",
                 sozlesme_onay=True,
-                ip_adresi=get_client_ip(),
-                cihaz_kodu=str(uuid.uuid4()),
+                ip_adresi=ip,
+                cihaz_kodu=cihaz,
                 kayit_tarihi=suan_utc(),
                 silindi_mi=False,
             )
             db.session.add(kullanici)
+        kod = otp_kaydet(kullanici)
         db.session.commit()
         try:
             db.session.execute(
@@ -3932,38 +4142,17 @@ def kayit_ol():
             db.session.commit()
         except Exception:
             db.session.rollback()
-        return yanit(kullanici)
+        gitti = otp_eposta_gonder(kullanici.email or mail, kod)
+        return kod_yaniti(kullanici, kod, gitti)
     except Exception as hata:
         db.session.rollback()
         print(f"Kayıt hatası: {hata}")
-        try:
-            kullanici = bul()
-            if kullanici:
-                kullanici.ad_soyad = ad
-                kullanici.adres = adres or None
-                kullanici.onayli_mi = True
-                kullanici.durum = "onayli"
-                kullanici.is_verified = True
-                kullanici.is_banned = False
-                kullanici.silindi_mi = False
-                db.session.commit()
-                return yanit(kullanici)
-        except Exception as ikinci:
-            db.session.rollback()
-            print(f"Kayıt kurtarma hatası: {ikinci}")
-        session["musteri_ad"] = ad
         return jsonify({
-            "status": "success",
-            "message": "Giriş başarılı",
-            "success": True,
-            "musteri_id": None,
-            "durum": "onayli",
-            "onayli_mi": True,
-            "is_verified": True,
-            "dogrulama_gerekli": False,
-            "mesaj": "Giriş başarılı",
-            "user": kart(None),
-        })
+            "status": "error",
+            "success": False,
+            "message": "Kayıt tamamlanamadı",
+            "mesaj": "Kayıt tamamlanamadı",
+        }), 500
 
 
 @app.route("/profil-guncelle", methods=["POST"])
@@ -3981,12 +4170,24 @@ def profil_guncelle():
         kullanici = None
     if not kullanici or kullanici.silindi_mi:
         return jsonify({"success": False, "mesaj": "Profil bulunamadı."})
-    if kullanici_banli_mi(kullanici):
+    if gecici_posta_mi(mail):
+        return jsonify({"success": False, "mesaj": "Geçici e-posta adresleri kabul edilmez."})
+    if kimlik_engeli(
+        kullanici,
+        telefon=tel,
+        email=mail,
+        cihaz=istek_cihaz_kodu(veri),
+        ip=get_client_ip(),
+    ):
         return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
     kullanici.ad_soyad = ad
     kullanici.telefon = tel
     kullanici.email = mail or None
     kullanici.adres = adres or None
+    kullanici.ip_adresi = get_client_ip()
+    gelen_cihaz = istek_cihaz_kodu(veri)
+    if gelen_cihaz:
+        kullanici.cihaz_kodu = gelen_cihaz
     try:
         db.session.commit()
     except Exception as hata:
@@ -4051,7 +4252,11 @@ def dogrulama_tamamla():
         kullanici = None
     if not kullanici or kullanici.silindi_mi:
         return jsonify({"success": False, "mesaj": "Kayıt bulunamadı."})
-    if kullanici_banli_mi(kullanici):
+    if kimlik_engeli(
+        kullanici,
+        cihaz=istek_cihaz_kodu(veri),
+        ip=get_client_ip(),
+    ):
         return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI})
     bitis = getattr(kullanici, "otp_bitis", None)
     if bitis is not None:
@@ -4063,14 +4268,34 @@ def dogrulama_tamamla():
     if not beklenen or kod != beklenen:
         return jsonify({"success": False, "mesaj": "Doğrulama kodu hatalı."})
     kullanici.is_verified = True
+    kullanici.onayli_mi = True
+    kullanici.durum = "onayli"
     kullanici.otp_code = None
     kullanici.dogrulama_kodu = None
     kullanici.otp_bitis = None
     db.session.commit()
+    session.permanent = True
+    session["kullanici_id"] = kullanici.id
+    session["kullanici_adi"] = kullanici.ad_soyad
+    session["musteri_id"] = kullanici.id
+    session["musteri_ad"] = kullanici.ad_soyad
     return jsonify({
         "success": True,
         "is_verified": True,
-        "mesaj": "Telefon ve e-posta doğrulamanız tamamlandı.",
+        "onayli_mi": True,
+        "durum": "onayli",
+        "musteri_id": kullanici.id,
+        "mesaj": "Hesabınız onaylandı. Pey verebilirsiniz.",
+        "user": {
+            "id": kullanici.id,
+            "ad_soyad": kullanici.ad_soyad,
+            "ad": kullanici.ad_soyad,
+            "telefon": kullanici.telefon,
+            "tel": kullanici.telefon,
+            "email": kullanici.email,
+            "mail": kullanici.email,
+            "adres": kullanici.adres or "",
+        },
     })
 
 
@@ -4109,6 +4334,10 @@ def on_teklif_ver():
     uygun, uyari, ek = pey_yetkisi(kullanici)
     if not uygun:
         return jsonify({"success": False, "mesaj": uyari, **ek})
+    if kimlik_engeli(kullanici, cihaz=istek_cihaz_kodu(veri), ip=get_client_ip()):
+        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+    if on_odeme_kilitli_mi(kullanici):
+        return on_odeme_yaniti()
 
     urun = db.session.get(Urun, urun_id)
     if not urun or urun.silindi_mi or urun.durum == "Satıldı":
@@ -4997,6 +5226,7 @@ def musteri_durum_guncelle():
         if yeni_durum == "engellendi":
             kullanici.is_banned = True
             kullanici.onayli_mi = False
+            kara_listeye_yaz(kullanici)
         elif yeni_durum == "onayli":
             kullanici.is_banned = False
         db.session.commit()
@@ -6469,6 +6699,55 @@ def anons_bitti(veri):
         _satis_tebrik_bitti(dukkan)
     finally:
         db.session.remove()
+
+
+REHBER_ADIMLARI = (
+    "Birinci adım. Vitrinden veya sahneden bir lot seçin. Üyeliğiniz olmadan yayını ve vitrini izleyebilirsiniz.",
+    "İkinci adım. İlk peyinizde ad, soyad, telefon ve e-posta ile kayıt olun. Şartname kutusunu işaretleyin. E-postanıza gelen altı haneli kodu girince hesabınız açılır.",
+    "Üçüncü adım. Yazılı pey, bas konuş ile sesli pey veya Hemen Al ile teklif verin.",
+    "Dördüncü adım. Kazandığınız eser sepete düşer. Ödemeyi sepetten tamamlayın. Yeni katılımcı beşinci üründe ön ödeme yapmadan yeni alım açamaz.",
+)
+
+
+@socketio.on("rehber_ses_iste")
+def rehber_ses_iste(veri):
+    """Nasıl kullanılır turu. Ses yalnızca isteyen sokete gider."""
+    try:
+        adim = int((veri or {}).get("adim") or 1)
+    except (TypeError, ValueError):
+        adim = 1
+    if adim < 1 or adim > len(REHBER_ADIMLARI):
+        adim = 1
+    metin = ses_metnini_temizle(REHBER_ADIMLARI[adim - 1])
+    sid = request.sid
+
+    def uret():
+        istemci = _openai_ses_istemcisi()
+        if istemci is None:
+            socketio.emit("rehber_ses", {
+                "adim": adim,
+                "mesaj": "Ses motoru hazır değil. Adım metni ekranda duruyor.",
+            }, room=sid)
+            return
+        model, ses = _ses_modeli()
+        try:
+            mp3 = _openai_mp3(istemci, model, ses, metin)
+        except Exception as hata:
+            print(f"[REHBER SES] {hata}")
+            socketio.emit("rehber_ses", {
+                "adim": adim,
+                "mesaj": "Ses üretilemedi. Adım metni ekranda duruyor.",
+            }, room=sid)
+            return
+        if not mp3:
+            return
+        adres = _mp3_kaydet(mp3, adim)
+        socketio.emit("rehber_ses", {
+            "adim": adim,
+            "audio_url": adres,
+        }, room=sid)
+
+    socketio.start_background_task(uret)
 
 
 @socketio.on("ahmet_ses_iste")

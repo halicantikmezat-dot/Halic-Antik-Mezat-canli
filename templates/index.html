@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Haliç Antik Mezat - Canlı Mezat</title>
+    <meta property="og:title" content="Haliç Antik Mezat - Canlı Mezat">
+    <meta property="og:description" content="Balat'ta canlı mezat. Eseri izleyin, pey verin veya hemen alın.">
+    <meta property="og:image" content="/static/img/varsayilan_urun.png">
+    <meta property="og:url" content="">
+    <meta property="og:type" content="website">
+    <script type="application/ld+json" id="urunJsonLd"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
@@ -21,6 +27,7 @@
             --btn-purple: #4c1d95;
             --btn-red: #881337;
         }
+        .rehber-vurgu { outline: 3px solid #fef08a; box-shadow: 0 0 0 6px rgba(212, 175, 55, 0.35); }
 
         * { 
             box-sizing: border-box; 
@@ -1554,9 +1561,11 @@
 
     <div class="footer">
         <div class="footer-btns">
+            <button class="btn-footer" onclick="nasilKullanilirAc()">🎧 Nasıl Kullanılır? (Sesli Rehber)</button>
             <button class="btn-footer" onclick="kurallariAc()">ℹ️ Hakkımızda & Kurallar</button>
+            <button class="btn-footer" onclick="whatsappPaylas()">WhatsApp'ta Paylaş</button>
             <button class="btn-footer" onclick="openFeedbackModal()">📩 Şikayet / Görüş İlet</button>
-            <button class="btn-footer" onclick="openPosModalDirect()">💳 POS</button>
+            <button id="btnPosFooter" class="btn-footer" onclick="openPosModalDirect()">💳 POS</button>
             <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:#34d399;">💬 WhatsApp</a>
         </div>
         <p>© 2026 🏛️ Haliç Antik Mezat Sistemi - Balat / İstanbul</p>
@@ -1580,6 +1589,7 @@
         </div>
         <p style="font-size:9px; color:#cbd5e1; margin-bottom:8px;">Bu karekodu okutanlar doğrudan sahnede olan bu ürüne ulaşır.</p>
         <button class="btn-bid btn-action-blue" style="width:100%; margin-bottom:4px;" onclick="qrLinkiKopyala()">📋 Bağlantıyı Kopyala</button>
+        <button class="btn-bid" style="width:100%; background:#128C7E; color:#fff; margin-bottom:4px;" onclick="whatsappPaylas()">WhatsApp'ta Paylaş</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff;" onclick="closeModal('modalUrunQr')">Kapat</button>
     </div>
 </div>
@@ -1653,6 +1663,10 @@
         <label for="k_mail" style="font-size:16px; color:#ffffff;">E-posta (* Zorunlu)</label>
         <input type="email" id="k_mail" placeholder="ornek@mail.com" required>
         <textarea id="k_adres" rows="3" placeholder="Teslimat Adresiniz (isteğe bağlı)"></textarea>
+        <label style="display:flex; gap:8px; align-items:flex-start; font-size:15px; color:#fff; margin:8px 0;">
+            <input type="checkbox" id="k_sozlesme" required style="width:18px; height:18px; margin-top:2px;">
+            <span>Mezat şartnamesini okudum, kabul ediyorum</span>
+        </label>
         <button id="kayitOlButonu" onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%;">💾 Onayla & Kaydol</button>
         <button onclick="closeModal('authRegisterModal')" class="btn-bid btn-kapat" style="width:100%;">Kapat</button>
     </div>
@@ -1715,6 +1729,22 @@
     </div>
 </div>
 
+<div id="rehberModal" class="modal">
+    <div class="modal-content" style="text-align:left;">
+        <h3 style="color:#fef08a; font-size:18px; margin-bottom:8px;">Nasıl Kullanılır?</h3>
+        <ol id="rehberAdimlar" style="font-size:15px; line-height:1.45; padding-left:18px;">
+            <li data-rehber="1">Vitrin / lot seçimi</li>
+            <li data-rehber="2">Hızlı kayıt ve e-posta kodu</li>
+            <li data-rehber="3">Yazılı / sesli pey ve Hemen Al</li>
+            <li data-rehber="4">Sepet ve ödeme</li>
+        </ol>
+        <p id="rehberDurum" style="font-size:14px; color:#e2e8f0; margin:8px 0;">Sesli anlatım yalnızca size gelir.</p>
+        <button class="btn-bid btn-action-green" style="width:100%;" onclick="rehberAdiminiOynat()">Bu adımı sesli dinle</button>
+        <button class="btn-bid btn-action-blue" style="width:100%;" onclick="rehberSonraki()">Sonraki adım</button>
+        <button class="btn-bid" style="width:100%; background:#475569; color:#fff;" onclick="rehberKapat()">Kapat</button>
+    </div>
+</div>
+
 <div id="congratsModal" class="modal">
     <div class="modal-content">
         <h2 style="color: var(--accent-gold); margin-bottom: 5px; font-size:13px; font-weight:900;">🏆 TEBRİKLER!</h2>
@@ -1724,6 +1754,18 @@
 </div>
 
 <script>
+    function cihazKimligi() {
+        let id = '';
+        try { id = localStorage.getItem('halic_cihaz_id') || ''; } catch (e) {}
+        if (!id) {
+            id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
+            try { localStorage.setItem('halic_cihaz_id', id); } catch (e) {}
+        }
+        document.cookie = 'halic_cihaz=' + encodeURIComponent(id) + ';path=/;max-age=31536000;SameSite=Lax';
+        return id;
+    }
+    cihazKimligi();
+
     function escapeHtml(str) {
         if (!str) return '';
         return String(str)
@@ -3055,6 +3097,19 @@
         }, 1200);
     });
 
+    socket.on("rehber_ses", function (data) {
+        const durum = document.getElementById('rehberDurum');
+        if (data && data.audio_url) {
+            const ses = new Audio(data.audio_url);
+            ses.play().catch(function () {
+                if (durum) durum.textContent = "Ses hazır. Sayfaya bir kez dokunup adımı yeniden dinleyin.";
+            });
+            if (durum) durum.textContent = "Adım " + (data.adim || "") + " seslendiriliyor.";
+            return;
+        }
+        if (durum && data && data.mesaj) durum.textContent = data.mesaj;
+    });
+
     socket.on("ses_oynat", function (data) {
         const dukkan = data && (data.dukkan || data.dukkan_kodu);
         if (dukkan && dukkan !== aktifDukkan) return;
@@ -3376,8 +3431,9 @@
         fetch('/sepete-ekle', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ musteri_id: kullaniciId, urun_id: secilenArsivUrunId })
-        }).then(r => r.json()).then(res => { 
+            body: JSON.stringify({ musteri_id: kullaniciId, urun_id: secilenArsivUrunId, cihaz_kodu: cihazKimligi() })
+        }).then(r => r.json()).then(res => {
+            if (onOdemeYanitiMi(res)) return;
             alert(res.mesaj); 
             sepetAdediGuncelle(); 
         });
@@ -3796,6 +3852,7 @@
             sahneKapali = true;
             serbestArtis = false;
             aktifHemenAlStatik = 0;
+            urunYapisalVeri(null);
             document.getElementById('aktif_baslik').innerText = sahneBeklemeMetni;
             document.getElementById('currentBid').innerText = "0";
             document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(0);
@@ -3828,6 +3885,7 @@
             return;
         }
 
+        urunYapisalVeri(urunObj);
         document.getElementById('aktif_baslik').innerText = `LOT #${urunObj.lot} - ${urunObj.ad}`;
         document.getElementById('tanitimMetni').innerText = baslikTekrariTemizle(urunObj.tanitim_yazisi || "Açıklama girilmemiş.");
         document.getElementById('cornerLotNo').innerText = `LOT #${urunObj.lot}`;
@@ -4032,19 +4090,32 @@
         if (ad && ad !== 'null' && ad !== 'undefined') kullaniciAdi = String(ad).replace(/^\[.*?\]\s*/, '').trim();
         if (tel) kullaniciTel = tel;
         if (sayi || bellek) {
-            kullaniciDogrulandi = true;
+            const bayrak = localStorage.getItem('halic_antik_dogrulandi') === '1'
+                || sessionStorage.getItem('halic_antik_dogrulandi') === '1';
+            kullaniciDogrulandi = bayrak;
             window.mevcutKullanici = window.mevcutKullanici || { id: sayi || id, ad_soyad: kullaniciAdi, telefon: kullaniciTel };
             window.currentUser = window.currentUser || window.mevcutKullanici;
-            return true;
+            return kullaniciDogrulandi;
         }
         return false;
     }
 
     function kullaniciGirisKontrol() {
         if (!oturumVarMi()) {
+            if (kullaniciId && localStorage.getItem('halic_otp_bekliyor') === '1') {
+                dogrulamaPenceresiniAc();
+                return false;
+            }
             document.getElementById('authRegisterModal').style.display = 'flex';
             return false;
         }
+        return true;
+    }
+
+    function onOdemeYanitiMi(d) {
+        if (!d || !d.on_odeme_gerekli) return false;
+        alert(d.mesaj);
+        openPosModalDirect();
         return true;
     }
 
@@ -4056,10 +4127,7 @@
     }
 
     function dogrulamaKontrol() {
-        if (oturumVarMi()) return true;
-        const kayit = document.getElementById('authRegisterModal') || document.getElementById('kayitModal');
-        if (kayit) kayit.style.display = 'flex';
-        return false;
+        return kullaniciGirisKontrol();
     }
 
     function dogrulamayiGonder() {
@@ -4067,16 +4135,37 @@
         fetch('/dogrulama-tamamla', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ musteri_id: kullaniciId, kod: kod })
+            body: JSON.stringify({ musteri_id: kullaniciId, kod: kod, cihaz_kodu: cihazKimligi() })
         }).then(r => r.json()).then(d => {
+            if (d.ban) { banEkrani(d.mesaj); return; }
             if (!d.success) {
                 alert(d.mesaj || 'Doğrulama kodu hatalı.');
                 return;
             }
-            kullaniciDogrulandi = true;
+            const kisi = d.user || {};
+            const kayitId = kisi.id || d.musteri_id || kullaniciId;
+            const kayitAd = kisi.ad_soyad || kisi.ad || kullaniciAdi || document.getElementById('k_ad').value.trim();
+            const kayitTel = kisi.telefon || kisi.tel || kullaniciTel || document.getElementById('k_tel').value.trim();
+            const kayitMail = kisi.email || kisi.mail || document.getElementById('k_mail').value.trim();
+            localStorage.setItem('kullanici_id', kayitId);
+            localStorage.setItem('musteri_id', kayitId);
+            localStorage.setItem('kullanici_adi', kayitAd);
+            localStorage.setItem('kullanici_tel', kayitTel);
+            localStorage.setItem('giris_yapildi', 'true');
+            localStorage.setItem('halic_antik_ad', kayitAd);
+            localStorage.setItem('halic_antik_tel', kayitTel);
+            localStorage.setItem('halic_antik_mail', kayitMail);
+            localStorage.setItem('halic_antik_id', kayitId);
             localStorage.setItem('halic_antik_dogrulandi', '1');
+            localStorage.removeItem('halic_otp_bekliyor');
+            sessionStorage.setItem('halic_antik_dogrulandi', '1');
+            kullaniciId = parseInt(kayitId, 10) || null;
+            kullaniciAdi = kayitAd;
+            kullaniciTel = kayitTel;
+            kullaniciDogrulandi = true;
             closeModal('dogrulamaModal');
             alert(d.mesaj || 'Doğrulama tamamlandı.');
+            window.location.reload();
         }).catch(function () { alert('Doğrulama sunucusuna ulaşılamadı.'); });
     }
 
@@ -4184,11 +4273,13 @@
                 kullanici_id: kullaniciId,
                 musteri_adi: kullaniciAdi,
                 telefon: kullaniciTel,
+                cihaz_kodu: cihazKimligi(),
                 miktar: miktar,
                 platform: 'Web',
                 islem: 'pey' 
             })
         }).then(res => res.json()).then(d => {
+            if (onOdemeYanitiMi(d)) return;
             if (!d.success && d.dogrulama_gerekli) {
                 kullaniciDogrulandi = false;
                 localStorage.setItem('halic_antik_dogrulandi', '0');
@@ -4222,10 +4313,12 @@
                 musteri_id: kullaniciId,
                 musteri_adi: kullaniciAdi,
                 telefon: kullaniciTel,
+                cihaz_kodu: cihazKimligi(),
                 miktar: dinamikBedel, 
                 islem: 'hemen_al' 
             })
         }).then(res => res.json()).then(d => {
+            if (onOdemeYanitiMi(d)) return;
             if(d.success) {
                 document.getElementById('congratsModal').style.display = 'flex';
                 sepetAdediGuncelle();
@@ -4338,9 +4431,11 @@
                 urun_id: urunId, 
                 musteri_id: kullaniciId,
                 musteri_adi: kullaniciAdi,
-                teklif: teklifMiktari 
+                teklif: teklifMiktari,
+                cihaz_kodu: cihazKimligi()
             })
         }).then(res => res.json()).then(d => {
+            if (onOdemeYanitiMi(d)) return;
             if (d.success) { 
                 alert(d.mesaj || "Ön teklif başarıyla kaydedildi."); 
                 document.getElementById('onTeklifMiktari').value = ""; 
@@ -4359,6 +4454,8 @@
         const buton = document.getElementById('kayitOlButonu');
 
         if (!ad || !tel || !mail) return alert("Lütfen Ad, Telefon ve E-posta alanlarını eksiksiz doldurun");
+        const sozlesme = document.getElementById('k_sozlesme');
+        if (!sozlesme || !sozlesme.checked) return alert("Mezat şartnamesini okudum, kabul ediyorum kutusunu işaretleyin");
         if (buton) {
             buton.disabled = true;
             buton.textContent = "Kaydediliyor...";
@@ -4367,8 +4464,31 @@
         fetch('/kayit', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ad, ad_soyad: ad, tel, telefon: tel, mail, email: mail, adres, sozlesme: true })
+            body: JSON.stringify({ ad, ad_soyad: ad, tel, telefon: tel, mail, email: mail, adres, sozlesme: true, cihaz_kodu: cihazKimligi() })
         }).then(res => res.json()).then(d => {
+            if (d && d.ban) {
+                banEkrani(d.mesaj || d.message);
+                if (buton) { buton.disabled = false; buton.textContent = "💾 Onayla & Kaydol"; }
+                return;
+            }
+            if (d && d.dogrulama_gerekli) {
+                kullaniciId = parseInt(d.musteri_id, 10) || null;
+                kullaniciAdi = ad;
+                kullaniciTel = tel;
+                kullaniciDogrulandi = false;
+                if (d.musteri_id) localStorage.setItem('halic_antik_id', d.musteri_id);
+                localStorage.setItem('halic_antik_ad', ad);
+                localStorage.setItem('halic_antik_tel', tel);
+                localStorage.setItem('halic_antik_mail', mail);
+                localStorage.setItem('halic_antik_dogrulandi', '0');
+                localStorage.setItem('halic_otp_bekliyor', '1');
+                closeModal('authRegisterModal');
+                dogrulamaPenceresiniAc();
+                const satir = document.getElementById('testKodSatiri');
+                if (satir) satir.textContent = d.test_kod ? ('Test kodu: ' + d.test_kod) : 'E-postanıza gelen 6 haneli doğrulama kodunu girin.';
+                if (buton) { buton.disabled = false; buton.textContent = "💾 Onayla & Kaydol"; }
+                return;
+            }
             const oldu = d && (d.status === "success" || d.success);
             if (!oldu) {
                 alert((d && (d.message || d.mesaj)) || "Kayıt tamamlanamadı.");
@@ -4457,7 +4577,8 @@
                 ad: yeniAd,
                 tel: tel,
                 mail: mail,
-                adres: adres
+                adres: adres,
+                cihaz_kodu: cihazKimligi()
             })
         }).then(res => res.json()).then(d => {
             if (!d.success) {
@@ -4610,6 +4731,100 @@
 
     function sesliDinle() {
         playUserClickSound();
+    }
+
+    function urunYapisalVeri(urun) {
+        const etiket = document.getElementById('urunJsonLd');
+        const ogUrl = document.querySelector('meta[property="og:url"]');
+        const ogTitle = document.querySelector('meta[property="og:title"]');
+        const ogImage = document.querySelector('meta[property="og:image"]');
+        const ogDesc = document.querySelector('meta[property="og:description"]');
+        if (ogUrl) ogUrl.setAttribute('content', window.location.href);
+        if (!urun) {
+            if (etiket) etiket.textContent = '';
+            return;
+        }
+        const ad = 'LOT #' + (urun.lot || '') + ' - ' + (urun.ad || '');
+        const fiyat = Number(urun.guncel_fiyat || urun.fiyat || 0);
+        const gorsel = (urun.fotograflar && urun.fotograflar[0]) || '/static/img/varsayilan_urun.png';
+        if (ogTitle) ogTitle.setAttribute('content', ad);
+        if (ogImage) ogImage.setAttribute('content', gorsel);
+        if (ogDesc) ogDesc.setAttribute('content', (urun.tanitim_yazisi || 'Haliç Antik canlı mezat eseri').slice(0, 180));
+        if (etiket) {
+            etiket.textContent = JSON.stringify({
+                '@context': 'https://schema.org',
+                '@type': 'Product',
+                name: ad,
+                description: urun.tanitim_yazisi || ad,
+                image: gorsel,
+                sku: String(urun.lot || urun.id || ''),
+                offers: {
+                    '@type': 'Offer',
+                    priceCurrency: 'TRY',
+                    price: fiyat,
+                    availability: 'https://schema.org/InStock',
+                    url: window.location.href
+                }
+            });
+        }
+    }
+
+    function whatsappPaylas() {
+        playUserClickSound();
+        const baslik = (document.getElementById('aktif_baslik') || {}).innerText || 'Haliç Antik Mezat';
+        const metin = baslik + ' ' + window.location.href;
+        window.open('https://wa.me/?text=' + encodeURIComponent(metin), '_blank');
+    }
+
+    let rehberAdim = 1;
+    function rehberVurguyuTemizle() {
+        document.querySelectorAll('.rehber-vurgu').forEach(function (el) { el.classList.remove('rehber-vurgu'); });
+    }
+    function rehberVurgula() {
+        rehberVurguyuTemizle();
+        const harita = {
+            1: ['linkVitrin', 'stageWrapper'],
+            2: ['k_sozlesme'],
+            3: ['btnYuzdeOn', 'btnIzleyiciSes', 'btnHemenAl'],
+            4: ['btnPosFooter']
+        };
+        (harita[rehberAdim] || []).forEach(function (id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('rehber-vurgu');
+        });
+        document.querySelectorAll('#rehberAdimlar li').forEach(function (li) {
+            li.classList.toggle('rehber-vurgu', li.getAttribute('data-rehber') === String(rehberAdim));
+        });
+        if (rehberAdim === 2) {
+            const kayit = document.getElementById('authRegisterModal');
+            if (kayit) kayit.style.display = 'flex';
+        }
+    }
+    function nasilKullanilirAc() {
+        playUserClickSound();
+        rehberAdim = 1;
+        const kutu = document.getElementById('rehberModal');
+        if (kutu) kutu.style.display = 'flex';
+        rehberVurgula();
+        rehberAdiminiOynat();
+    }
+    function rehberAdiminiOynat() {
+        if (window.mezatSoketi && window.mezatSoketi.emit) {
+            window.mezatSoketi.emit('rehber_ses_iste', { adim: rehberAdim });
+        } else if (typeof socket !== 'undefined' && socket.emit) {
+            socket.emit('rehber_ses_iste', { adim: rehberAdim });
+        }
+        const durum = document.getElementById('rehberDurum');
+        if (durum) durum.textContent = 'Adım ' + rehberAdim + ' sesi hazırlanıyor...';
+    }
+    function rehberSonraki() {
+        rehberAdim = rehberAdim >= 4 ? 1 : rehberAdim + 1;
+        rehberVurgula();
+        rehberAdiminiOynat();
+    }
+    function rehberKapat() {
+        rehberVurguyuTemizle();
+        closeModal('rehberModal');
     }
 
     var tag = document.createElement('script');

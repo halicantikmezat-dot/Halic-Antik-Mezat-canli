@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Haliç Antik Mezat - Ürün Vitrini</title>
+    <meta property="og:title" content="Haliç Antik Mezat - Ürün Vitrini">
+    <meta property="og:description" content="Haliç Antik vitrin. Lotları inceleyin, ön teklif verin veya hemen alın.">
+    <meta property="og:image" content="/static/img/varsayilan_urun.png">
+    <meta property="og:url" content="">
+    <meta property="og:type" content="website">
+    <script type="application/ld+json" id="vitrinJsonLd"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
@@ -185,6 +191,7 @@
         </select>
         <button onclick="sepetModalGoster()" class="btn-sepet-goruntule" id="vitrinSepetSayac">🛒 Sepetim (0)</button>
         <a id="btnCanliMezatGit" href="/" class="btn-live">🔴 Canlı Mezata Git</a>
+        <button type="button" onclick="vitrinWhatsappPaylas()" style="background:#128C7E; color:#fff; border:none; padding:8px 10px; border-radius:6px; font-weight:800; cursor:pointer;">WhatsApp'ta Paylaş</button>
     </div>
 </div>
 
@@ -229,6 +236,12 @@
 
         <label style="font-size:10px; font-weight:bold; color:var(--accent-gold);">E-posta Adresiniz (* Zorunlu):</label>
         <input type="email" id="vitrinMail" placeholder="ornek@mail.com" required>
+        <label style="display:flex; gap:8px; align-items:flex-start; font-size:12px; color:#fff; margin:8px 0;">
+            <input type="checkbox" id="vitrinSozlesme" required>
+            <span>Mezat şartnamesini okudum, kabul ediyorum</span>
+        </label>
+        <p id="vitrinKodSatiri" style="font-size:12px; color:#fef08a;"></p>
+        <input type="text" id="vitrinKod" inputmode="numeric" maxlength="6" placeholder="E-posta kodu (kod gelince)" style="display:none;">
         
         <div id="tutarAlaniKutusu">
             <label style="font-size:10px; font-weight:bold;">Teklif Ettiğiniz Tutar (TL):</label>
@@ -385,6 +398,85 @@
                 }
             })
             .catch(() => {});
+    }
+
+    function vitrinCihazKimligi() {
+        let id = '';
+        try { id = localStorage.getItem('halic_cihaz_id') || ''; } catch (e) {}
+        if (!id) {
+            id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
+            try { localStorage.setItem('halic_cihaz_id', id); } catch (e) {}
+        }
+        document.cookie = 'halic_cihaz=' + encodeURIComponent(id) + ';path=/;max-age=31536000;SameSite=Lax';
+        return id;
+    }
+    vitrinCihazKimligi();
+
+    function vitrinOnOdemeMi(d) {
+        if (!d || !d.on_odeme_gerekli) return false;
+        alert(d.mesaj);
+        openPosModalDirect();
+        return true;
+    }
+
+    function openPosModalDirect() {
+        sepettenOdemeyeGec();
+    }
+
+    function vitrinWhatsappPaylas(adEncoded, lot) {
+        const ad = adEncoded ? decodeURIComponent(adEncoded) : 'Haliç Antik vitrin';
+        const metin = (lot ? ('LOT #' + lot + ' ') : '') + ad + ' ' + window.location.href;
+        window.open('https://wa.me/?text=' + encodeURIComponent(metin), '_blank');
+    }
+
+    function vitrinYapisalVeri(urunler) {
+        const etiket = document.getElementById('vitrinJsonLd');
+        const ogUrl = document.querySelector('meta[property="og:url"]');
+        if (ogUrl) ogUrl.setAttribute('content', window.location.href);
+        if (!etiket) return;
+        const liste = (urunler || []).slice(0, 12).map(function (u) {
+            const gorsel = (Array.isArray(u.fotograflar) && u.fotograflar[0]) || '/static/img/varsayilan_urun.png';
+            return {
+                '@type': 'Product',
+                name: 'LOT #' + (u.lot || '') + ' - ' + (u.ad || ''),
+                image: gorsel,
+                sku: String(u.lot || u.id || ''),
+                offers: {
+                    '@type': 'Offer',
+                    priceCurrency: 'TRY',
+                    price: Number(u.guncel_fiyat || u.fiyat || 0),
+                    availability: 'https://schema.org/InStock',
+                    url: window.location.href
+                }
+            };
+        });
+        etiket.textContent = JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'ItemList',
+            itemListElement: liste.map(function (urun, i) {
+                return { '@type': 'ListItem', position: i + 1, item: urun };
+            })
+        });
+    }
+
+    function vitrinKodOnayla(musteriId) {
+        const kod = (document.getElementById('vitrinKod').value || '').trim();
+        if (!kod) {
+            alert('E-postadaki 6 haneli kodu yazın.');
+            return Promise.resolve(false);
+        }
+        return fetch('/dogrulama-tamamla', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ musteri_id: musteriId, kod: kod, cihaz_kodu: vitrinCihazKimligi() })
+        }).then(r => r.json()).then(d => {
+            if (!d.success) {
+                alert(d.mesaj || 'Doğrulama kodu hatalı.');
+                return false;
+            }
+            localStorage.setItem('halic_antik_dogrulandi', '1');
+            return true;
+        });
     }
 
     function kategorileriYukle() {
@@ -635,12 +727,14 @@
                                 <div class="btn-group">
                                     <button class="btn-on-teklif" onclick="modalAc(${u.id}, '${u.lot}', '${safeAd}', ${acilisFiyat})">📝 Ön Teklif</button>
                                     <button class="btn-hemen-al" onclick="vitrindenHemenAl(${u.id}, '${u.lot}', '${safeAd}', ${hemenAl > 0 ? hemenAl : acilisFiyat})">⚡ Hemen Al</button>
+                                    <button class="btn-on-teklif" onclick="vitrinWhatsappPaylas('${safeAd}', ${u.lot})">WhatsApp</button>
                                 </div>
                                 <button class="btn-direkt-sepet" onclick="vitrindenSepeteEkle(${u.id}, '${safeAd}')">🛒 Sepete Ekle</button>
                             </div>
                         </div>
                     `;
                 }).join('');
+                vitrinYapisalVeri(data.urunler || []);
             })
             .catch(err => {
                 if (err.name !== 'AbortError') {
@@ -666,10 +760,14 @@
                 const kRes = await fetch('/kayit-ol', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ ad: ad.trim(), tel: tel.trim(), mail: mail.trim(), sozlesme: true })
+                    body: JSON.stringify({ ad: ad.trim(), tel: tel.trim(), mail: mail.trim(), sozlesme: true, cihaz_kodu: vitrinCihazKimligi() })
                 });
                 const kData = await kRes.json();
-                if (kData.success && kData.musteri_id) {
+                if (kData.dogrulama_gerekli) {
+                    alert(kData.mesaj || 'E-posta kodunu girin, sonra yeniden deneyin.');
+                    return;
+                }
+                if (kData.success && kData.musteri_id && !kData.dogrulama_gerekli) {
                     kayitliId = kData.musteri_id;
                     kayitliAd = ad.trim();
                     kayitliTel = tel.trim();
@@ -694,10 +792,12 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     musteri_id: parseInt(kayitliId),
-                    urun_id: parseInt(urunId)
+                    urun_id: parseInt(urunId),
+                    cihaz_kodu: vitrinCihazKimligi()
                 })
             });
             const data = await res.json();
+            if (vitrinOnOdemeMi(data)) return;
             if (data.success) {
                 alert(`✅ "${urunAdi}" başarıyla sepetinize eklendi!`);
                 sepetSayaciniGuncelle();
@@ -831,7 +931,7 @@
         let kayitliId = localStorage.getItem('halic_antik_id');
         let ad = decodeURIComponent(adEncoded);
 
-        if (!kayitliAd || !kayitliTel || !kayitliMail) {
+        if (!kayitliAd || !kayitliTel || !kayitliMail || localStorage.getItem('halic_antik_dogrulandi') === '0') {
             modalModu = 'hemen_al';
             seciliModalUrunId = id;
             seciliHemenAlFiyati = hemenAlBedeli;
@@ -864,6 +964,7 @@
                 islem: 'hemen_al'
             })
         }).then(r => r.json()).then(res => {
+            if (vitrinOnOdemeMi(res)) return;
             if (res.success) {
                 alert(`🎉 Tebrikler! Ürün sepetinize eklendi.`);
                 sepetSayaciniGuncelle();
@@ -913,20 +1014,12 @@
         if (!mail || !mail.includes('@') || !mail.includes('.')) {
             return alert("Lütfen geçerli bir E-posta adresi giriniz!");
         }
+        const sozlesmeKutu = document.getElementById('vitrinSozlesme');
+        if (!sozlesmeKutu || !sozlesmeKutu.checked) {
+            return alert("Mezat şartnamesini okudum, kabul ediyorum kutusunu işaretleyin");
+        }
 
-        fetch('/kayit-ol', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ad: ad, tel: tel, mail: mail, sozlesme: true })
-        }).then(r => r.json()).then(kayitRes => {
-            if (!kayitRes.success) {
-                return alert(kayitRes.mesaj);
-            }
-            localStorage.setItem('halic_antik_ad', ad);
-            localStorage.setItem('halic_antik_tel', tel);
-            localStorage.setItem('halic_antik_mail', mail);
-            if (kayitRes.musteri_id) localStorage.setItem('halic_antik_id', kayitRes.musteri_id);
-
+        const teklifiBitir = function (musteriId) {
             if (modalModu === 'hemen_al') {
                 fetch('/pey-ver', {
                     method: 'POST',
@@ -934,12 +1027,14 @@
                     body: JSON.stringify({
                         dukkan: aktifDukkan,
                         urun_id: seciliModalUrunId,
-                        musteri_id: kayitRes.musteri_id || null,
+                        musteri_id: musteriId || null,
                         musteri_adi: ad,
                         telefon: tel,
+                        cihaz_kodu: vitrinCihazKimligi(),
                         islem: 'hemen_al'
                     })
                 }).then(r2 => r2.json()).then(d => {
+                    if (vitrinOnOdemeMi(d)) return;
                     if (d.success) {
                         alert(`🎉 Tebrikler! Ürün sepetinize eklendi.`);
                         modalKapat();
@@ -949,32 +1044,71 @@
                         alert(d.mesaj || "Satın alma yapılamadı.");
                     }
                 });
-            } else {
-                let tutar = parseFloat(document.getElementById('vitrinTutar').value);
-                if (isNaN(tutar) || tutar < seciliModalMinFiyat) {
-                    return alert(`Ön teklif açılış fiyatından (${formatFiyat(seciliModalMinFiyat)}) düşük olamaz!`);
-                }
-
-                fetch('/on-teklif-ver', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        dukkan: aktifDukkan,
-                        urun_id: seciliModalUrunId,
-                        musteri_id: kayitRes.musteri_id || null,
-                        musteri_adi: ad,
-                        teklif: tutar
-                    })
-                }).then(r3 => r3.json()).then(d => {
-                    if (d.success) {
-                        alert(d.mesaj || "Ön teklif başarıyla kaydedildi.");
-                        modalKapat();
-                        vitrinYukle();
-                    } else {
-                        alert(d.mesaj);
-                    }
-                });
+                return;
             }
+            let tutar = parseFloat(document.getElementById('vitrinTutar').value);
+            if (isNaN(tutar) || tutar < seciliModalMinFiyat) {
+                alert(`Ön teklif açılış fiyatından (${formatFiyat(seciliModalMinFiyat)}) düşük olamaz!`);
+                return;
+            }
+            fetch('/on-teklif-ver', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    dukkan: aktifDukkan,
+                    urun_id: seciliModalUrunId,
+                    musteri_id: musteriId || null,
+                    musteri_adi: ad,
+                    teklif: tutar,
+                    cihaz_kodu: vitrinCihazKimligi()
+                })
+            }).then(r3 => r3.json()).then(d => {
+                if (vitrinOnOdemeMi(d)) return;
+                if (d.success) {
+                    alert(d.mesaj || "Ön teklif başarıyla kaydedildi.");
+                    modalKapat();
+                    vitrinYukle();
+                } else {
+                    alert(d.mesaj);
+                }
+            });
+        };
+
+        if (localStorage.getItem('halic_otp_bekliyor') === '1') {
+            vitrinKodOnayla(localStorage.getItem('halic_antik_id')).then(function (oldu) {
+                if (!oldu) return;
+                localStorage.removeItem('halic_otp_bekliyor');
+                teklifiBitir(localStorage.getItem('halic_antik_id'));
+            });
+            return;
+        }
+
+        fetch('/kayit-ol', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ad: ad, tel: tel, mail: mail, sozlesme: true, cihaz_kodu: vitrinCihazKimligi() })
+        }).then(r => r.json()).then(kayitRes => {
+            if (kayitRes.ban) return alert(kayitRes.mesaj);
+            if (!kayitRes.success) {
+                return alert(kayitRes.mesaj);
+            }
+            localStorage.setItem('halic_antik_ad', ad);
+            localStorage.setItem('halic_antik_tel', tel);
+            localStorage.setItem('halic_antik_mail', mail);
+            if (kayitRes.musteri_id) localStorage.setItem('halic_antik_id', kayitRes.musteri_id);
+
+            if (kayitRes.dogrulama_gerekli) {
+                const satir = document.getElementById('vitrinKodSatiri');
+                const kutu = document.getElementById('vitrinKod');
+                if (satir) satir.textContent = kayitRes.mesaj || 'E-posta kodunu girin.';
+                if (kutu) kutu.style.display = 'block';
+                localStorage.setItem('halic_otp_bekliyor', '1');
+                localStorage.setItem('halic_antik_dogrulandi', '0');
+                alert(kayitRes.mesaj || 'E-posta kodunu yazıp yeniden onaylayın.');
+                return;
+            }
+            localStorage.setItem('halic_antik_dogrulandi', '1');
+            teklifiBitir(kayitRes.musteri_id);
         });
     }
 
