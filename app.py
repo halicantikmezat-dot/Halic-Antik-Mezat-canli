@@ -2261,11 +2261,44 @@ def dukkan_otonom_dongusu(dukkan):
 
 
 # VERİTABANI ONARIMI: Tüm eksik kolonları (ip_adresi dahil) PostgreSQL'e otomatik ekler
+def _kullanici_kolonu_var_mi(kolon):
+    if IS_SQLITE:
+        satirlar = db.session.execute(text("PRAGMA table_info(kullanici)")).fetchall()
+        return any(str(satir[1]) == kolon for satir in satirlar)
+    bulunan = db.session.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'kullanici' AND column_name = :kolon"
+        ),
+        {"kolon": kolon},
+    ).first()
+    return bulunan is not None
+
+
+def kullanici_ve_kara_liste_onar():
+    """Kara liste tablosu ve kayıtta kullanılan kullanıcı sütunları eksikse ekler."""
+    KaraListe.__table__.create(bind=db.engine, checkfirst=True)
+    zorunlu = (
+        ("sozlesme_onay", "BOOLEAN DEFAULT TRUE"),
+        ("otp_code", "VARCHAR(6)"),
+        ("otp_bitis", "TIMESTAMP"),
+        ("dogrulama_kodu", "VARCHAR(6)"),
+        ("is_verified", "BOOLEAN DEFAULT FALSE"),
+        ("cihaz_kodu", "VARCHAR(64)"),
+        ("ip_adresi", "VARCHAR(50)"),
+    )
+    for kolon, tip in zorunlu:
+        if _kullanici_kolonu_var_mi(kolon):
+            continue
+        db.session.execute(text(f"ALTER TABLE kullanici ADD COLUMN {kolon} {tip}"))
+        db.session.commit()
+
+
 def veritabani_tablolari_onar():
     with app.app_context():
         try:
             db.create_all()
-            KaraListe.__table__.create(bind=db.engine, checkfirst=True)
+            kullanici_ve_kara_liste_onar()
             kolonlar = [
                 ("kullanici", "ip_adresi", "VARCHAR(50)"),
                 ("kullanici", "cihaz_kodu", "VARCHAR(64)"),
@@ -2349,8 +2382,9 @@ def veritabani_tablolari_onar():
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
-        except Exception:
-            pass
+        except Exception as hata:
+            db.session.rollback()
+            print(f"Veritabanı onarım hatası: {hata}")
         finally:
             db.session.remove()
 
@@ -2981,7 +3015,7 @@ def otp_eposta_gonder(alici, kod):
             "Kod 10 dakika geçerlidir."
         )
         port = int(os.environ.get("SMTP_PORT", "587") or 587)
-        with smtplib.SMTP(host, port, timeout=12) as smtp:
+        with smtplib.SMTP(host, port, timeout=10) as smtp:
             if os.environ.get("SMTP_TLS", "1") != "0":
                 smtp.starttls()
             kullanici = os.environ.get("SMTP_USER", "")
@@ -4069,6 +4103,18 @@ def kayit_ol():
         return jsonify(govde)
 
     try:
+        kullanici_ve_kara_liste_onar()
+    except Exception as hata:
+        db.session.rollback()
+        print(f"Kayıt şema onarımı: {hata}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "message": str(hata),
+            "mesaj": str(hata),
+        }), 500
+
+    try:
         if kara_liste_cakisma(tel, mail, cihaz, ip):
             kullanici = bul()
             if kullanici:
@@ -4140,19 +4186,25 @@ def kayit_ol():
                 {"i": kullanici.id},
             )
             db.session.commit()
-        except Exception:
+        except Exception as sifre_hata:
             db.session.rollback()
-        gitti = otp_eposta_gonder(kullanici.email or mail, kod)
-        return kod_yaniti(kullanici, kod, gitti)
+            print(f"Kayıt şifre alanı: {sifre_hata}")
     except Exception as hata:
         db.session.rollback()
         print(f"Kayıt hatası: {hata}")
         return jsonify({
             "status": "error",
             "success": False,
-            "message": "Kayıt tamamlanamadı",
-            "mesaj": "Kayıt tamamlanamadı",
+            "message": str(hata),
+            "mesaj": str(hata),
         }), 500
+
+    try:
+        gitti = otp_eposta_gonder(kullanici.email or mail, kod)
+    except Exception as posta_hata:
+        print(f"[OTP] E-posta gönderilemedi, kayıt korunuyor: {posta_hata}")
+        gitti = False
+    return kod_yaniti(kullanici, kod, gitti)
 
 
 @app.route("/profil-guncelle", methods=["POST"])

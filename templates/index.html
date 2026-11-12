@@ -1272,6 +1272,7 @@
         .guncel-pey-kutu { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: 118px; z-index: 60; height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.38); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 999px; padding: 0 14px; font-size: 15px; font-weight: 700; line-height: 1; white-space: nowrap; }
         .guncel-pey-kutu .pey-etiket { color: #fef08a; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; line-height: 1; }
         .guncel-pey-kutu .price-val, .guncel-pey-kutu #aktif_kazanan { font-size: 15px !important; font-weight: 700 !important; line-height: 1 !important; color: #ffffff !important; text-shadow: none !important; }
+        #modalKurallar.modal { z-index: 4000; }
         #modalKurallar .modal-content { max-width: 560px; background: #07090e !important; }
         #modalKurallar h2 { color: #fef08a; font-size: 17px; margin: 14px 0 6px; }
         #modalKurallar p { font-size: 16px !important; color: #ffffff !important; line-height: 1.5; }
@@ -1358,6 +1359,7 @@
         </div>
         <div class="header-actions">
             <button type="button" class="btn-yeni-ust" onclick="yeniSlaytiAc()">🔥 Yeni</button>
+            <button type="button" class="btn-yeni-ust" onclick="nasilKullanilirAc()" style="background:#d4af37; color:#111;">🎙️ Nasıl Kullanılır?</button>
             <button type="button" id="btnCanliMuzikToggle" onclick="muzikMenusuAcKapa(event)" class="btn-muzik-ust" aria-expanded="false" aria-controls="muzikMenu">🎵 Müzik</button>
             <div id="muzikMenu" class="muzik-menu" hidden>
                 <div class="muzik-menu-baslik">Müzik İstasyonları</div>
@@ -1386,6 +1388,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(openSepetModal)">Sepet (<span id="sepetAdet">0</span>)</button>
         <button type="button" class="menu-oge" onclick="menuIslem(openGecmisModal)">Geçmiş</button>
         <button type="button" class="menu-oge" onclick="menuIslem(openRegisterModal)">Profil</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
         <select id="currencySelector" onchange="paraBirimiDegistir()" style="margin-top:8px;">
@@ -1665,7 +1668,7 @@
         <textarea id="k_adres" rows="3" placeholder="Teslimat Adresiniz (isteğe bağlı)"></textarea>
         <label style="display:flex; gap:8px; align-items:flex-start; font-size:15px; color:#fff; margin:8px 0;">
             <input type="checkbox" id="k_sozlesme" required style="width:18px; height:18px; margin-top:2px;">
-            <span>Mezat şartnamesini okudum, kabul ediyorum</span>
+            <span><a href="#" onclick="sartnameyiKayitUstundeAc(event)" style="color:#d4af37; font-weight:800; text-decoration:underline;">Mezat şartnamesini</a> okudum, kabul ediyorum</span>
         </label>
         <button id="kayitOlButonu" onclick="kayitOlModal()" class="btn-bid btn-action-green" style="width:100%;">💾 Onayla & Kaydol</button>
         <button onclick="closeModal('authRegisterModal')" class="btn-bid btn-kapat" style="width:100%;">Kapat</button>
@@ -3240,6 +3243,13 @@
     }
 
     function kurallariAc() { playUserClickSound(); document.getElementById('modalKurallar').style.display = 'flex'; }
+    function sartnameyiKayitUstundeAc(olay) {
+        if (olay) olay.preventDefault();
+        const kutu = document.getElementById('modalKurallar');
+        if (!kutu) return;
+        kutu.style.zIndex = '4000';
+        kutu.style.display = 'flex';
+    }
     function kurallariKapat() { playUserClickSound(); document.getElementById('modalKurallar').style.display = 'none'; }
 
     function formatFiyat(tlTutari) {
@@ -4802,6 +4812,8 @@
     }
     function nasilKullanilirAc() {
         playUserClickSound();
+        const menu = document.getElementById('genelMenu');
+        if (menu && menu.classList.contains('acik')) genelMenuAcKapa();
         rehberAdim = 1;
         const kutu = document.getElementById('rehberModal');
         if (kutu) kutu.style.display = 'flex';
