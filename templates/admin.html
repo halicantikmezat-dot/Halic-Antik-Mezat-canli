@@ -1914,8 +1914,17 @@
         }, 250);
     }
 
+    function isVideoUrl(url) {
+        const metin = String(url || "").toLowerCase();
+        return metin.indexOf(".mp4") !== -1
+            || metin.indexOf(".webm") !== -1
+            || metin.indexOf(".mov") !== -1
+            || metin.indexOf(".m4v") !== -1;
+    }
+
     function onizlemeVideoMu(url) {
-        return /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i.test(String(url || "").split("?")[0]);
+        if (isVideoUrl(url)) return true;
+        return /\.ogg(\?|#|$)/i.test(String(url || "").split("?")[0]);
     }
 
     function onizlemeMedyaAdresi(url) {
@@ -1964,34 +1973,16 @@
         medyaAlani.innerHTML = "";
 
         const videoKaynak = onizlemeVideoKaynagi(urun);
-        if (videoKaynak) {
-            const v = document.createElement('video');
-            v.controls = true;
-            v.autoplay = true;
-            v.muted = true;
-            v.defaultMuted = true;
-            v.loop = true;
-            v.playsInline = true;
-            v.preload = "auto";
-            v.setAttribute("controls", "");
-            v.setAttribute("autoplay", "");
-            v.setAttribute("muted", "");
-            v.setAttribute("loop", "");
-            v.setAttribute("playsinline", "");
-            v.setAttribute("preload", "auto");
-            v.style.position = "absolute";
-            v.style.inset = "0";
-            v.style.width = "100%";
-            v.style.height = "100%";
-            v.style.objectFit = "contain";
-            medyaAlani.appendChild(v);
-            v.src = onizlemeMedyaAdresi(videoKaynak);
-            v.load();
-            const oynat = v.play();
-            if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
-        } else if (urun.fotograflar && urun.fotograflar.length > 0 && String(urun.fotograflar[0] || "").trim()) {
+        const ilkGorsel = (urun.fotograflar && urun.fotograflar.length > 0) ? String(urun.fotograflar[0] || "").trim() : "";
+        const onizlemeSrc = videoKaynak || ilkGorsel;
+        if (onizlemeSrc && (videoKaynak || isVideoUrl(onizlemeSrc))) {
+            const src = onizlemeMedyaAdresi(onizlemeSrc);
+            medyaAlani.innerHTML = `<video src="${src}" controls autoplay muted loop playsinline style="width:100%; max-height:360px; object-fit:contain;"></video>`;
+            const v = medyaAlani.querySelector('video');
+            if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
+        } else if (ilkGorsel) {
             const img = document.createElement('img');
-            img.src = urun.fotograflar[0].trim();
+            img.src = ilkGorsel;
             medyaAlani.appendChild(img);
         } else {
             medyaAlani.innerHTML = '<span style="color:#64748b; font-size:12px;">📷 Bu ürüne ait görsel bulunmuyor.</span>';

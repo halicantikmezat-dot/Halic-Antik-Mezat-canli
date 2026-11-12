@@ -3811,7 +3811,7 @@
                 const adres = (f || "").trim();
                 if (!adres || adres === videoUrl) return;
                 aktifUrunMedyalari.push({
-                    tip: videoDosyasiMi(adres) ? 'video' : 'foto',
+                    tip: (isVideoUrl(adres) || videoDosyasiMi(adres)) ? 'video' : 'foto',
                     url: adres
                 });
             });
@@ -3830,10 +3830,14 @@
             thumbsDiv.style.display = 'flex';
             thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => {
                 const sinif = `thumb-item ${idx === 0 ? 'active' : ''}`;
-                if (m.tip === 'video' || m.tip === 'hls') {
-                    return `<video src="${m.url}" class="${sinif}" muted playsinline onclick="medyaDegistir(${idx})"></video>`;
+                const src = sahneMedyaAdresi(m.url);
+                if (m.tip === 'hls') {
+                    return `<video src="${src}" class="${sinif}" muted playsinline onclick="medyaDegistir(${idx})"></video>`;
                 }
-                return `<img src="${m.url}" class="${sinif}" onclick="medyaDegistir(${idx})">`;
+                if (m.tip === 'video' || isVideoUrl(src) || isVideoUrl(m.url)) {
+                    return `<span class="${sinif}" onclick="medyaDegistir(${idx})" style="display:inline-block;overflow:hidden;padding:0;"><video src="${src}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;"></video></span>`;
+                }
+                return `<img src="${src}" class="${sinif}" onclick="medyaDegistir(${idx})">`;
             }).join('');
         } else {
             thumbsDiv.style.display = 'none';
@@ -3861,8 +3865,17 @@
         }
     }
 
+    function isVideoUrl(url) {
+        const metin = String(url || "").toLowerCase();
+        return metin.indexOf(".mp4") !== -1
+            || metin.indexOf(".webm") !== -1
+            || metin.indexOf(".mov") !== -1
+            || metin.indexOf(".m4v") !== -1;
+    }
+
     function videoDosyasiMi(url) {
-        return /\.(mp4|webm|mov|m4v|ogg)(\?|#|$)/i.test(String(url || "").split("?")[0]);
+        if (isVideoUrl(url)) return true;
+        return /\.ogg(\?|#|$)/i.test(String(url || "").split("?")[0]);
     }
 
     function sahneMedyaAdresi(url) {
@@ -3909,32 +3922,12 @@
                 v.src = medya.url;
                 v.addEventListener('loadedmetadata', () => v.play().catch(e => {}));
             }
-        } else if (medya.tip === 'video' || videoDosyasiMi(medya.url)) {
-            let v = document.createElement('video');
-            v.id = "stageVideo";
-            v.autoplay = true;
-            v.muted = true;
-            v.defaultMuted = true;
-            v.loop = true;
-            v.playsInline = true;
-            v.preload = "auto";
-            v.setAttribute("autoplay", "");
-            v.setAttribute("muted", "");
-            v.setAttribute("loop", "");
-            v.setAttribute("playsinline", "");
-            v.setAttribute("preload", "auto");
-            v.style.position = "absolute";
-            v.style.inset = "0";
-            v.style.width = "100%";
-            v.style.height = "100%";
-            v.style.objectFit = "contain";
-            v.style.transform = "none";
-            v.style.animation = "none";
-            medyaDiv.appendChild(v);
-            v.src = sahneMedyaAdresi(medya.url);
-            v.load();
-            const oynat = v.play();
-            if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
+        } else if (medya.tip === 'video' || isVideoUrl(medya.url) || videoDosyasiMi(medya.url)) {
+            const src = sahneMedyaAdresi(medya.url);
+            const sahneKutu = medyaDiv;
+            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay muted loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
+            const v = sahneKutu.querySelector('video');
+            if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
         } else {
             let img = document.createElement('img');
             img.src = medya.url;
