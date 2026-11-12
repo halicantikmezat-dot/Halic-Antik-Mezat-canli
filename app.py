@@ -1105,6 +1105,58 @@ def kaydet_guvenli_dosya(dosya):
     return f"/static/uploads/{benzersiz_ad}", benzersiz_ad
 
 
+_GORSEL_UZANTILARI = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic", ".avif"}
+
+
+def _bulut_anahtari_var():
+    return all(
+        (os.environ.get(ad) or "").strip()
+        for ad in ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET")
+    )
+
+
+def medyayi_kaydet(dosya):
+    """Ürün fotoğrafı ve videosu. Anahtar varsa Cloudinary, yoksa yerel disk."""
+    url, ad = kaydet_guvenli_dosya(dosya)
+    if not url or not ad or not _bulut_anahtari_var():
+        return url, ad
+    uzanti = _dosya_uzantisi(ad)
+    if uzanti in _GORSEL_UZANTILARI:
+        tip = "image"
+    elif uzanti in _VIDEO_UZANTILARI:
+        tip = "video"
+    else:
+        return url, ad
+    yol = os.path.join(app.config["UPLOAD_FOLDER"], ad)
+    try:
+        import cloudinary
+        import cloudinary.uploader
+        cloudinary.config(
+            cloud_name=(os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip(),
+            api_key=(os.environ.get("CLOUDINARY_API_KEY") or "").strip(),
+            api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
+            secure=True,
+        )
+        sonuc = cloudinary.uploader.upload(
+            yol,
+            resource_type=tip,
+            folder="halic-antik",
+            use_filename=True,
+            unique_filename=True,
+            overwrite=False,
+        )
+        adres = str((sonuc or {}).get("secure_url") or "").strip()
+        if adres.startswith("https://"):
+            try:
+                os.remove(yol)
+            except OSError:
+                pass
+            return adres, ad
+    except Exception as hata:
+        print(f"[CLOUDINARY] {hata}")
+    return url, ad
+
+
 def saf_isim_temizle(isim):
     if not isim:
         return ""
@@ -1181,8 +1233,8 @@ class Urun(db.Model):
     hemen_al_fiyati = db.Column(db.Float, nullable=True, default=0.0)
     tanitim_yazisi = db.Column(db.Text, nullable=True)
     fotograflar = db.Column(db.JSON, default=list)
-    video = db.Column(db.String(300), nullable=True, default="")
-    ses_dosyasi = db.Column(db.String(300), nullable=True, default="")
+    video = db.Column(db.Text, nullable=True, default="")
+    ses_dosyasi = db.Column(db.Text, nullable=True, default="")
     durum = db.Column(db.String(20), default="Aktif", index=True)
     kazanan_adi = db.Column(db.String(100), nullable=True, default="Yok")
     kazanan_id = db.Column(
@@ -2273,6 +2325,15 @@ def veritabani_tablolari_onar():
                     db.session.execute(
                         text(f"ALTER TABLE {tablo} ADD COLUMN {kolon} {tip};")
                     )
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            for genislet in (
+                "ALTER TABLE urun ALTER COLUMN video TYPE TEXT",
+                "ALTER TABLE urun ALTER COLUMN ses_dosyasi TYPE TEXT",
+            ):
+                try:
+                    db.session.execute(text(genislet))
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
@@ -4775,7 +4836,7 @@ def urun_ekle():
         ses_url = ""
 
         for dosya in dosyalar:
-            url, temiz_ad = kaydet_guvenli_dosya(dosya)
+            url, temiz_ad = medyayi_kaydet(dosya)
             if url and temiz_ad:
                 ext = temiz_ad.lower()
                 if ext.endswith((
@@ -5643,7 +5704,7 @@ def studyo_transfer():
         fotograflar = []
         video_url = ""
         for dosya in request.files.getlist("dosyalar"):
-            url, temiz_ad = kaydet_guvenli_dosya(dosya)
+            url, temiz_ad = medyayi_kaydet(dosya)
             if not url or not temiz_ad:
                 continue
             uzanti = _studyo_uzanti(temiz_ad)

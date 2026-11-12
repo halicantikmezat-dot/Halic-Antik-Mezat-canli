@@ -462,8 +462,25 @@
     }
 
     function videoMu(yol) {
-        const t = String(yol || '').toLowerCase().split('?')[0].split('#')[0];
-        return /\.(mp4|webm|mov|m4v|3gp|mkv|avi)$/.test(t);
+        const ham = String(yol || '').toLowerCase();
+        if (ham.indexOf('/video/upload/') !== -1) return true;
+        const t = ham.split('?')[0].split('#')[0];
+        return /\.(mp4|webm|mov|m4v)$/.test(t);
+    }
+
+    function vitrinVideoOynat(el) {
+        if (!el) return;
+        el.controls = true;
+        el.muted = false;
+        const oynat = el.play();
+        if (oynat && typeof oynat.catch === 'function') oynat.catch(function () {});
+    }
+
+    function vitrinVideoDurdur(el) {
+        if (!el) return;
+        el.pause();
+        el.muted = true;
+        el.controls = false;
     }
 
     function medyaEtiketi(ham, alt, stil) {
@@ -474,7 +491,8 @@
             return `<img src="${VARSAYILAN_GORSEL}" alt="${guvenliAlt}" style="${gorunum}">`;
         }
         if (videoMu(yol)) {
-            return `<video src="${yol}" autoplay muted loop playsinline preload="metadata" style="${gorunum}background:#000;"></video>`;
+            const src = yol.replace(/"/g, '%22');
+            return `<video src="${src}" preload="metadata" muted playsinline style="${gorunum}background:#000;" onmouseenter="vitrinVideoOynat(this)" onmouseleave="vitrinVideoDurdur(this)" onclick="vitrinVideoOynat(this)"></video>`;
         }
         return `<img src="${yol}" alt="${guvenliAlt}" loading="lazy" style="${gorunum}" onerror="this.onerror=null;this.src='/static/img/varsayilan_urun.png'">`;
     }

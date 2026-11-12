@@ -25,3 +25,4 @@ pycaw
 keyboard
 sounddevice
 azure-cognitiveservices-speech
+cloudinary
