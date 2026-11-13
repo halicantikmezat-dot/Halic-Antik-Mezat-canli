@@ -288,6 +288,17 @@
             Yükleniyor...
         </div>
         <div id="vitrinSepetOzet" style="border-top: 1px solid var(--card-border); padding-top: 8px; font-size: 12px;"></div>
+
+        <div style="background:#080c13; border:1px solid #d4af37; border-radius:8px; padding:10px; margin-top:10px; font-size:13px; line-height:1.45; text-align:left;">
+            <b style="display:block; color:#fef08a; margin-bottom:6px;">🏦 Kurumsal Havale / EFT Ödeme Bilgileri</b>
+            <div>Banka Adı: <b data-kurumsal="bankaAdi"></b></div>
+            <div>Alıcı Resmi Ünvanı: <b data-kurumsal="aliciAdi"></b></div>
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px;">
+                <span>IBAN: <b data-kurumsal="iban"></b></span>
+                <button type="button" class="iban-kopyala" style="width:auto; background:#1d4ed8; color:#fff; border:none; border-radius:6px; padding:6px 8px; font-size:11px; font-weight:800; cursor:pointer;">📋 IBAN Kopyala</button>
+            </div>
+            <p style="margin:6px 0 0; color:#fde68a;">Açıklama kısmına Ad Soyad ve LOT Numarası yazınız.</p>
+        </div>
         
         <button id="btnSepetOdemeyeGec" style="background:var(--btn-green); color:#fff; font-size:13px; font-weight:800; padding:10px; margin-top:8px;" onclick="sepettenOdemeyeGec()">💳 Siparişi Tamamla / Ödemeye Geç</button>
         <button style="background:#475569; color:#fff; margin-top:5px;" onclick="document.getElementById('vitrinSepetModal').style.display='none'">Alışverişe Devam Et</button>
@@ -308,6 +319,68 @@
 </div>
 
 <script>
+    // === ŞİRKET VE BANKA BİLGİLERİ ŞABLONU (BURADAN DÜZENLEYİN) ===
+    const KURUMSAL_BILGILER = {
+        sirketUnvani: "HALİÇ ANTİK MEZAT (Şirket Resmi Ünvanı Girilecek)",
+        vergiDairesi: "Vergi Dairesi ve VKN Girilecek",
+        mersisNo: "MERSİS No Girilecek",
+        bankaAdi: "Banka Adı Girilecek",
+        aliciAdi: "Resmi Hesap Sahibi Ünvanı Girilecek",
+        iban: "TR00 0000 0000 0000 0000 0000 00",
+        acikAdres: "Açık Şirket / Galeri Adresi Girilecek, İstanbul",
+        haritaUrl: "https://maps.google.com/?q=Istanbul",
+        telefon: "+90 (5XX) XXX XX XX",
+        eposta: "info@halicantikcanli.com"
+    };
+
+    function kurumsalBilgileriYerlestir() {
+        document.querySelectorAll("[data-kurumsal]").forEach(function (el) {
+            var alan = el.getAttribute("data-kurumsal");
+            el.textContent = KURUMSAL_BILGILER[alan] == null ? "" : String(KURUMSAL_BILGILER[alan]);
+        });
+        var harita = document.getElementById("kurumsalHarita");
+        if (harita) {
+            harita.href = String(KURUMSAL_BILGILER.haritaUrl || "#");
+            harita.target = "_blank";
+            harita.rel = "noopener noreferrer";
+        }
+        document.querySelectorAll(".iban-kopyala").forEach(function (btn) {
+            if (btn.dataset.bagli === "1") return;
+            btn.dataset.bagli = "1";
+            btn.addEventListener("click", function () {
+                var iban = String(KURUMSAL_BILGILER.iban || "");
+                var eski = "📋 IBAN Kopyala";
+                var bildir = function () {
+                    btn.textContent = "✓ IBAN Kopyalandı";
+                    setTimeout(function () { btn.textContent = eski; }, 2000);
+                };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(iban).then(bildir).catch(function () {
+                        kurumsalYedekKopyala(iban);
+                        bildir();
+                    });
+                    return;
+                }
+                kurumsalYedekKopyala(iban);
+                bildir();
+            });
+        });
+    }
+
+    function kurumsalYedekKopyala(metin) {
+        var alan = document.createElement("textarea");
+        alan.value = metin;
+        alan.setAttribute("readonly", "");
+        alan.style.position = "fixed";
+        alan.style.left = "-9999px";
+        document.body.appendChild(alan);
+        alan.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(alan);
+    }
+
+    document.addEventListener("DOMContentLoaded", kurumsalBilgileriYerlestir);
+
     function mezatSocketAdresi() {
         const host = window.location.hostname;
         if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:5000';
@@ -1355,5 +1428,19 @@
         sepetSayaciniGuncelle();
     };
 </script>
+<footer id="kurumsalKunye" style="background:#080c13; color:#f8fafc; border:1px solid #d4af37; border-radius:12px; padding:16px 14px; margin-top:28px; font-size:14px; line-height:1.5;">
+    <b style="display:block; color:#fef08a; font-size:16px; margin-bottom:8px;" data-kurumsal="sirketUnvani"></b>
+    <div>Vergi Dairesi / No: <span data-kurumsal="vergiDairesi"></span></div>
+    <div>MERSİS No: <span data-kurumsal="mersisNo"></span></div>
+    <div style="margin-top:6px;">Adres: <span data-kurumsal="acikAdres"></span></div>
+    <a id="kurumsalHarita" href="https://maps.google.com/?q=Istanbul" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:6px; color:#fef08a; font-weight:800;">📍 Konumu Google Haritalarda Aç</a>
+    <div style="margin-top:6px;">Telefon: <span data-kurumsal="telefon"></span></div>
+    <div>E-posta: <span data-kurumsal="eposta"></span></div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700;">Faturalı &amp; Kayıtlı Kurumsal Satış</span>
+        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700;">Sigortalı &amp; Özenli Paketleme</span>
+        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700;">KVKK &amp; Mesafeli Satış Güvencesi</span>
+    </div>
+</footer>
 </body>
 </html>
