@@ -2324,6 +2324,47 @@ def kullanici_ve_kara_liste_onar():
         db.session.commit()
 
 
+def _urun_kolon_adlari():
+    """urun tablosunda gerçekten bulunan sütun adları. API alanı dukkan/lot değil."""
+    if IS_SQLITE:
+        satirlar = db.session.execute(text("PRAGMA table_info(urun)")).fetchall()
+        return {str(satir[1]) for satir in satirlar}
+    bulunan = db.session.execute(
+        text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'urun'"
+        )
+    ).fetchall()
+    return {str(satir[0]) for satir in bulunan}
+
+
+def urun_vitrin_indekslerini_hazirla():
+    """Dükkan sıralaması ve lot araması için yalnızca var olan sütunlara indeks."""
+    kolonlar = _urun_kolon_adlari()
+    adaylar = []
+    if {"dukkan_kodu", "id"} <= kolonlar:
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_dukkan_id ON urun (dukkan_kodu, id)"
+        )
+    if {"dukkan_kodu", "lot_no"} <= kolonlar:
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_dukkan_lot ON urun (dukkan_kodu, lot_no)"
+        )
+    if {"dukkan_kodu", "durum", "lot_no"} <= kolonlar:
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_dukkan_durum_lot "
+            "ON urun (dukkan_kodu, durum, lot_no)"
+        )
+    if "kategori" in kolonlar:
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_kategori_arama ON urun (kategori)"
+        )
+    for sql in adaylar:
+        db.session.execute(text(sql))
+    if adaylar:
+        db.session.commit()
+
+
 def veritabani_tablolari_onar():
     with app.app_context():
         try:
@@ -2417,6 +2458,18 @@ def veritabani_tablolari_onar():
             print(f"Veritabanı onarım hatası: {hata}")
         finally:
             db.session.remove()
+        try:
+            urun_vitrin_indekslerini_hazirla()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                db.session.remove()
+            except Exception:
+                pass
 
 
 @app.route("/static/uploads/<path:filename>")

@@ -563,6 +563,15 @@
         return '/static/uploads/' + s.replace(/^\/+/, '');
     }
 
+    function vitrinKartGorseli(yol) {
+        const adres = String(yol || '');
+        if (adres.indexOf('res.cloudinary.com') === -1 || adres.indexOf('/image/upload/') === -1) return adres;
+        const devam = adres.split('/image/upload/')[1] || '';
+        const ilk = (devam.split('/')[0] || '').split('?')[0].split('#')[0];
+        if (!ilk || ilk.indexOf(',') !== -1 || /^[a-z]{1,3}_/.test(ilk)) return adres;
+        return adres.replace('/image/upload/', '/image/upload/w_500,f_auto,q_auto/');
+    }
+
     function videoMu(yol) {
         const ham = String(yol || '').toLowerCase();
         if (ham.indexOf('/video/upload/') !== -1) return true;
@@ -585,18 +594,21 @@
         el.controls = false;
     }
 
-    function medyaEtiketi(ham, alt, stil) {
-        const yol = medyaYolu(ham);
+    function medyaEtiketi(ham, alt, stil, kartKucuk) {
+        let yol = medyaYolu(ham);
+        if (kartKucuk) yol = vitrinKartGorseli(yol);
         const gorunum = stil || 'width:100%;height:100%;object-fit:contain;';
         const guvenliAlt = String(alt || 'Eser').replace(/"/g, '');
+        const kartAttr = kartKucuk ? ' loading="lazy" decoding="async"' : '';
         if (!yol) {
-            return `<img src="${VARSAYILAN_GORSEL}" alt="${guvenliAlt}" style="${gorunum}">`;
+            return `<img src="${VARSAYILAN_GORSEL}" alt="${guvenliAlt}"${kartAttr} style="${gorunum}">`;
         }
         if (videoMu(yol)) {
             const src = yol.replace(/"/g, '%22');
             return `<video src="${src}" preload="metadata" muted playsinline style="${gorunum}background:#000;" onmouseenter="vitrinVideoOynat(this)" onmouseleave="vitrinVideoDurdur(this)" onclick="vitrinVideoOynat(this)"></video>`;
         }
-        return `<img src="${yol}" alt="${guvenliAlt}" loading="lazy" style="${gorunum}" onerror="this.onerror=null;this.src='/static/img/varsayilan_urun.png'">`;
+        const lazy = kartKucuk ? kartAttr : ' loading="lazy"';
+        return `<img src="${yol}" alt="${guvenliAlt}"${lazy} style="${gorunum}" onerror="this.onerror=null;this.src='/static/img/varsayilan_urun.png'">`;
     }
 
     function karsilastirModalAc() {
@@ -701,7 +713,7 @@
                         gorsel = u.video;
                     }
 
-                    let medyaHtml = medyaEtiketi(gorsel || u.video, u.ad);
+                    let medyaHtml = medyaEtiketi(gorsel || u.video, u.ad, '', true);
 
                     let hemenAl = u.hemen_al_fiyati || u.hemen_al_fiyat || 0;
                     let acilisFiyat = Number(u.fiyat || 0);
