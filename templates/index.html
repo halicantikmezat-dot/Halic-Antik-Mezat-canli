@@ -11,7 +11,7 @@
     <meta property="og:type" content="website">
     <script type="application/ld+json" id="urunJsonLd"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest" defer></script>
     <style>
         :root {
             --bg-color: #0b0f17;
@@ -1387,6 +1387,11 @@
         #altCekmece, #catalogDrawer { background: #0a0e14 !important; color: #ffffff; font-size: 16px; }
         #katalogSonucListesi, #katalogSonucListesi div { font-size: 16px !important; color: #ffffff; }
         #izleyiciModal { background: rgba(0,0,0,0.45); }
+        #stageWrapper,
+        #medyaKapsayici {
+            min-height: 250px;
+            aspect-ratio: 16 / 9;
+        }
     </style>
 </head>
 <body onclick="sesKilidiAc()">
@@ -4909,10 +4914,22 @@
         closeModal('rehberModal');
     }
 
-    var tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    var firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    var ytApiEtiketiEklendi = false;
+    var muzikBekleyenIslem = null;
+
+    function youtubeMuzikApiYukle() {
+        if (ytAudioPlayer || ytApiEtiketiEklendi) return;
+        if (window.YT && window.YT.Player) {
+            ytApiEtiketiEklendi = true;
+            onYouTubeIframeAPIReady();
+            return;
+        }
+        ytApiEtiketiEklendi = true;
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
 
     var ytAudioPlayer = null;
     var muzikCaliyorMu = false;
@@ -4951,6 +4968,7 @@
     function muzikMenusuAcKapa(olay) {
         if (olay) olay.stopPropagation();
         playUserClickSound();
+        youtubeMuzikApiYukle();
         var menu = document.getElementById("muzikMenu");
         var btn = document.getElementById("btnCanliMuzikToggle");
         if (!menu) return;
@@ -4984,8 +5002,15 @@
         playUserClickSound();
         if (!muzikIstasyonlari[kod]) return;
         if (!ytAudioPlayer || typeof ytAudioPlayer.playVideo !== "function") {
-            return alert("Canlı yayın akışı hazırlanıyor, lütfen 2 saniye sonra tekrar deneyin.");
+            muzikBekleyenIslem = function () { muzikKategoriUygula(kod); };
+            youtubeMuzikApiYukle();
+            return;
         }
+        muzikKategoriUygula(kod);
+    }
+
+    function muzikKategoriUygula(kod) {
+        if (!muzikIstasyonlari[kod]) return;
         izleyiciMuzikKategori = kod;
         izleyiciMuzikAcik = true;
         window.izleyiciMuzikKapali = false;
@@ -5042,6 +5067,12 @@
                 'onReady': function () {
                     muzikArayuzunuGuncelle();
                     muzikSeviyeYaz(MUZIK_TAVAN);
+                    if (muzikBekleyenIslem) {
+                        var islem = muzikBekleyenIslem;
+                        muzikBekleyenIslem = null;
+                        islem();
+                        return;
+                    }
                     if (izleyiciMuzikAcik) muzikKaynaginiYukle(true);
                 },
                 'onStateChange': onYtAudioStateChange
@@ -5073,8 +5104,15 @@
     function canliMuzikAcKapa() {
         playUserClickSound();
         if (!ytAudioPlayer || typeof ytAudioPlayer.playVideo !== 'function') {
-            return alert("Canlı yayın akışı hazırlanıyor, lütfen 2 saniye sonra tekrar deneyin.");
+            muzikBekleyenIslem = canliMuzikDurumunuUygula;
+            youtubeMuzikApiYukle();
+            return;
         }
+        canliMuzikDurumunuUygula();
+    }
+
+    function canliMuzikDurumunuUygula() {
+        if (!ytAudioPlayer || typeof ytAudioPlayer.playVideo !== 'function') return;
         if (izleyiciMuzikAcik) {
             izleyiciMuzikAcik = false;
             window.izleyiciMuzikKapali = true;
