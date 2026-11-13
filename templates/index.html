@@ -1489,8 +1489,8 @@
             <div id="yeniSlayt" class="yeni-slayt yeni-slayt-perde" hidden>
                 <button type="button" class="yeni-slayt-kapat" onclick="yeniSlaytiKapat()">✕ Mezata Dön</button>
                 <div id="yeniSlaytSerit" class="yeni-slayt-serit" hidden>
-                    <span id="yeniSlaytDukkanRozet">🏪 Dükkan: —</span>
-                    <button type="button" class="yeni-slayt-git">Ürüne Git →</button>
+                    <span id="yeniSlaytDukkanRozet">🏪 Vitrin</span>
+                    <button type="button" class="yeni-slayt-git">Vitrine Git →</button>
                 </div>
                 <div id="yeniSlaytSayac" class="yeni-slayt-sayac" hidden>1 / 1</div>
                 <button type="button" class="yeni-slayt-ok sol" onclick="yeniSlaytGit(-1)" aria-label="Önceki ürün">❮</button>
@@ -5348,7 +5348,7 @@
         alt.classList.add("tiklanir");
         var urun = yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length];
         if (serit) serit.hidden = false;
-        if (dukkanRozet) dukkanRozet.textContent = "🏪 Dükkan: " + yeniSlaytDukkanAdi(urun);
+        if (dukkanRozet) dukkanRozet.textContent = "🏪 " + yeniSlaytDukkanAdi(urun) + " Vitrini";
         var medya = yeniSlaytMedyasi(urun);
         if (medya.tip === "video") {
             kare.innerHTML = '<video autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain;"></video>';
@@ -5451,16 +5451,8 @@
 
     function yeniSlaytUrununeGit(urun) {
         if (!urun) return;
-        if (typeof playUserClickSound === "function") playUserClickSound();
         var kod = String(urun.dukkan || urun.dukkan_id || urun.dukkan_kodu || aktifDukkan).trim() || aktifDukkan;
-        yeniSlaytDukkaninaGec(kod);
-        var kayit = yeniSlaytInceleKaydi(urun);
-        sonBulunanUrunler = [kayit];
-        var oynatilan = document.querySelector("#yeniSlaytKare video");
-        if (oynatilan) oynatilan.pause();
-        yeniSlaytiKapat();
-        urunIncele(kayit.id);
-        canliDurumuGetirHafif();
+        window.location.href = "/vitrin?dukkan=" + encodeURIComponent(kod);
     }
 
     function yeniSlaytKartTikla(event) {
