@@ -1105,7 +1105,8 @@ def kaydet_guvenli_dosya(dosya):
     return f"/static/uploads/{benzersiz_ad}", benzersiz_ad
 
 
-_GORSEL_UZANTILARI = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".heic", ".avif"}
+class MedyaYuklemeHatasi(Exception):
+    """Cloudinary yüklemesi yapılamadı. Yerel diske yazılmaz."""
 
 
 def _bulut_anahtari_var():
@@ -1115,19 +1116,28 @@ def _bulut_anahtari_var():
     )
 
 
+def _temiz_medya_adi(dosya):
+    orijinal_uzanti = _dosya_uzantisi(dosya.filename)
+    temiz_ad = secure_filename(dosya.filename)
+    if orijinal_uzanti and _dosya_uzantisi(temiz_ad) != orijinal_uzanti:
+        kok = os.path.splitext(temiz_ad)[0] or "dosya"
+        temiz_ad = kok + orijinal_uzanti
+    if not temiz_ad:
+        temiz_ad = "dosya" + orijinal_uzanti
+    return temiz_ad
+
+
 def medyayi_kaydet(dosya):
-    """Ürün fotoğrafı ve videosu. Anahtar varsa Cloudinary, yoksa yerel disk."""
-    url, ad = kaydet_guvenli_dosya(dosya)
-    if not url or not ad or not _bulut_anahtari_var():
-        return url, ad
-    uzanti = _dosya_uzantisi(ad)
-    if uzanti in _GORSEL_UZANTILARI:
-        tip = "image"
-    elif uzanti in _VIDEO_UZANTILARI:
-        tip = "video"
-    else:
-        return url, ad
-    yol = os.path.join(app.config["UPLOAD_FOLDER"], ad)
+    """Ürün fotoğrafı ve videosu. Yalnızca Cloudinary; yerel disk yedeği yok."""
+    if not dosya or not getattr(dosya, "filename", None):
+        return None, None
+    if not _bulut_anahtari_var():
+        raise MedyaYuklemeHatasi(
+            "Cloudinary anahtarları eksik. CLOUDINARY_CLOUD_NAME, "
+            "CLOUDINARY_API_KEY ve CLOUDINARY_API_SECRET tanımlı olmalı. "
+            "Dosya yerel diske kaydedilmedi."
+        )
+    temiz_ad = _temiz_medya_adi(dosya)
     try:
         import cloudinary
         import cloudinary.uploader
@@ -1137,24 +1147,31 @@ def medyayi_kaydet(dosya):
             api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
             secure=True,
         )
+        akis = getattr(dosya, "stream", dosya)
+        try:
+            akis.seek(0)
+        except Exception:
+            pass
         sonuc = cloudinary.uploader.upload(
-            yol,
-            resource_type=tip,
+            akis,
+            resource_type="auto",
             folder="halic-antik",
             use_filename=True,
             unique_filename=True,
             overwrite=False,
         )
-        adres = str((sonuc or {}).get("secure_url") or "").strip()
-        if adres.startswith("https://"):
-            try:
-                os.remove(yol)
-            except OSError:
-                pass
-            return adres, ad
+    except MedyaYuklemeHatasi:
+        raise
     except Exception as hata:
-        print(f"[CLOUDINARY] {hata}")
-    return url, ad
+        raise MedyaYuklemeHatasi(
+            f"Cloudinary yüklemesi başarısız: {hata}. Dosya yerel diske kaydedilmedi."
+        ) from hata
+    adres = str((sonuc or {}).get("secure_url") or "").strip()
+    if not adres.startswith("https://res.cloudinary.com/"):
+        raise MedyaYuklemeHatasi(
+            "Cloudinary güvenli adres döndürmedi. Dosya yerel diske kaydedilmedi."
+        )
+    return adres, temiz_ad
 
 
 def saf_isim_temizle(isim):

@@ -1929,10 +1929,12 @@
     }
 
     function onizlemeMedyaAdresi(url) {
+        const temiz = String(url || "").trim();
+        if (/^https?:\/\//i.test(temiz)) return temiz;
         try {
-            return encodeURI(String(url || "").trim());
+            return encodeURI(temiz);
         } catch (e) {
-            return String(url || "").trim();
+            return temiz;
         }
     }
 
@@ -1978,12 +1980,12 @@
         const onizlemeSrc = videoKaynak || ilkGorsel;
         if (onizlemeSrc && (videoKaynak || isVideoUrl(onizlemeSrc))) {
             const src = onizlemeMedyaAdresi(onizlemeSrc);
-            medyaAlani.innerHTML = `<video src="${src}" controls autoplay muted loop playsinline style="width:100%; max-height:360px; object-fit:contain;"></video>`;
+            medyaAlani.innerHTML = `<video src="${src}" controls autoplay loop playsinline style="width:100%; max-height:360px; object-fit:contain;"></video>`;
             const v = medyaAlani.querySelector('video');
-            if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
+            if (v) { v.muted = false; v.load(); v.play().catch(()=>{}); }
         } else if (ilkGorsel) {
             const img = document.createElement('img');
-            img.src = ilkGorsel;
+            img.src = onizlemeMedyaAdresi(ilkGorsel);
             medyaAlani.appendChild(img);
         } else {
             medyaAlani.innerHTML = '<span style="color:#64748b; font-size:12px;">📷 Bu ürüne ait görsel bulunmuyor.</span>';
@@ -2709,7 +2711,7 @@
             const video = document.createElement('video');
             video.src = studyoOnizlemeAdresi;
             video.controls = true;
-            video.muted = true;
+            video.muted = false;
             video.playsInline = true;
             kutu.appendChild(video);
         } else {

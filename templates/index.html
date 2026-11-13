@@ -3972,10 +3972,10 @@
                 const sinif = `thumb-item ${idx === 0 ? 'active' : ''}`;
                 const src = sahneMedyaAdresi(m.url);
                 if (m.tip === 'hls') {
-                    return `<video src="${src}" class="${sinif}" muted playsinline onclick="medyaDegistir(${idx})"></video>`;
+                    return `<video src="${src}" class="${sinif}" controls playsinline onclick="medyaDegistir(${idx})"></video>`;
                 }
                 if (m.tip === 'video' || isVideoUrl(src) || isVideoUrl(m.url)) {
-                    return `<span class="${sinif}" onclick="medyaDegistir(${idx})" style="display:inline-block;overflow:hidden;padding:0;"><video src="${src}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;"></video></span>`;
+                    return `<span class="${sinif}" onclick="medyaDegistir(${idx})" style="display:inline-block;overflow:hidden;padding:0;"><video src="${src}" controls preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;"></video></span>`;
                 }
                 return `<img src="${src}" class="${sinif}" onclick="medyaDegistir(${idx})">`;
             }).join('');
@@ -4019,10 +4019,12 @@
     }
 
     function sahneMedyaAdresi(url) {
+        const temiz = String(url || "").trim();
+        if (/^https?:\/\//i.test(temiz)) return temiz;
         try {
-            return encodeURI(String(url || "").trim());
+            return encodeURI(temiz);
         } catch (e) {
-            return String(url || "").trim();
+            return temiz;
         }
     }
 
@@ -4044,9 +4046,9 @@
             let v = document.createElement('video');
             v.id = "stageVideo";
             v.autoplay = true;
-            v.muted = true;
+            v.muted = false;
             v.playsInline = true;
-            v.controls = false;
+            v.controls = true;
             medyaDiv.appendChild(v);
 
             if (Hls.isSupported()) {
@@ -4065,12 +4067,12 @@
         } else if (medya.tip === 'video' || isVideoUrl(medya.url) || videoDosyasiMi(medya.url)) {
             const src = sahneMedyaAdresi(medya.url);
             const sahneKutu = medyaDiv;
-            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay muted loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
+            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
             const v = sahneKutu.querySelector('video');
-            if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
+            if (v) { v.muted = false; v.load(); v.play().catch(()=>{}); }
         } else {
             let img = document.createElement('img');
-            img.src = medya.url;
+            img.src = sahneMedyaAdresi(medya.url);
             const kutu = document.getElementById('medyaKapsayici');
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
@@ -5272,7 +5274,7 @@
         var urun = yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length];
         var medya = yeniSlaytMedyasi(urun);
         if (medya.tip === "video") {
-            kare.innerHTML = '<video autoplay muted loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain;"></video>';
+            kare.innerHTML = '<video autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain;"></video>';
             var video = kare.querySelector("video");
             if (video) {
                 video.src = sahneMedyaAdresi(medya.url);
