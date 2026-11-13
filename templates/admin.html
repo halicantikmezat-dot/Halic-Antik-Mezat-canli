@@ -362,6 +362,7 @@
             </label>
             <button onclick="copKutusunuAc()" class="btn btn-red btn-sm">🗑️ Çöp Kutusu (<span id="copSayisi">0</span>)</button>
             <button onclick="sifreDegistirModalAc()" class="btn btn-yellow btn-sm">🔑 Şifre Değiştir</button>
+            <button type="button" onclick="kurumsalAdminAc()" class="btn btn-yellow btn-sm">🏛️ Kurumsal &amp; Banka</button>
             <button onclick="adminCikisYap()" class="btn btn-sm" style="background:#334155; color:#fff;">Çıkış</button>
         </div>
     </div>
@@ -842,6 +843,34 @@
     </div>
 </div>
 
+<div id="modalKurumsalBanka" class="modal" onclick="if(event.target===this) kurumsalAdminKapat()">
+    <div class="modal-content" style="max-width:480px; text-align:left;" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
+            <h3 style="color:var(--accent-gold); margin:0;">🏛️ Kurumsal &amp; Banka</h3>
+            <button type="button" onclick="kurumsalAdminKapat()" class="btn btn-red btn-sm">✕</button>
+        </div>
+        <div style="margin-top:12px; font-size:14px; line-height:1.5;">
+            <b id="adminSirketUnvani" style="display:block; color:var(--accent-gold);"></b>
+            <div style="margin-top:6px;">Vergi Dairesi / No: <span id="adminVergiDairesi"></span></div>
+            <div style="margin-top:6px;">Adres: <span id="adminAcikAdres"></span></div>
+            <a id="adminKurumsalHarita" href="https://maps.google.com/?q=Istanbul" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:6px; color:var(--accent-gold); font-weight:800;">📍 Konumu Google Haritalarda Aç</a>
+            <div style="margin-top:6px;">Telefon: <span id="adminTelefon"></span></div>
+            <div>E-posta: <span id="adminEposta"></span></div>
+            <div style="margin-top:10px; background:#0f141c; border:1px solid var(--accent-gold); border-radius:8px; padding:8px;">
+                <b style="display:block; color:var(--accent-gold); margin-bottom:4px;">🏦 Banka / IBAN</b>
+                <div>Banka: <span id="adminBankaAdi"></span></div>
+                <div>Alıcı: <span id="adminAliciAdi"></span></div>
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px;">
+                    <span>IBAN: <b id="adminIban"></b></span>
+                    <button type="button" onclick="adminIbanKopyala()" class="btn btn-blue btn-sm" style="width:auto;">📋 IBAN Kopyala</button>
+                </div>
+                <p id="adminIbanDurum" style="min-height:18px; margin:6px 0 0; color:#86efac; font-weight:800;"></p>
+            </div>
+        </div>
+        <button type="button" onclick="kurumsalAdminKapat()" class="btn btn-yellow" style="width:100%; margin-top:10px;">Kapat</button>
+    </div>
+</div>
+
 <!-- ŞİFRE DEĞİŞTİRME MODAL -->
 <div id="modalSifreDegistir" class="modal">
     <div class="modal-content">
@@ -920,6 +949,59 @@
 </div>
 
 <script>
+    const KURUMSAL_BILGILER = {
+        sirketUnvani: "HALİÇ ANTİK MEZAT (Şirket Resmi Ünvanı Girilecek)",
+        vergiDairesi: "Vergi Dairesi ve VKN Girilecek",
+        mersisNo: "MERSİS No Girilecek",
+        bankaAdi: "Banka Adı Girilecek",
+        aliciAdi: "Resmi Hesap Sahibi Ünvanı Girilecek",
+        iban: "TR00 0000 0000 0000 0000 0000 00",
+        acikAdres: "Açık Şirket / Galeri Adresi Girilecek, İstanbul",
+        haritaUrl: "https://maps.google.com/?q=Istanbul",
+        telefon: "+90 (5XX) XXX XX XX",
+        eposta: "info@halicantikcanli.com"
+    };
+
+    function kurumsalAdminYaz(id, deger) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = deger == null ? "" : String(deger);
+    }
+
+    function kurumsalAdminAc() {
+        if (typeof playClickSound === "function") playClickSound();
+        kurumsalAdminYaz("adminSirketUnvani", KURUMSAL_BILGILER.sirketUnvani);
+        kurumsalAdminYaz("adminVergiDairesi", KURUMSAL_BILGILER.vergiDairesi);
+        kurumsalAdminYaz("adminAcikAdres", KURUMSAL_BILGILER.acikAdres);
+        kurumsalAdminYaz("adminTelefon", KURUMSAL_BILGILER.telefon);
+        kurumsalAdminYaz("adminEposta", KURUMSAL_BILGILER.eposta);
+        kurumsalAdminYaz("adminBankaAdi", KURUMSAL_BILGILER.bankaAdi);
+        kurumsalAdminYaz("adminAliciAdi", KURUMSAL_BILGILER.aliciAdi);
+        kurumsalAdminYaz("adminIban", KURUMSAL_BILGILER.iban);
+        const harita = document.getElementById("adminKurumsalHarita");
+        if (harita) harita.href = String(KURUMSAL_BILGILER.haritaUrl || "#");
+        const durum = document.getElementById("adminIbanDurum");
+        if (durum) durum.textContent = "";
+        const kutu = document.getElementById("modalKurumsalBanka");
+        if (kutu) kutu.style.display = "flex";
+    }
+
+    function kurumsalAdminKapat() {
+        if (typeof playClickSound === "function") playClickSound();
+        const kutu = document.getElementById("modalKurumsalBanka");
+        if (kutu) kutu.style.display = "none";
+    }
+
+    function adminIbanKopyala() {
+        const iban = String(KURUMSAL_BILGILER.iban || "");
+        const durum = document.getElementById("adminIbanDurum");
+        const bildir = function () { if (durum) durum.textContent = "✓ IBAN Kopyalandı"; };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(iban).then(bildir).catch(function () { bildir(); });
+            return;
+        }
+        bildir();
+    }
+
     function mezatSocketAdresi() {
         const host = window.location.hostname;
         if ((host === 'localhost' || host === '127.0.0.1') && window.location.port === '5000') {

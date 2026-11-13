@@ -1466,7 +1466,32 @@
             <option value="USD">$ USD</option>
             <option value="EUR">€ EUR</option>
         </select>
+        <button type="button" class="menu-oge" onclick="menuIslem(kurumsalIzleyiciAc)">🏛️ Kurumsal &amp; Banka</button>
     </aside>
+
+<div id="kurumsalIzleyiciModal" class="modal" onclick="if(event.target===this) kurumsalIzleyiciKapat()">
+    <div class="modal-content" style="text-align:left; max-width:460px;" onclick="event.stopPropagation()">
+        <h3 style="color:#fef08a; font-size:16px; margin-bottom:8px;">🏛️ Kurumsal &amp; Banka</h3>
+        <div style="font-size:14px; line-height:1.5;">
+            <b style="display:block; color:#fef08a;" data-kurumsal="sirketUnvani"></b>
+            <div style="margin-top:6px;">Vergi Dairesi / No: <span data-kurumsal="vergiDairesi"></span></div>
+            <div style="margin-top:6px;">Adres: <span data-kurumsal="acikAdres"></span></div>
+            <a id="kurumsalHarita" href="https://maps.google.com/?q=Istanbul" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:6px; color:#fef08a; font-weight:800;">📍 Konumu Google Haritalarda Aç</a>
+            <div style="margin-top:6px;">Telefon: <span data-kurumsal="telefon"></span></div>
+            <div>E-posta: <span data-kurumsal="eposta"></span></div>
+            <div style="margin-top:10px; background:#080c13; border:1px solid #d4af37; border-radius:8px; padding:8px;">
+                <b style="display:block; color:#fef08a; margin-bottom:4px;">🏦 Banka / IBAN</b>
+                <div>Banka: <span data-kurumsal="bankaAdi"></span></div>
+                <div>Alıcı: <span data-kurumsal="aliciAdi"></span></div>
+                <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:4px;">
+                    <span>IBAN: <b data-kurumsal="iban"></b></span>
+                    <button type="button" class="iban-kopyala" style="width:auto; background:#1d4ed8; color:#fff; border:none; border-radius:6px; padding:6px 8px; font-size:11px; font-weight:800; cursor:pointer;">📋 IBAN Kopyala</button>
+                </div>
+            </div>
+        </div>
+        <button type="button" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:8px;" onclick="kurumsalIzleyiciKapat()">Kapat</button>
+    </div>
+</div>
 
     <div id="mezatAlani">
         <div class="stage-wrapper" id="stageWrapper">
@@ -2124,6 +2149,17 @@
     function menuIslem(fn) {
         genelMenuAcKapa();
         if (typeof fn === 'function') fn();
+    }
+
+    function kurumsalIzleyiciAc() {
+        kurumsalBilgileriYerlestir();
+        const kutu = document.getElementById('kurumsalIzleyiciModal');
+        if (kutu) kutu.style.display = 'flex';
+    }
+
+    function kurumsalIzleyiciKapat() {
+        const kutu = document.getElementById('kurumsalIzleyiciModal');
+        if (kutu) kutu.style.display = 'none';
     }
 
     let dinlemeAcik = false;
@@ -5874,22 +5910,5 @@
         }, { passive: true });
     })();
 </script>
-<footer id="kurumsalKunye" style="background:#080c13; color:#f8fafc; border-top:1px solid #d4af37; padding:16px 12px 110px; font-size:13px; line-height:1.5;">
-    <b style="display:block; color:#fef08a; font-size:15px; margin-bottom:8px;" data-kurumsal="sirketUnvani"></b>
-    <div>Vergi Dairesi / No: <span data-kurumsal="vergiDairesi"></span></div>
-    <div>MERSİS No: <span data-kurumsal="mersisNo"></span></div>
-    <div style="margin-top:6px;">Adres: <span data-kurumsal="acikAdres"></span></div>
-    <a id="kurumsalHarita" href="https://maps.google.com/?q=Istanbul" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:6px; color:#fef08a; font-weight:800;">📍 Konumu Google Haritalarda Aç</a>
-    <div style="margin-top:6px;">Telefon: <span data-kurumsal="telefon"></span></div>
-    <div>E-posta: <span data-kurumsal="eposta"></span></div>
-    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
-        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700;">Faturalı &amp; Kayıtlı Kurumsal Satış</span>
-        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700;">Sigortalı &amp; Özenli Paketleme</span>
-        <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700;">KVKK &amp; Mesafeli Satış Güvencesi</span>
-    </div>
-</footer>
-<style>
-    html, body { height: auto; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; }
-</style>
 </body>
 </html>
