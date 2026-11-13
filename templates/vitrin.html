@@ -90,6 +90,7 @@
         
         .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
         .item-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; transition: all 0.2s; position: relative; }
+        .item-card.vitrin-hedef { border-color: var(--accent-gold); box-shadow: 0 0 0 2px var(--accent-gold); }
         .item-card:hover { transform: translateY(-3px); border-color: var(--accent-gold); box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         
         .item-img-box { width: 100%; height: 170px; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
@@ -220,6 +221,15 @@
     <span style="font-size:12px; font-weight:bold; color:#fff;">⚖️ <span id="compareCount">0</span> Ürün Seçildi</span>
     <button onclick="karsilastirModalAc()" style="background:var(--accent-gold); color:#111; border:none; padding:6px 12px; border-radius:20px; font-weight:800; font-size:11px; cursor:pointer;">Kıyasla</button>
     <button onclick="karsilastirmaTemizle()" style="background:transparent; color:#94a3b8; border:none; font-size:14px; cursor:pointer;" title="Temizle">✕</button>
+</div>
+
+<div id="vitrinInceleModal" class="modal" onclick="if(event.target===this)vitrinInceleKapat()">
+    <div class="modal-content" style="max-width:520px;">
+        <div id="vitrinInceleMedya" style="background:#000; border-radius:8px; min-height:180px; max-height:46vh; display:flex; align-items:center; justify-content:center; overflow:hidden;"></div>
+        <h3 id="vitrinInceleBaslik" style="color:var(--accent-gold); font-size:14px; font-weight:800; margin:10px 0 4px;">Ürün</h3>
+        <p id="vitrinInceleFiyat" style="font-size:12px; color:#86efac; font-weight:800; margin-bottom:8px;"></p>
+        <button type="button" style="background:#475569; color:#fff;" onclick="vitrinInceleKapat()">Kapat</button>
+    </div>
 </div>
 
 <!-- TEKLİF & KAYIT MODALI -->
@@ -701,11 +711,11 @@
                     let seciliKiyas = karsilastirmaListesi.some(x => x.id === u.id);
 
                     return `
-                        <div class="item-card">
+                        <div class="item-card" id="vitrinKart-${u.id}" data-lot="${u.lot}">
                             <button class="btn-kiyasla-badge ${seciliKiyas ? 'active' : ''}" data-id="${u.id}" onclick="karsilastirmaEkleCikar(${u.id}, '${u.lot}', '${safeAd}', event)">
                                 ${seciliKiyas ? '✓ Kıyasta' : '⚖️ Kıyasla'}
                             </button>
-                            <div class="item-img-box">
+                            <div class="item-img-box" onclick="vitrinUrunIncele(${u.id})" style="cursor:pointer;">
                                 ${medyaHtml}
                             </div>
                             <div class="item-content">
@@ -735,12 +745,91 @@
                     `;
                 }).join('');
                 vitrinYapisalVeri(data.urunler || []);
+                vitrinHedefiAc();
             })
             .catch(err => {
                 if (err.name !== 'AbortError') {
                     grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#94a3b8;">Ürünler listelenemedi veya henüz kayıtlı ürün yok.</div>';
                 }
             });
+    }
+
+    let vitrinHedefAcildi = false;
+    let vitrinHedefAraniyor = false;
+    let vitrinHedefSayfaSecildi = false;
+
+    function vitrinHedefParametreleri() {
+        return {
+            urun: (urlParams.get("urun") || "").trim(),
+            lot: (urlParams.get("lot") || "").trim()
+        };
+    }
+
+    function vitrinEslesen(urun, hedef) {
+        if (!urun || (!hedef.urun && !hedef.lot)) return false;
+        if (hedef.urun && String(urun.id) === hedef.urun) return true;
+        return !!(hedef.lot && String(urun.lot) === hedef.lot);
+    }
+
+    function vitrinInceleKapat() {
+        const pencere = document.getElementById("vitrinInceleModal");
+        if (pencere) pencere.style.display = "none";
+    }
+
+    function vitrinUrunIncele(urunId) {
+        const urun = tumGetirilenUrunler.find(function (u) { return String(u.id) === String(urunId); });
+        if (!urun) return;
+        document.querySelectorAll(".item-card.vitrin-hedef").forEach(function (kart) {
+            kart.classList.remove("vitrin-hedef");
+        });
+        const kart = document.getElementById("vitrinKart-" + urun.id);
+        if (kart && kart.scrollIntoView) kart.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (kart) kart.classList.add("vitrin-hedef");
+        const gorsel = (urun.fotograflar && urun.fotograflar.length) ? urun.fotograflar[0] : (urun.video || urun.gorsel || "");
+        const medya = document.getElementById("vitrinInceleMedya");
+        const baslik = document.getElementById("vitrinInceleBaslik");
+        const fiyat = document.getElementById("vitrinInceleFiyat");
+        if (medya) medya.innerHTML = medyaEtiketi(gorsel, urun.ad, "max-width:100%; max-height:46vh; object-fit:contain;");
+        if (baslik) baslik.textContent = "LOT #" + (urun.lot || "") + " - " + (urun.ad || "");
+        if (fiyat) fiyat.textContent = "Açılış: " + formatFiyat(urun.fiyat || 0);
+        const pencere = document.getElementById("vitrinInceleModal");
+        if (pencere) pencere.style.display = "flex";
+    }
+
+    function vitrinHedefiAc() {
+        if (vitrinHedefAcildi) return;
+        const hedef = vitrinHedefParametreleri();
+        if (!hedef.urun && !hedef.lot) return;
+        const bulunan = tumGetirilenUrunler.find(function (u) { return vitrinEslesen(u, hedef); });
+        if (bulunan) {
+            vitrinHedefAcildi = true;
+            vitrinUrunIncele(bulunan.id);
+            return;
+        }
+        if (vitrinHedefAraniyor || vitrinHedefSayfaSecildi || toplamSayfa <= 1) return;
+        vitrinHedefAraniyor = true;
+        vitrinHedefSayfasiniBul(hedef, 1);
+    }
+
+    function vitrinHedefSayfasiniBul(hedef, sayfa) {
+        if (sayfa > toplamSayfa) return;
+        if (sayfa === aktifSayfa) {
+            vitrinHedefSayfasiniBul(hedef, sayfa + 1);
+            return;
+        }
+        fetch("/vitrin-urunler?dukkan=" + encodeURIComponent(aktifDukkan) + "&arama=&kategori=&sayfa=" + sayfa + "&limit=" + sayfaLimiti)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                const liste = (data && data.urunler) || [];
+                if (liste.some(function (u) { return vitrinEslesen(u, hedef); })) {
+                    vitrinHedefSayfaSecildi = true;
+                    aktifSayfa = sayfa;
+                    vitrinYukle();
+                    return;
+                }
+                vitrinHedefSayfasiniBul(hedef, sayfa + 1);
+            })
+            .catch(function () {});
     }
 
     async function vitrindenSepeteEkle(urunId, urunAdiEncoded) {

@@ -5452,7 +5452,12 @@
     function yeniSlaytUrununeGit(urun) {
         if (!urun) return;
         var kod = String(urun.dukkan || urun.dukkan_id || urun.dukkan_kodu || aktifDukkan).trim() || aktifDukkan;
-        window.location.href = "/vitrin?dukkan=" + encodeURIComponent(kod);
+        var urunId = urun.id != null ? String(urun.id) : "";
+        var lot = urun.lot_no != null ? urun.lot_no : urun.lot;
+        var adres = "/vitrin?dukkan=" + encodeURIComponent(kod);
+        if (urunId) adres += "&urun=" + encodeURIComponent(urunId);
+        if (lot != null && String(lot) !== "") adres += "&lot=" + encodeURIComponent(lot);
+        window.location.href = adres;
     }
 
     function yeniSlaytKartTikla(event) {
