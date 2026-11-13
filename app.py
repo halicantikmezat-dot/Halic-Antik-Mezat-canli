@@ -271,14 +271,15 @@ _ses_kuyruk_kilit = threading.Lock()
 
 def _openai_mp3(istemci, model, ses, soylenen):
     """Okunan metin şablondur. tts-1-hd yönerge alanını sesli okuduğu için talimat girdiye yazılmaz."""
+    hizli = istemci.with_options(timeout=4.0)
     ortak = {"model": model, "voice": ses, "input": soylenen, "response_format": "mp3"}
     if model not in ("tts-1", "tts-1-hd"):
         ortak["instructions"] = 'language="tr". ' + TURKCE_DIREKTIF
     try:
-        yanit = istemci.audio.speech.create(**ortak, extra_body={"language": "tr"})
+        yanit = hizli.audio.speech.create(**ortak, extra_body={"language": "tr"})
     except Exception:
         ortak.pop("instructions", None)
-        yanit = istemci.audio.speech.create(**ortak)
+        yanit = hizli.audio.speech.create(**ortak)
     if hasattr(yanit, "read"):
         return yanit.read()
     return bytes(getattr(yanit, "content", b"") or b"")
@@ -397,6 +398,11 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
             kayit["nesil"] = nesil
             kayit["isleyici"] = nesil
             kayit["calisiyor"] = False
+        elif tur in ("anons", "pey"):
+            kayit["ogeler"] = [
+                oge for oge in kayit["ogeler"]
+                if oge.get("tur") not in ("anons", "pey")
+            ]
         kayit["ogeler"].append({
             "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu,
         })
@@ -416,6 +422,16 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
         socketio.start_background_task(_ses_kuyrugunu_bosalt, dukkan, benim)
 
 
+def _tarayiciya_turkce_yedek(dukkan, oge):
+    """Sunucu sesi yoksa tarayıcı yalnızca tr-TR yedeği okur."""
+    socketio.emit("ses_yedek_konus", {
+        "dukkan": dukkan,
+        "nesil": oge.get("nesil"),
+        "tur": oge.get("tur") or "anons",
+        "metin": oge.get("metin") or "",
+    }, room=dukkan)
+
+
 def _ses_kuyrugunu_bosalt(dukkan, benim):
     while True:
         with _ses_kuyruk_kilit:
@@ -428,12 +444,9 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             oge = kayit["ogeler"].pop(0)
         istemci = _openai_ses_istemcisi()
         if istemci is None:
-            print("[SES] OPENAI_API_KEY tanımlı değil; ses akışı başlamadı.")
-            with _ses_kuyruk_kilit:
-                kayit = _ses_kuyruk.get(dukkan)
-                if kayit and kayit.get("isleyici") == benim:
-                    kayit["calisiyor"] = False
-            return
+            print("[SES] OPENAI_API_KEY yok; Türkçe yedek anons devrede.")
+            _tarayiciya_turkce_yedek(dukkan, oge)
+            continue
         model, ses = _ses_modeli()
         try:
             veri = _openai_mp3(istemci, model, ses, oge["metin"])
@@ -445,9 +458,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             if not kayit or kayit.get("isleyici") != benim:
                 return
             if not veri:
-                if not kayit.get("ogeler"):
-                    kayit["calisiyor"] = False
-                    return
+                _tarayiciya_turkce_yedek(dukkan, oge)
                 continue
         adres = _mp3_kaydet(veri, oge["nesil"])
         socketio.emit("ses_oynat", {
@@ -456,6 +467,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             "tur": oge["tur"],
             "zorunlu": bool(oge.get("zorunlu")),
             "audio_url": adres,
+            "metin": oge["metin"],
         })
         print(f"[SES] anons yayında, {len(oge['metin'])} karakter, model {model}, ses {ses}")
 
@@ -516,6 +528,22 @@ def ahmet_nida_sec():
     global _ahmet_nida_sirasi
     metin = AHMET_NIDALARI[_ahmet_nida_sirasi % len(AHMET_NIDALARI)]
     _ahmet_nida_sirasi += 1
+    return metin
+
+
+_yorum_yedek_sira = 0
+YORUM_YEDEKLERI = (
+    "{ad}, sizi duydum efendim, eserin başındayız, buyurun!",
+    "Canım {ad}, notunuz düştü, hemen bu parçaya dönüyorum!",
+    "{ad}, sorunuz yerinde, eserin hikayesi tam da burada!",
+)
+
+
+def ahmet_yorum_yedegi(kullanici):
+    global _yorum_yedek_sira
+    ad = ahmet_kisa_ad(kullanici) if kullanici else "Efendim"
+    metin = YORUM_YEDEKLERI[_yorum_yedek_sira % len(YORUM_YEDEKLERI)].format(ad=ad)
+    _yorum_yedek_sira += 1
     return metin
 
 
@@ -861,11 +889,11 @@ def _metni_cumlede_bitir(metin):
     return s
 
 
-def _openai_metin_iste(sistem, kullanici_metni, max_tokens=420):
+def _openai_metin_iste(sistem, kullanici_metni, max_tokens=420, zaman_asimi=1.5):
     istemci = _openai_ses_istemcisi()
     if istemci is None:
         return ""
-    yanit = istemci.chat.completions.create(
+    yanit = istemci.with_options(timeout=zaman_asimi).chat.completions.create(
         model="gpt-4o-mini",
         temperature=0.8,
         max_tokens=max_tokens,
@@ -905,10 +933,10 @@ def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
                 f"Sahnedeki ürün: {urun_bilgi}\nİzleyici {kullanici} dedi ki: {mesaj}",
             )
             print(f"[Ahmet Usta]: {cevap}")
-            ahmet_yanitini_yayinla(dukkan, cevap or ahmet_nida_sec())
+            ahmet_yanitini_yayinla(dukkan, cevap or ahmet_yorum_yedegi(kullanici))
         except Exception as e:
             print(f"⚠️ Ahmet Usta Yorum Cevaplama Hatası: {e}")
-            ahmet_yanitini_yayinla(dukkan, ahmet_nida_sec())
+            ahmet_yanitini_yayinla(dukkan, ahmet_yorum_yedegi(kullanici))
 
     socketio.start_background_task(_cevapla)
 

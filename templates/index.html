@@ -2510,6 +2510,9 @@
             kayitUyarisiAc();
             return;
         }
+        showToast(sozdenTutar(mesaj) > 0
+            ? "✓ Peyiniz alındı, Ahmet Usta anons ediyor..."
+            : "✓ Mesajınız sahneye düştü");
 
         let gonderen = kullaniciAdi || "Ziyaretçi";
 
@@ -2805,6 +2808,59 @@
         osc.stop(ctx.currentTime + 0.24);
     }
 
+    function turkceSesiBul(sesler) {
+        var liste = sesler || [];
+        for (var i = 0; i < liste.length; i++) {
+            var ses = liste[i];
+            var dil = String(ses.lang || "").toLowerCase().replace(/_/g, "-");
+            var ad = String(ses.name || "").toLowerCase();
+            if (dil.indexOf("tr-tr") === 0 || dil === "tr" || ad.indexOf("türk") >= 0 || ad.indexOf("turk") >= 0) {
+                return ses;
+            }
+        }
+        return null;
+    }
+
+    function turkceSesle(metin, bitti) {
+        var yazi = String(metin || "").trim();
+        if (!yazi || !window.speechSynthesis || typeof SpeechSynthesisUtterance !== "function") {
+            if (typeof bitti === "function") bitti();
+            return;
+        }
+        var soyle = function () {
+            var ses = turkceSesiBul(window.speechSynthesis.getVoices());
+            var u = new SpeechSynthesisUtterance(yazi);
+            u.lang = "tr-TR";
+            if (ses) u.voice = ses;
+            if (typeof bitti === "function") {
+                u.onend = bitti;
+                u.onerror = bitti;
+            }
+            window.speechSynthesis.speak(u);
+        };
+        var hazir = window.speechSynthesis.getVoices() || [];
+        if (hazir.length && turkceSesiBul(hazir)) {
+            soyle();
+            return;
+        }
+        var bittiBekleme = false;
+        var dinle = function () {
+            if (bittiBekleme) return;
+            bittiBekleme = true;
+            try { window.speechSynthesis.removeEventListener("voiceschanged", dinle); } catch (e) {}
+            soyle();
+        };
+        try { window.speechSynthesis.addEventListener("voiceschanged", dinle); } catch (e) {}
+        window.speechSynthesis.getVoices();
+        setTimeout(dinle, 800);
+    }
+
+    socket.on("ses_yedek_konus", function (data) {
+        if (!data || data.dukkan !== aktifDukkan || !data.metin) return;
+        if (data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
+        turkceSesle(data.metin);
+    });
+
     socket.on("ses_kes", function (data) {
         if (!data || data.dukkan !== aktifDukkan) return;
         const zorunlu = data.zorunlu || data.tur === "satis" || data.tur === "sahne" || data.tur === "yeni_urun";
@@ -2901,12 +2957,22 @@
         if (oynat && typeof oynat.catch === "function") {
             oynat.catch(function (e) {
                 console.log("Ses oynatma engeli:", e);
+                if (data && data.metin) turkceSesle(data.metin);
                 if (typeof audio.onended === "function") audio.onended();
             });
         }
     }
 
     function anonsuCal(data) {
+        if (data && (data.tur === "anons" || data.tur === "pey") && !data.zorunlu) {
+            anonsKuyrugu = anonsKuyrugu.filter(function (oge) {
+                return !oge || (oge.tur !== "anons" && oge.tur !== "pey");
+            });
+            if (currentAudio && (currentAudio.dataset.tur === "anons" || currentAudio.dataset.tur === "pey")) {
+                calanSesiDurdur();
+                anonsMesgul = false;
+            }
+        }
         if (data && data.zorunlu) {
             anonsKuyrugu = [];
             calanSesiDurdur();
@@ -4521,6 +4587,7 @@
         if (!dogrulamaKontrol()) return;
         if (peyGonderiliyorMu) return;
         peyGonderiliyorMu = true;
+        showToast("✓ Peyiniz alındı, Ahmet Usta anons ediyor...");
         fetch('/pey-ver', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -5163,17 +5230,18 @@
         var ham = rehberKilavuzMetni();
         var cumleler = ham.match(/[^.!?]+[.!?]?/g) || [ham];
         var sesler = window.speechSynthesis.getVoices() || [];
-        var turkce = null;
-        for (var i = 0; i < sesler.length; i++) {
-            if (sesler[i].lang && sesler[i].lang.toLowerCase().indexOf("tr") === 0) {
-                turkce = sesler[i];
-                break;
-            }
+        var turkce = turkceSesiBul(sesler);
+        if (!turkce) {
+            if (durum) durum.textContent = "Türkçe ses paketi bekleniyor.";
+            turkceSesle(ham, function () {
+                if (durum) durum.textContent = "Kılavuz sesi bitti.";
+            });
+            return;
         }
         cumleler.forEach(function (cumle, index) {
             var u = new SpeechSynthesisUtterance(cumle.trim());
             u.lang = "tr-TR";
-            if (turkce) u.voice = turkce;
+            u.voice = turkce;
             if (index === cumleler.length - 1) {
                 u.onend = function () {
                     if (nesil !== rehberSesNesil) return;
