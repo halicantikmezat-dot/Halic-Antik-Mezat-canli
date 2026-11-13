@@ -2607,6 +2607,87 @@ def vitrin_urunler():
         db.session.remove()
 
 
+_KURUMSAL_ALANLAR = (
+    "sirketUnvani",
+    "vergiDairesi",
+    "mersisNo",
+    "bankaAdi",
+    "aliciAdi",
+    "iban",
+    "acikAdres",
+    "haritaUrl",
+    "telefon",
+    "eposta",
+)
+_KURUMSAL_VARSAYILAN = {
+    "sirketUnvani": "HALİÇ ANTİK MEZAT (Şirket Resmi Ünvanı Girilecek)",
+    "vergiDairesi": "Vergi Dairesi ve VKN Girilecek",
+    "mersisNo": "MERSİS No Girilecek",
+    "bankaAdi": "Banka Adı Girilecek",
+    "aliciAdi": "Resmi Hesap Sahibi Ünvanı Girilecek",
+    "iban": "TR00 0000 0000 0000 0000 0000 00",
+    "acikAdres": "Açık Şirket / Galeri Adresi Girilecek, İstanbul",
+    "haritaUrl": "https://maps.google.com/?q=Istanbul",
+    "telefon": "+90 (5XX) XXX XX XX",
+    "eposta": "info@halicantikcanli.com",
+}
+_KURUMSAL_KILIT = threading.Lock()
+
+
+def _kurumsal_bilgi_dosyasi():
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    return os.path.join(basedir, "instance", "kurumsal_bilgiler.json")
+
+
+def kurumsal_bilgileri_oku():
+    kayit = dict(_KURUMSAL_VARSAYILAN)
+    try:
+        with open(_kurumsal_bilgi_dosyasi(), "r", encoding="utf-8") as f:
+            gelen = json.load(f)
+    except (OSError, ValueError):
+        gelen = {}
+    if not isinstance(gelen, dict):
+        return kayit
+    for alan in _KURUMSAL_ALANLAR:
+        if gelen.get(alan) is None:
+            continue
+        metin = str(gelen.get(alan)).strip()
+        if metin:
+            kayit[alan] = metin
+    return kayit
+
+
+def kurumsal_bilgileri_yaz(kayit):
+    with _KURUMSAL_KILIT:
+        with open(_kurumsal_bilgi_dosyasi(), "w", encoding="utf-8") as f:
+            json.dump(kayit, f, ensure_ascii=False, indent=2)
+
+
+@app.route("/kurumsal-bilgiler", methods=["GET"])
+def kurumsal_bilgiler_oku_api():
+    return jsonify(kurumsal_bilgileri_oku())
+
+
+@app.route("/admin/kurumsal-bilgiler", methods=["POST"])
+@admin_required
+def kurumsal_bilgiler_kaydet_api():
+    gelen = request.get_json(silent=True) or {}
+    if not isinstance(gelen, dict):
+        gelen = {}
+    kayit = kurumsal_bilgileri_oku()
+    for alan in _KURUMSAL_ALANLAR:
+        if alan not in gelen:
+            continue
+        kayit[alan] = str(gelen.get(alan) or "").strip() or _KURUMSAL_VARSAYILAN[alan]
+    try:
+        kurumsal_bilgileri_yaz(kayit)
+    except OSError:
+        return jsonify({"success": False, "mesaj": "Kurumsal bilgiler kaydedilemedi."}), 500
+    cevap = {"success": True, "mesaj": "✓ Kurumsal bilgiler kaydedildi"}
+    cevap.update(kayit)
+    return jsonify(cevap)
+
+
 @app.route("/admin/urun-ara", methods=["GET"])
 @admin_required
 def admin_urun_ara_api():

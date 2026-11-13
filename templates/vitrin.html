@@ -379,7 +379,23 @@
         document.body.removeChild(alan);
     }
 
-    document.addEventListener("DOMContentLoaded", kurumsalBilgileriYerlestir);
+    function kurumsalBilgileriSunucudanAl() {
+        fetch("/kurumsal-bilgiler")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || typeof data !== "object") return;
+                Object.keys(KURUMSAL_BILGILER).forEach(function (alan) {
+                    if (data[alan] != null) KURUMSAL_BILGILER[alan] = String(data[alan]);
+                });
+                kurumsalBilgileriYerlestir();
+            })
+            .catch(function () {});
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        kurumsalBilgileriYerlestir();
+        kurumsalBilgileriSunucudanAl();
+    });
 
     function mezatSocketAdresi() {
         const host = window.location.hostname;
