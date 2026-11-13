@@ -1468,6 +1468,14 @@ class UrunAlimSozlesmesi(db.Model):
     olusturma_tarihi = db.Column(db.DateTime, default=suan_utc)
 
 
+class Ayar(db.Model):
+    """Kalıcı anahtar-değer ayarı. Kurumsal bilgiler deploy sonrası burada durur."""
+    __tablename__ = "ayar"
+    id = db.Column(db.Integer, primary_key=True)
+    anahtar = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    deger = db.Column(db.Text, nullable=False, default="")
+
+
 def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
     if not kazanan_adi or kazanan_adi in ["Yok", "None", "-", ""]:
         return
@@ -2662,18 +2670,15 @@ _KURUMSAL_VARSAYILAN = {
 _KURUMSAL_KILIT = threading.Lock()
 
 
+_KURUMSAL_ANAHTAR = "kurumsal_bilgiler"
+
+
 def _kurumsal_bilgi_dosyasi():
-    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
     return os.path.join(basedir, "instance", "kurumsal_bilgiler.json")
 
 
-def kurumsal_bilgileri_oku():
+def _kurumsal_kaydi_normallestir(gelen):
     kayit = dict(_KURUMSAL_VARSAYILAN)
-    try:
-        with open(_kurumsal_bilgi_dosyasi(), "r", encoding="utf-8") as f:
-            gelen = json.load(f)
-    except (OSError, ValueError):
-        gelen = {}
     if not isinstance(gelen, dict):
         return kayit
     for alan in _KURUMSAL_ALANLAR:
@@ -2685,10 +2690,50 @@ def kurumsal_bilgileri_oku():
     return kayit
 
 
-def kurumsal_bilgileri_yaz(kayit):
+def _kurumsal_json_oku():
+    try:
+        with open(_kurumsal_bilgi_dosyasi(), "r", encoding="utf-8") as f:
+            gelen = json.load(f)
+    except (OSError, ValueError):
+        gelen = {}
+    return _kurumsal_kaydi_normallestir(gelen)
+
+
+def kurumsal_bilgileri_oku():
     with _KURUMSAL_KILIT:
-        with open(_kurumsal_bilgi_dosyasi(), "w", encoding="utf-8") as f:
-            json.dump(kayit, f, ensure_ascii=False, indent=2)
+        try:
+            Ayar.__table__.create(bind=db.engine, checkfirst=True)
+            satir = Ayar.query.filter_by(anahtar=_KURUMSAL_ANAHTAR).first()
+            if satir and str(satir.deger or "").strip():
+                try:
+                    return _kurumsal_kaydi_normallestir(json.loads(satir.deger))
+                except ValueError:
+                    pass
+            tasinan = _kurumsal_json_oku()
+            metin = json.dumps(tasinan, ensure_ascii=False)
+            if satir is None:
+                db.session.add(Ayar(anahtar=_KURUMSAL_ANAHTAR, deger=metin))
+            else:
+                satir.deger = metin
+            db.session.commit()
+            return tasinan
+        except Exception as hata:
+            db.session.rollback()
+            print(f"[KURUMSAL] Veritabanı okunamadı, yedek dosyaya düşüldü: {hata}")
+            return _kurumsal_json_oku()
+
+
+def kurumsal_bilgileri_yaz(kayit):
+    temiz = _kurumsal_kaydi_normallestir(kayit)
+    metin = json.dumps(temiz, ensure_ascii=False)
+    with _KURUMSAL_KILIT:
+        Ayar.__table__.create(bind=db.engine, checkfirst=True)
+        satir = Ayar.query.filter_by(anahtar=_KURUMSAL_ANAHTAR).first()
+        if satir is None:
+            db.session.add(Ayar(anahtar=_KURUMSAL_ANAHTAR, deger=metin))
+        else:
+            satir.deger = metin
+        db.session.commit()
 
 
 @app.route("/kurumsal-bilgiler", methods=["GET"])
@@ -2709,7 +2754,8 @@ def kurumsal_bilgiler_kaydet_api():
         kayit[alan] = str(gelen.get(alan) or "").strip() or _KURUMSAL_VARSAYILAN[alan]
     try:
         kurumsal_bilgileri_yaz(kayit)
-    except OSError:
+    except Exception:
+        db.session.rollback()
         return jsonify({"success": False, "mesaj": "Kurumsal bilgiler kaydedilemedi."}), 500
     cevap = {"success": True, "mesaj": "✓ Kurumsal bilgiler kaydedildi"}
     cevap.update(kayit)

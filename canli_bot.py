@@ -458,8 +458,8 @@ def konus(metin, acil_mi=False):
         kuyrugu_guvenli_bosalt()
         spiker_kuyrugu.put((1, next(kuyruk_sayaci), metin))
     else:
-        if spiker_kuyrugu.qsize() > 2:
-            return
+        if spiker_kuyrugu.qsize() >= 1:
+            kuyrugu_guvenli_bosalt()
         spiker_kuyrugu.put((2, next(kuyruk_sayaci), metin))
 
 def acil_durdur():
@@ -608,26 +608,31 @@ def ortak_chat_yoneticisi():
                         f"Anlık pey: {p_pey} TL. Açıklama: {p_aciklama}.\n"
                         f"Kullanıcı Sorusu: {p_soru}"
                     )
-                    cevap = ""
-                    try:
-                        res = client.models.generate_content(
-                            model=MODEL_ADI,
-                            contents=prompt,
-                            config=types.GenerateContentConfig(
-                                system_instruction=SYSTEM_INSTRUCTION,
-                                max_output_tokens=80,
-                                temperature=0.4
+                    kutu = {"cevap": ""}
+
+                    def _iste():
+                        try:
+                            res = client.models.generate_content(
+                                model=MODEL_ADI,
+                                contents=prompt,
+                                config=types.GenerateContentConfig(
+                                    system_instruction=SYSTEM_INSTRUCTION,
+                                    max_output_tokens=80,
+                                    temperature=0.4
+                                )
                             )
-                        )
-                        if res.text and not stop_signal and not patron_konusuyor:
-                            cevap = re.sub(r"[\*#_]", "", res.text).strip().strip('"')
-                    except Exception as e:
-                        print(f"Gemini Chat Soru Hatası: {e}")
+                            if res.text and not stop_signal and not patron_konusuyor:
+                                kutu["cevap"] = re.sub(r"[\*#_]", "", res.text).strip().strip('"')
+                        except Exception as e:
+                            print(f"Gemini Chat Soru Hatası: {e}")
+
+                    istek = threading.Thread(target=_iste, daemon=True)
+                    istek.start()
+                    istek.join(1.5)
                     if stop_signal or patron_konusuyor:
                         return
-                    if not cevap:
-                        cevap = ahmet_nida_sec()
-                    konus(cevap, False)
+                    cevap = kutu.get("cevap") or f"{p_user}, sizi duydum efendim, eserin başındayız, buyurun!"
+                    konus(cevap, True)
                     guvenli_arkaplan_post(f"{WEB_SERVER_URL}/api/bot/ahmet-usta-yanit", {
                         "dukkan": p_kod,
                         "yanit": cevap
