@@ -1115,20 +1115,27 @@ def _bulut_anahtari_var():
     )
 
 
-def medyayi_kaydet(dosya):
-    """Ürün fotoğrafı ve videosu. Anahtar varsa Cloudinary, yoksa yerel disk."""
-    url, ad = kaydet_guvenli_dosya(dosya)
-    if not url or not ad or not _bulut_anahtari_var():
-        return url, ad
-    uzanti = _dosya_uzantisi(ad)
+class MedyaYuklemeHatasi(Exception):
+    pass
+
+
+def buluta_medya_yukle(dosya):
+    """Fotoğraf veya videoyu Cloudinary'ye yükler. Başarısız olursa yerel yol döndürmez."""
+    if not dosya or not getattr(dosya, "filename", ""):
+        raise MedyaYuklemeHatasi("Yüklenecek dosya yok.")
+    if not _bulut_anahtari_var():
+        raise MedyaYuklemeHatasi(
+            "Cloudinary anahtarları tanımlı değil. Medya yerel diske kaydedilmedi."
+        )
+    uzanti = _dosya_uzantisi(dosya.filename)
     if uzanti in _GORSEL_UZANTILARI:
         tip = "image"
     elif uzanti in _VIDEO_UZANTILARI:
         tip = "video"
     else:
-        return url, ad
-    yol = os.path.join(app.config["UPLOAD_FOLDER"], ad)
+        raise MedyaYuklemeHatasi("Desteklenmeyen medya türü.")
     try:
+        from io import BytesIO
         import cloudinary
         import cloudinary.uploader
         cloudinary.config(
@@ -1137,24 +1144,72 @@ def medyayi_kaydet(dosya):
             api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
             secure=True,
         )
+        ham = dosya.read()
+        if not ham:
+            raise MedyaYuklemeHatasi("Dosya boş.")
         sonuc = cloudinary.uploader.upload(
-            yol,
+            BytesIO(ham),
             resource_type=tip,
             folder="halic-antik",
             use_filename=True,
             unique_filename=True,
             overwrite=False,
         )
-        adres = str((sonuc or {}).get("secure_url") or "").strip()
-        if adres.startswith("https://"):
-            try:
-                os.remove(yol)
-            except OSError:
-                pass
-            return adres, ad
+    except MedyaYuklemeHatasi:
+        raise
     except Exception as hata:
-        print(f"[CLOUDINARY] {hata}")
-    return url, ad
+        raise MedyaYuklemeHatasi("Cloudinary yüklemesi başarısız: " + str(hata)) from hata
+    adres = str((sonuc or {}).get("secure_url") or "").strip()
+    if not adres.startswith("https://res.cloudinary.com"):
+        raise MedyaYuklemeHatasi("Cloudinary geçerli bir https adresi döndürmedi.")
+    return adres
+
+
+VARSAYILAN_GORSEL = "/static/img/varsayilan_urun.png"
+
+
+def _yol_video_mu(adres):
+    metin = str(adres or "").split("?", 1)[0].split("#", 1)[0].lower()
+    return metin.endswith((".mp4", ".mov", ".webm", ".m4v", ".ogg", ".mkv", ".avi", ".3gp")) or "/video/upload/" in metin
+
+
+def _yerel_yukleme_var_mi(adres):
+    metin = str(adres or "").strip()
+    if "/static/uploads/" not in metin:
+        return True
+    ad = metin.split("/static/uploads/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+    return os.path.isfile(os.path.join(app.config["UPLOAD_FOLDER"], ad))
+
+
+def _medya_adresi_hazirla(adres):
+    metin = str(adres or "").strip()
+    if not metin:
+        return ""
+    if metin.startswith("http://") or metin.startswith("https://"):
+        return metin
+    if "/static/uploads/" in metin and not _yerel_yukleme_var_mi(metin):
+        return ""
+    return metin
+
+
+def _urun_medyasini_hazirla(fotograflar, video):
+    video_adresi = _medya_adresi_hazirla(video)
+    if video_adresi and not _yol_video_mu(video_adresi):
+        video_adresi = ""
+    temiz = []
+    for adres in fotograflar or []:
+        hazir = _medya_adresi_hazirla(adres)
+        if not hazir or hazir in temiz:
+            continue
+        temiz.append(hazir)
+    if video_adresi and video_adresi not in temiz:
+        temiz.insert(0, video_adresi)
+    gorsel_var = any(not _yol_video_mu(adres) for adres in temiz)
+    if not gorsel_var and not video_adresi:
+        temiz.append(VARSAYILAN_GORSEL)
+    elif not gorsel_var and video_adresi:
+        pass
+    return temiz, video_adresi
 
 
 def saf_isim_temizle(isim):
@@ -1245,6 +1300,7 @@ class Urun(db.Model):
     tanitim_yazisi = db.Column(db.Text, nullable=True)
     fotograflar = db.Column(db.JSON, default=list)
     video = db.Column(db.Text, nullable=True, default="")
+    resim = db.Column(db.Text, nullable=True, default="")
     ses_dosyasi = db.Column(db.Text, nullable=True, default="")
     durum = db.Column(db.String(20), default="Aktif", index=True)
     kazanan_adi = db.Column(db.String(100), nullable=True, default="Yok")
@@ -1266,8 +1322,12 @@ class Urun(db.Model):
         hemen_val = float(self.hemen_al_fiyati or 0.0)
 
         foto_listesi = list(self.fotograflar or [])
+        resim_adresi = str(getattr(self, "resim", "") or "").strip()
+        if resim_adresi and resim_adresi not in foto_listesi:
+            foto_listesi.insert(0, resim_adresi)
         if not foto_listesi and self.video:
             foto_listesi = [self.video]
+        foto_listesi, video_adresi = _urun_medyasini_hazirla(foto_listesi, self.video)
 
         if hafif:
             return {
@@ -1280,7 +1340,8 @@ class Urun(db.Model):
                 "guncel_fiyat": guncel_val,
                 "hemen_al_fiyat": hemen_val,
                 "fotograflar": foto_listesi[:1],
-                "video": self.video or "",
+                "resim": foto_listesi[0] if foto_listesi else "",
+                "video": video_adresi,
                 "durum": self.durum or "Aktif",
                 "tedarikci_id": getattr(self, "tedarikci_id", None),
             }
@@ -1297,7 +1358,8 @@ class Urun(db.Model):
             "hemen_al_fiyati": hemen_val,
             "tanitim_yazisi": self.tanitim_yazisi or "",
             "fotograflar": foto_listesi,
-            "video": self.video or "",
+            "resim": next((adres for adres in foto_listesi if not _yol_video_mu(adres)), foto_listesi[0] if foto_listesi else ""),
+            "video": video_adresi,
             "ses": self.ses_dosyasi or "",
             "durum": self.durum or "Aktif",
             "kazanan": self.kazanan_adi or "Yok",
@@ -2314,6 +2376,7 @@ def veritabani_tablolari_onar():
                 ("kullanici", "silinme_tarihi", "TIMESTAMP"),
                 ("urun", "dukkan_kodu", "VARCHAR(30) DEFAULT 'gumus'"),
                 ("urun", "hemen_al_fiyati", "FLOAT DEFAULT 0.0"),
+                ("urun", "resim", "TEXT"),
                 ("urun", "kazanan_adi", "VARCHAR(100) DEFAULT 'Yok'"),
                 ("urun", "kazanan_id", "INTEGER"),
                 ("urun", "guncel_fiyat", "FLOAT DEFAULT 0.0"),
@@ -2395,6 +2458,13 @@ def serve_uploads(filename):
     ekstra = {"conditional": True}
     if mime:
         ekstra["mimetype"] = mime
+    tam = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    if not os.path.isfile(tam):
+        return send_from_directory(
+            os.path.join(basedir, "static", "img"),
+            "varsayilan_urun.png",
+            mimetype="image/png",
+        )
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename, **ekstra)
 
 
@@ -5117,21 +5187,21 @@ def urun_ekle():
         ses_url = ""
 
         for dosya in dosyalar:
-            url, temiz_ad = medyayi_kaydet(dosya)
-            if url and temiz_ad:
-                ext = temiz_ad.lower()
-                if ext.endswith((
-                    ".mp4", ".mov", ".avi", ".webm", ".mkv", ".3gp", ".m4v"
-                )):
-                    if not video_url:
-                        video_url = url
-                    fotograflar.append(url)
-                elif ext.endswith((".mp3", ".wav", ".ogg", ".m4a")):
-                    if not ses_url:
-                        ses_url = url
-                    fotograflar.append(url)
-                else:
-                    fotograflar.append(url)
+            if not dosya or not dosya.filename:
+                continue
+            ext = _dosya_uzantisi(dosya.filename)
+            if ext in (".mp3", ".wav", ".ogg", ".m4a"):
+                url, temiz_ad = kaydet_guvenli_dosya(dosya)
+                if url and not ses_url:
+                    ses_url = url
+                continue
+            try:
+                url = buluta_medya_yukle(dosya)
+            except MedyaYuklemeHatasi as hata:
+                return jsonify({"success": False, "mesaj": str(hata)}), 400
+            if _yol_video_mu(url) and not video_url:
+                video_url = url
+            fotograflar.append(url)
 
         lot_raw = request.form.get("lot")
         if lot_raw and str(lot_raw).strip().isdigit():
@@ -5160,6 +5230,7 @@ def urun_ekle():
             tanitim_yazisi=request.form.get("tanitim_yazisi", ""),
             fotograflar=fotograflar,
             video=video_url,
+            resim=next((adres for adres in fotograflar if not _yol_video_mu(adres)), ""),
             ses_dosyasi=ses_url,
             durum="Aktif",
             silindi_mi=False,
@@ -5708,8 +5779,15 @@ def _yeni_urun_temel_sorgu():
 
 
 def _yeni_urun_paketle(urun):
-    fotolar = _yeni_medya_listesi(getattr(urun, "fotograflar", None))
-    video = str(getattr(urun, "video", None) or "").strip()
+    fotolar, video = _urun_medyasini_hazirla(
+        _yeni_medya_listesi(getattr(urun, "fotograflar", None)),
+        getattr(urun, "video", None),
+    )
+    resim = str(getattr(urun, "resim", None) or "").strip()
+    if resim:
+        hazir_resim = _medya_adresi_hazirla(resim)
+        if hazir_resim and hazir_resim not in fotolar and not _yol_video_mu(hazir_resim):
+            fotolar.insert(0, hazir_resim)
     if not video:
         for adres in fotolar:
             if _yeni_video_mu(adres):
@@ -5986,11 +6064,13 @@ def studyo_transfer():
         fotograflar = []
         video_url = ""
         for dosya in request.files.getlist("dosyalar"):
-            url, temiz_ad = medyayi_kaydet(dosya)
-            if not url or not temiz_ad:
+            if not dosya or not dosya.filename:
                 continue
-            uzanti = _studyo_uzanti(temiz_ad)
-            if uzanti in _STUDYO_VIDEO and not video_url:
+            try:
+                url = buluta_medya_yukle(dosya)
+            except MedyaYuklemeHatasi as hata:
+                return jsonify({"success": False, "mesaj": str(hata)}), 400
+            if _yol_video_mu(url) and not video_url:
                 video_url = url
             fotograflar.append(url)
         if not fotograflar:
@@ -6023,6 +6103,7 @@ def studyo_transfer():
             tanitim_yazisi="\n".join(tanitim),
             fotograflar=fotograflar,
             video=video_url,
+            resim=next((adres for adres in fotograflar if not _yol_video_mu(adres)), ""),
             ses_dosyasi="",
             durum="Aktif",
             silindi_mi=False,

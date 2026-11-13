@@ -1929,10 +1929,12 @@
     }
 
     function onizlemeMedyaAdresi(url) {
+        const s = String(url || "").trim();
+        if (/^https?:\/\//i.test(s)) return s;
         try {
-            return encodeURI(String(url || "").trim());
+            return encodeURI(s);
         } catch (e) {
-            return String(url || "").trim();
+            return s;
         }
     }
 
@@ -1974,16 +1976,19 @@
         medyaAlani.innerHTML = "";
 
         const videoKaynak = onizlemeVideoKaynagi(urun);
-        const ilkGorsel = (urun.fotograflar && urun.fotograflar.length > 0) ? String(urun.fotograflar[0] || "").trim() : "";
+        const fotolar = (urun.fotograflar || []).map(function (adres) { return String(adres || "").trim(); }).filter(Boolean);
+        const ilkGorsel = fotolar.find(function (adres) { return !onizlemeVideoMu(adres); }) || urun.resim || "";
         const onizlemeSrc = videoKaynak || ilkGorsel;
-        if (onizlemeSrc && (videoKaynak || isVideoUrl(onizlemeSrc))) {
+        if (onizlemeSrc && (videoKaynak || isVideoUrl(onizlemeSrc) || onizlemeVideoMu(onizlemeSrc))) {
             const src = onizlemeMedyaAdresi(onizlemeSrc);
-            medyaAlani.innerHTML = `<video src="${src}" controls autoplay muted loop playsinline style="width:100%; max-height:360px; object-fit:contain;"></video>`;
-            const v = medyaAlani.querySelector('video');
-            if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
+            medyaAlani.innerHTML = `<video src="${src}" controls playsinline style="width:100%; max-height:360px; object-fit:contain; background:#000;"></video>`;
         } else if (ilkGorsel) {
             const img = document.createElement('img');
-            img.src = ilkGorsel;
+            img.src = onizlemeMedyaAdresi(ilkGorsel);
+            img.onerror = function () {
+                this.onerror = null;
+                this.src = '/static/img/varsayilan_urun.png';
+            };
             medyaAlani.appendChild(img);
         } else {
             medyaAlani.innerHTML = '<span style="color:#64748b; font-size:12px;">📷 Bu ürüne ait görsel bulunmuyor.</span>';
