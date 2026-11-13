@@ -1128,7 +1128,7 @@ def _temiz_medya_adi(dosya):
 
 
 def medyayi_kaydet(dosya):
-    """Ürün fotoğrafı ve videosu. Yalnızca Cloudinary; yerel disk yedeği yok."""
+    """Ürün fotoğrafı ve videosu. Cloudinary REST; SDK ve yerel disk yok."""
     if not dosya or not getattr(dosya, "filename", None):
         return None, None
     if not _bulut_anahtari_var():
@@ -1138,28 +1138,41 @@ def medyayi_kaydet(dosya):
             "Dosya yerel diske kaydedilmedi."
         )
     temiz_ad = _temiz_medya_adi(dosya)
+    cloud_name = (os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip()
+    api_key = (os.environ.get("CLOUDINARY_API_KEY") or "").strip()
+    api_secret = (os.environ.get("CLOUDINARY_API_SECRET") or "").strip()
+    timestamp = int(time.time())
+    imza = hashlib.sha1(
+        f"folder=halic-antik&timestamp={timestamp}{api_secret}".encode("utf-8")
+    ).hexdigest()
     try:
-        import cloudinary
-        import cloudinary.uploader
-        cloudinary.config(
-            cloud_name=(os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip(),
-            api_key=(os.environ.get("CLOUDINARY_API_KEY") or "").strip(),
-            api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
-            secure=True,
-        )
         akis = getattr(dosya, "stream", dosya)
         try:
             akis.seek(0)
         except Exception:
             pass
-        sonuc = cloudinary.uploader.upload(
-            akis,
-            resource_type="auto",
-            folder="halic-antik",
-            use_filename=True,
-            unique_filename=True,
-            overwrite=False,
+        icerik = akis.read()
+        if not icerik:
+            raise MedyaYuklemeHatasi(
+                "Yüklenecek dosya boş. Dosya yerel diske kaydedilmedi."
+            )
+        yanit = requests.post(
+            f"https://api.cloudinary.com/v1_1/{cloud_name}/auto/upload",
+            data={
+                "api_key": api_key,
+                "timestamp": str(timestamp),
+                "folder": "halic-antik",
+                "signature": imza,
+            },
+            files={"file": (temiz_ad, icerik)},
+            timeout=120,
         )
+        if yanit.status_code >= 400:
+            raise MedyaYuklemeHatasi(
+                f"Cloudinary yüklemesi başarısız (HTTP {yanit.status_code}). "
+                "Dosya yerel diske kaydedilmedi."
+            )
+        sonuc = yanit.json()
     except MedyaYuklemeHatasi:
         raise
     except Exception as hata:
