@@ -3821,6 +3821,92 @@ def odeme_baslat():
     })
 
 
+_POS_KILIT = threading.Lock()
+
+
+def _pos_siparis_dosyasi():
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    return os.path.join(basedir, "instance", "pos_siparisler.json")
+
+
+def _pos_siparisleri_oku():
+    try:
+        with open(_pos_siparis_dosyasi(), "r", encoding="utf-8") as f:
+            gelen = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return gelen if isinstance(gelen, list) else []
+
+
+@app.route("/pos")
+def pos_ekrani():
+    return render_template("pos.html")
+
+
+@app.route("/pos/siparis-onayla", methods=["POST"])
+def pos_siparis_onayla():
+    veri = request.get_json(silent=True) or {}
+    ad = str(veri.get("ad") or veri.get("ad_soyad") or "").strip()
+    telefon = str(veri.get("telefon") or veri.get("tel") or "").strip()
+    adres = str(veri.get("adres") or "").strip()
+    urunler = veri.get("urunler") if isinstance(veri.get("urunler"), list) else []
+    try:
+        genel_toplam = round(float(veri.get("genel_toplam") or veri.get("toplam") or 0), 2)
+    except (TypeError, ValueError):
+        genel_toplam = 0.0
+    try:
+        ara_toplam = round(float(veri.get("ara_toplam") or 0), 2)
+    except (TypeError, ValueError):
+        ara_toplam = 0.0
+    try:
+        kdv_tutari = round(float(veri.get("kdv_tutari") or 0), 2)
+    except (TypeError, ValueError):
+        kdv_tutari = 0.0
+    try:
+        kargo_ucreti = round(float(veri.get("kargo_ucreti") or 0), 2)
+    except (TypeError, ValueError):
+        kargo_ucreti = 0.0
+
+    if not ad or not telefon or not adres:
+        return jsonify({
+            "success": False,
+            "mesaj": "Ad soyad, telefon ve teslimat adresi zorunludur.",
+        }), 400
+    if not urunler:
+        return jsonify({"success": False, "mesaj": "Sepetiniz boş. Sipariş kaydedilemedi."}), 400
+
+    siparis_no = "SIP-" + datetime.now().strftime("%Y%m%d") + "-" + uuid.uuid4().hex[:6].upper()
+    kayit = {
+        "siparis_no": siparis_no,
+        "tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "musteri_id": veri.get("musteri_id"),
+        "ad": ad,
+        "telefon": telefon,
+        "adres": adres,
+        "urunler": urunler,
+        "ara_toplam": ara_toplam,
+        "kdv_tutari": kdv_tutari,
+        "kargo_ucreti": kargo_ucreti,
+        "genel_toplam": genel_toplam,
+        "odeme": "Havale/EFT",
+        "durum": "Havale Bekleniyor",
+    }
+    try:
+        with _POS_KILIT:
+            liste = _pos_siparisleri_oku()
+            liste.append(kayit)
+            with open(_pos_siparis_dosyasi(), "w", encoding="utf-8") as f:
+                json.dump(liste, f, ensure_ascii=False, indent=2)
+    except OSError:
+        return jsonify({"success": False, "mesaj": "Sipariş kaydedilemedi."}), 500
+
+    return jsonify({
+        "success": True,
+        "siparis_no": siparis_no,
+        "mesaj": "Siparişiniz alındı. Havale açıklamasına sipariş numaranızı yazınız.",
+    })
+
+
 # ==========================================
 # ÇOKLU ODA PEY VERME VE HEMEN AL
 # ==========================================

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haliç Antik Mezat — Havale / EFT Ödeme</title>
+    <style>
+        :root {
+            --bg: #0b0f17;
+            --card: #141b24;
+            --line: #222d3d;
+            --gold: #d4af37;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --green: #059669;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            padding: 16px;
+        }
+        .sayfa { max-width: 760px; margin: 0 auto; }
+        h1 { color: var(--gold); font-size: 22px; border-bottom: 2px solid var(--gold); padding-bottom: 10px; }
+        .kart {
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 14px;
+            margin-top: 14px;
+        }
+        h2 { color: var(--gold); font-size: 16px; margin-bottom: 8px; }
+        .satir { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
+        .fiyat { color: #34d399; font-weight: 700; white-space: nowrap; }
+        .ozet div { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
+        .genel { margin-top: 8px; color: var(--gold); font-size: 18px; font-weight: 800; }
+        label { display: block; font-size: 13px; margin: 10px 0 4px; color: var(--muted); }
+        input, textarea {
+            width: 100%;
+            background: #080c13;
+            color: var(--text);
+            border: 1px solid var(--gold);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 15px;
+        }
+        textarea { min-height: 80px; resize: vertical; }
+        .iban-satir { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+        button {
+            border: none;
+            border-radius: 8px;
+            padding: 12px 14px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .kopya { background: #1d4ed8; color: #fff; width: auto; }
+        .onay { width: 100%; background: var(--green); color: #fff; margin-top: 12px; font-size: 15px; }
+        .wp { width: 100%; background: #128C7E; color: #fff; margin-top: 8px; font-size: 15px; }
+        .not { color: var(--muted); font-size: 13px; line-height: 1.5; border: 1px dashed var(--gold); border-radius: 8px; padding: 10px; margin-top: 10px; }
+        .sonuc { color: #86efac; font-weight: 700; margin-top: 10px; }
+        a.geri { color: var(--gold); font-weight: 700; display: inline-block; margin-top: 12px; }
+        .bos { color: var(--muted); padding: 8px 0; }
+    </style>
+</head>
+<body>
+    <div class="sayfa">
+        <h1>🏦 Havale / EFT ile Sipariş</h1>
+        <a class="geri" href="/vitrin">← Vitrine dön</a>
+
+        <section class="kart">
+            <h2>Sepetiniz</h2>
+            <div id="urunler"><p class="bos">Sepet yükleniyor...</p></div>
+            <div class="ozet" id="ozet"></div>
+        </section>
+
+        <section class="kart">
+            <h2 data-kurumsal="sirketUnvani">Haliç Antik Mezat</h2>
+            <div>Banka: <b data-kurumsal="bankaAdi"></b></div>
+            <div>Alıcı Resmi Ünvanı: <b data-kurumsal="aliciAdi"></b></div>
+            <div class="iban-satir">
+                <span>IBAN: <b id="ibanMetin" data-kurumsal="iban"></b></span>
+                <button type="button" class="kopya" id="ibanKopyala">📋 IBAN Kopyala</button>
+            </div>
+            <p class="not">Kart ile ödeme, sanal POS bağlantısı eklendiğinde bu sayfada aynı sipariş özetinin altında açılacaktır. Şimdilik ödemenizi havale veya EFT ile tamamlayın. Açıklama kısmına ad soyad ve sipariş numaranızı yazın.</p>
+        </section>
+
+        <section class="kart">
+            <h2>Teslimat Bilgileri</h2>
+            <form id="siparisForm">
+                <label for="ad">Ad Soyad</label>
+                <input id="ad" name="ad" required autocomplete="name">
+                <label for="telefon">Telefon Numarası</label>
+                <input id="telefon" name="telefon" required autocomplete="tel" inputmode="tel">
+                <label for="adres">Teslimat Adresi</label>
+                <textarea id="adres" name="adres" required autocomplete="street-address"></textarea>
+                <button type="submit" class="onay" id="onayBtn">✅ Siparişi Onayla &amp; Dekont / WhatsApp Bildirimi Gönder</button>
+            </form>
+            <p class="sonuc" id="sonuc" hidden></p>
+            <button type="button" class="wp" id="wpBtn" hidden>WhatsApp ile sipariş özetini gönder</button>
+        </section>
+    </div>
+    <script>
+        var sepet = { urunler: [], ara_toplam: 0, kdv_tutari: 0, kargo_ucreti: 0, genel_toplam: 0, musteri_id: "", ad: "", tel: "" };
+        var kurumsal = { telefon: "", sirketUnvani: "Haliç Antik Mezat" };
+        var sonSiparisNo = "";
+
+        function para(n) {
+            var sayi = Number(n);
+            if (!isFinite(sayi)) sayi = 0;
+            return sayi.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL";
+        }
+
+        function sepetiOku() {
+            try {
+                var ham = JSON.parse(localStorage.getItem("halic_pos_sepet") || "null");
+                if (ham && typeof ham === "object") sepet = ham;
+            } catch (e) {}
+            if (!sepet.ad) sepet.ad = localStorage.getItem("halic_antik_ad") || "";
+            if (!sepet.tel) sepet.tel = localStorage.getItem("halic_antik_tel") || "";
+            if (!sepet.musteri_id) sepet.musteri_id = localStorage.getItem("halic_antik_id") || "0";
+        }
+
+        function tutarlariTamamla() {
+            var liste = Array.isArray(sepet.urunler) ? sepet.urunler : [];
+            if (sepet.ara_toplam == null || sepet.genel_toplam == null) {
+                var ara = 0;
+                liste.forEach(function (u) { ara += Number(u.fiyat) || 0; });
+                sepet.ara_toplam = ara;
+                sepet.kdv_tutari = Math.round(ara * 0.20 * 100) / 100;
+                sepet.kargo_ucreti = ara > 0 ? 150 : 0;
+                sepet.genel_toplam = Math.round((ara + sepet.kdv_tutari + sepet.kargo_ucreti) * 100) / 100;
+            }
+        }
+
+        function sepetiCiz() {
+            tutarlariTamamla();
+            var kutu = document.getElementById("urunler");
+            var liste = Array.isArray(sepet.urunler) ? sepet.urunler : [];
+            if (!liste.length) {
+                kutu.innerHTML = '<p class="bos">Sepetiniz boş. Vitrinden ürün ekleyip tekrar gelebilirsiniz.</p>';
+            } else {
+                kutu.innerHTML = liste.map(function (u) {
+                    return '<div class="satir"><span><b>Lot #' + (u.lot || "-") + "</b> — " + (u.ad || "Eser") + "</span><span class=\"fiyat\">" + para(u.fiyat) + "</span></div>";
+                }).join("");
+            }
+            document.getElementById("ozet").innerHTML =
+                "<div><span>Ara toplam</span><b>" + para(sepet.ara_toplam) + "</b></div>" +
+                "<div><span>KDV (%20)</span><b>" + para(sepet.kdv_tutari) + "</b></div>" +
+                "<div><span>Kargo</span><b>" + para(sepet.kargo_ucreti) + "</b></div>" +
+                '<div class="genel"><span>Genel Toplam</span><span>' + para(sepet.genel_toplam) + "</span></div>";
+            document.getElementById("ad").value = sepet.ad || "";
+            document.getElementById("telefon").value = sepet.tel || "";
+        }
+
+        function sunucudanSepet() {
+            var id = Number(sepet.musteri_id) || 0;
+            var url = id > 0 ? "/sepet-getir/" + id : "/sepet-getir/0?ad=" + encodeURIComponent(sepet.ad || "");
+            return fetch(url, { cache: "no-store" })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res || !res.success || !Array.isArray(res.urunler) || !res.urunler.length) return;
+                    sepet.urunler = res.urunler;
+                    sepet.ara_toplam = res.ara_toplam;
+                    sepet.kdv_tutari = res.kdv_tutari;
+                    sepet.kargo_ucreti = res.kargo_ucreti;
+                    sepet.genel_toplam = res.genel_toplam;
+                    try { localStorage.setItem("halic_pos_sepet", JSON.stringify(sepet)); } catch (e) {}
+                })
+                .catch(function () {});
+        }
+
+        function kurumsalYaz(data) {
+            if (!data) return;
+            document.querySelectorAll("[data-kurumsal]").forEach(function (el) {
+                var alan = el.getAttribute("data-kurumsal");
+                if (data[alan] != null) el.textContent = String(data[alan]);
+            });
+            kurumsal.telefon = String(data.telefon || "");
+            kurumsal.sirketUnvani = String(data.sirketUnvani || kurumsal.sirketUnvani);
+        }
+
+        document.getElementById("ibanKopyala").addEventListener("click", function () {
+            var iban = document.getElementById("ibanMetin").textContent || "";
+            var btn = this;
+            var yaz = function () {
+                btn.textContent = "✓ IBAN Kopyalandı";
+                setTimeout(function () { btn.textContent = "📋 IBAN Kopyala"; }, 2000);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(iban).then(yaz).catch(yaz);
+            } else {
+                yaz();
+            }
+        });
+
+        function whatsappMetni() {
+            var satirlar = (sepet.urunler || []).map(function (u) {
+                return "LOT #" + (u.lot || "-") + " " + (u.ad || "") + " — " + para(u.fiyat);
+            });
+            return [
+                kurumsal.sirketUnvani + " sipariş bildirimi",
+                "Sipariş No: " + sonSiparisNo,
+                "Ad Soyad: " + document.getElementById("ad").value.trim(),
+                "Telefon: " + document.getElementById("telefon").value.trim(),
+                "Adres: " + document.getElementById("adres").value.trim(),
+                satirlar.join("\n"),
+                "Ara toplam: " + para(sepet.ara_toplam),
+                "KDV: " + para(sepet.kdv_tutari),
+                "Kargo: " + para(sepet.kargo_ucreti),
+                "Genel Toplam: " + para(sepet.genel_toplam),
+                "Ödeme: Havale/EFT"
+            ].join("\n");
+        }
+
+        document.getElementById("wpBtn").addEventListener("click", function () {
+            var rakam = String(kurumsal.telefon || "").replace(/\D/g, "");
+            if (rakam.indexOf("90") !== 0 && rakam.length === 10) rakam = "90" + rakam;
+            if (rakam.indexOf("0") === 0) rakam = "9" + rakam;
+            var hedef = rakam ? ("https://wa.me/" + rakam) : "https://wa.me/";
+            window.open(hedef + "?text=" + encodeURIComponent(whatsappMetni()), "_blank", "noopener");
+        });
+
+        document.getElementById("siparisForm").addEventListener("submit", function (ev) {
+            ev.preventDefault();
+            var ad = document.getElementById("ad").value.trim();
+            var telefon = document.getElementById("telefon").value.trim();
+            var adres = document.getElementById("adres").value.trim();
+            if (!ad || !telefon || !adres) return;
+            if (!sepet.urunler || !sepet.urunler.length) {
+                document.getElementById("sonuc").hidden = false;
+                document.getElementById("sonuc").textContent = "Sepet boş olduğu için sipariş kaydedilmedi.";
+                return;
+            }
+            var btn = document.getElementById("onayBtn");
+            btn.disabled = true;
+            fetch("/pos/siparis-onayla", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    musteri_id: sepet.musteri_id,
+                    ad: ad,
+                    telefon: telefon,
+                    adres: adres,
+                    urunler: sepet.urunler,
+                    ara_toplam: sepet.ara_toplam,
+                    kdv_tutari: sepet.kdv_tutari,
+                    kargo_ucreti: sepet.kargo_ucreti,
+                    genel_toplam: sepet.genel_toplam
+                })
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                var sonuc = document.getElementById("sonuc");
+                sonuc.hidden = false;
+                if (!data || !data.success) {
+                    sonuc.textContent = (data && data.mesaj) || "Sipariş kaydedilemedi.";
+                    return;
+                }
+                sonSiparisNo = data.siparis_no;
+                sonuc.textContent = "✓ Siparişiniz alındı. Sipariş numaranız: " + data.siparis_no;
+                document.getElementById("wpBtn").hidden = false;
+            }).catch(function () {
+                btn.disabled = false;
+                document.getElementById("sonuc").hidden = false;
+                document.getElementById("sonuc").textContent = "Bağlantı hatası. Sipariş gönderilemedi.";
+            });
+        });
+
+        sepetiOku();
+        sepetiCiz();
+        sunucudanSepet().then(sepetiCiz);
+        fetch("/kurumsal-bilgiler?t=" + Date.now(), { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(kurumsalYaz)
+            .catch(function () {});
+    </script>
+</body>
+</html>

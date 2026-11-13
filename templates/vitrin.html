@@ -1185,37 +1185,34 @@
     }
 
     function sepettenOdemeyeGec() {
-        let musteriId = localStorage.getItem('halic_antik_id');
-        let ad = localStorage.getItem('halic_antik_ad');
-        let tel = localStorage.getItem('halic_antik_tel');
-        let mail = localStorage.getItem('halic_antik_mail');
+        const musteriId = localStorage.getItem('halic_antik_id') || '0';
+        const ad = localStorage.getItem('halic_antik_ad') || '';
+        const tel = localStorage.getItem('halic_antik_tel') || '';
+        const mail = localStorage.getItem('halic_antik_mail') || '';
+        const istekUrl = Number(musteriId) > 0
+            ? '/sepet-getir/' + musteriId
+            : '/sepet-getir/0?ad=' + encodeURIComponent(ad);
 
-        if (!musteriId || !ad || !tel) {
-            ad = prompt("Siparişi tamamlamak için Adınızı ve Soyadınızı giriniz:");
-            if (!ad) return;
-            tel = prompt("Telefon numaranızı giriniz:");
-            if (!tel) return;
-            mail = prompt("E-posta adresinizi giriniz (Zorunlu):");
-            if (!mail) return;
-        }
-
-        fetch('/odeme-baslat', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                musteri_id: musteriId ? parseInt(musteriId) : null,
-                ad: ad,
-                tel: tel,
-                mail: mail
+        fetch(istekUrl)
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                const paket = {
+                    musteri_id: musteriId,
+                    ad: ad,
+                    tel: tel,
+                    mail: mail,
+                    urunler: (res && res.urunler) || [],
+                    ara_toplam: res && res.ara_toplam != null ? res.ara_toplam : 0,
+                    kdv_tutari: res && res.kdv_tutari != null ? res.kdv_tutari : 0,
+                    kargo_ucreti: res && res.kargo_ucreti != null ? res.kargo_ucreti : 0,
+                    genel_toplam: res && res.genel_toplam != null ? res.genel_toplam : 0
+                };
+                try { localStorage.setItem('halic_pos_sepet', JSON.stringify(paket)); } catch (e) {}
+                window.location.href = '/pos';
             })
-        }).then(r => r.json()).then(res => {
-            if (res.success) {
-                alert("💳 " + res.mesaj);
-                window.location.href = res.yonlendir || '/';
-            } else {
-                alert("⚠️ " + res.mesaj);
-            }
-        });
+            .catch(function () {
+                window.location.href = '/pos';
+            });
     }
 
     async function sepettenUrunCikar(urunId, sepetId) {
