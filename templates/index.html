@@ -4019,12 +4019,10 @@
     }
 
     function sahneMedyaAdresi(url) {
-        const s = String(url || "").trim();
-        if (/^https?:\/\//i.test(s)) return s;
         try {
-            return encodeURI(s);
+            return encodeURI(String(url || "").trim());
         } catch (e) {
-            return s;
+            return String(url || "").trim();
         }
     }
 
@@ -4067,16 +4065,12 @@
         } else if (medya.tip === 'video' || isVideoUrl(medya.url) || videoDosyasiMi(medya.url)) {
             const src = sahneMedyaAdresi(medya.url);
             const sahneKutu = medyaDiv;
-            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" controls playsinline autoplay muted loop preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
+            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay muted loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
             const v = sahneKutu.querySelector('video');
             if (v) { v.muted = true; v.load(); v.play().catch(()=>{}); }
         } else {
             let img = document.createElement('img');
-            img.src = sahneMedyaAdresi(medya.url);
-            img.onerror = function () {
-                this.onerror = null;
-                this.src = '/static/img/varsayilan_urun.png';
-            };
+            img.src = medya.url;
             const kutu = document.getElementById('medyaKapsayici');
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
