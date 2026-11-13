@@ -1061,6 +1061,32 @@
         .yeni-slayt-lot { color: #f6e27a; font-size: 13px; font-weight: 800; }
         .yeni-slayt-ad { color: #fff; font-size: 16px; font-weight: 800; margin-top: 4px; }
         .yeni-slayt-fiyat { color: #86efac; font-size: 15px; font-weight: 800; margin-top: 4px; }
+        .yeni-slayt-dukkan {
+            display: inline-block;
+            margin-top: 10px;
+            background: linear-gradient(90deg, #1e3a8a, #0f766e);
+            color: #fff;
+            border: 1px solid #f6e27a;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 14px;
+            font-weight: 800;
+        }
+        .yeni-slayt-git {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 12px;
+            background: linear-gradient(180deg, #f8e7a1, #d4af37);
+            color: #1a1406;
+            border: none;
+            border-radius: 999px;
+            padding: 11px 18px;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 8px 18px rgba(212, 175, 55, 0.35);
+        }
         .yeni-slayt-bos { color: #cbd5e1; font-size: 14px; font-weight: 700; padding: 24px; text-align: center; }
         .btn-muzik-ust.muzik-aktif { background: #881337; border-color: #f43f5e; }
         .header-actions { position: relative; }
@@ -5309,7 +5335,31 @@
             '<div class="yeni-slayt-rozet">🔥 YENİ EKLENEN</div>' +
             '<div class="yeni-slayt-lot">LOT #' + escapeHtml(lot) + '</div>' +
             '<div class="yeni-slayt-ad">' + escapeHtml(ad) + '</div>' +
-            '<div class="yeni-slayt-fiyat">Başlangıç pey: ' + Math.round(acilis).toLocaleString("tr-TR") + ' TL</div>';
+            '<div class="yeni-slayt-fiyat">Başlangıç pey: ' + Math.round(acilis).toLocaleString("tr-TR") + ' TL</div>' +
+            '<div class="yeni-slayt-dukkan">🏪 Dükkan: ' + escapeHtml(yeniSlaytDukkanAdi(urun)) + '</div>' +
+            '<div><button type="button" class="yeni-slayt-git">Ürüne Git →</button></div>';
+    }
+
+    function yeniSlaytDukkanAdi(urun) {
+        var hazir = String((urun && urun.dukkan_adi) || "").trim();
+        if (hazir) return hazir;
+        var kod = String((urun && (urun.dukkan || urun.dukkan_id || urun.dukkan_kodu)) || "").trim();
+        if (kod && typeof dukkanlar === "object" && dukkanlar[kod] && dukkanlar[kod].ad) {
+            return String(dukkanlar[kod].ad);
+        }
+        var bilinen = {
+            gumus: "Gümüş",
+            antika: "Antika",
+            toptan: "Toptan",
+            kozmetik: "Kozmetik",
+            bijuteri: "Bijuteri",
+            hirdavat: "Hırdavat & Nalbur",
+            tasarim: "Tasarım",
+            modelaraba: "Model Oyuncak Arabalar",
+            karma: "Karma & Toplu Satış",
+            diger: "Diğer - Her Şey"
+        };
+        return bilinen[kod] || kod || "Dükkan";
     }
 
     function yeniSlaytVideoKontrolunde(event) {
@@ -5377,7 +5427,8 @@
     }
 
     function yeniSlaytKartTikla(event) {
-        if (event.target && event.target.closest && event.target.closest("button, a")) return;
+        var gitButonu = event.target && event.target.closest && event.target.closest(".yeni-slayt-git");
+        if (!gitButonu && event.target && event.target.closest && event.target.closest("button, a")) return;
         if (yeniSlaytVideoKontrolunde(event)) return;
         var urun = yeniSlaytListe.length ? yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length] : null;
         if (!urun) return;
