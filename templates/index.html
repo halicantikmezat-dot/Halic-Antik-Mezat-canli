@@ -960,12 +960,15 @@
             cursor: pointer;
             white-space: nowrap;
         }
-        .yeni-slayt {
-            position: absolute;
+        .yeni-slayt,
+        .yeni-slayt-perde {
+            position: fixed;
             inset: 0;
-            z-index: 80;
+            z-index: 9999;
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
+            overflow-y: auto;
             background: rgba(7, 11, 18, 0.96);
         }
         .yeni-slayt[hidden] { display: none !important; }
@@ -1030,17 +1033,26 @@
         .yeni-slayt-kare img,
         .yeni-slayt-kare video {
             max-width: 100%;
-            max-height: 100%;
+            max-height: 44vh;
             object-fit: contain;
             border-radius: 10px;
             animation: yeniSlaytKay 0.55s ease;
+        }
+        @media (max-width: 720px) {
+            .yeni-slayt-kare img,
+            .yeni-slayt-kare video {
+                max-height: 38vh;
+            }
         }
         @keyframes yeniSlaytKay {
             from { opacity: 0; transform: translateX(28px); }
             to { opacity: 1; transform: translateX(0); }
         }
         .yeni-slayt-alt {
-            padding: 10px 14px 16px;
+            position: relative;
+            z-index: 4;
+            flex-shrink: 0;
+            padding: 10px 14px 22px;
             text-align: center;
         }
         .yeni-slayt-kare.tiklanir img,
@@ -1456,7 +1468,7 @@
                 <button type="button" onclick="incelemeKapat()">Kapat</button>
             </div>
             <div id="yuzerSohbet" class="yuzer-sohbet" hidden></div>
-            <div id="yeniSlayt" class="yeni-slayt" hidden>
+            <div id="yeniSlayt" class="yeni-slayt yeni-slayt-perde" hidden>
                 <button type="button" class="yeni-slayt-kapat" onclick="yeniSlaytiKapat()">✕ Mezata Dön</button>
                 <div id="yeniSlaytSayac" class="yeni-slayt-sayac" hidden>1 / 1</div>
                 <button type="button" class="yeni-slayt-ok sol" onclick="yeniSlaytGit(-1)" aria-label="Önceki ürün">❮</button>
