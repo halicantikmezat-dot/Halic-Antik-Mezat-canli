@@ -1419,7 +1419,7 @@
     </div>
 
     <div class="header sade-header">
-        <button type="button" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Genel Menü">☰</button>
+        <button type="button" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Menüyü aç">☰</button>
         <div class="logo-box">
             <h2>HALİÇ ANTİK</h2>
             <div class="header-lokasyon-rozet">
@@ -1428,9 +1428,9 @@
             </div>
         </div>
         <div class="header-actions">
-            <button type="button" class="btn-yeni-ust" onclick="yeniSlaytiAc()">🔥 Yeni</button>
-            <button type="button" class="btn-yeni-ust" onclick="nasilKullanilirAc()" style="background:#d4af37; color:#111;">🎙️ Nasıl Kullanılır?</button>
-            <button type="button" id="btnCanliMuzikToggle" onclick="muzikMenusuAcKapa(event)" class="btn-muzik-ust" aria-expanded="false" aria-controls="muzikMenu">🎵 Müzik</button>
+            <button type="button" class="btn-yeni-ust" onclick="yeniSlaytiAc()" aria-label="Yeni eklenen ürünler">🔥 Yeni</button>
+            <button type="button" class="btn-yeni-ust" onclick="nasilKullanilirAc()" style="background:#d4af37; color:#111;" aria-label="Nasıl kullanılır">🎙️ Nasıl Kullanılır?</button>
+            <button type="button" id="btnCanliMuzikToggle" onclick="muzikMenusuAcKapa(event)" class="btn-muzik-ust" aria-label="Müzik menüsü" aria-expanded="false" aria-controls="muzikMenu">🎵 Müzik</button>
             <div id="muzikMenu" class="muzik-menu" hidden>
                 <div class="muzik-menu-baslik">Müzik İstasyonları</div>
                 <button type="button" class="muzik-kat" data-muzik-kategori="nostalji" onclick="muzikKategoriSec('nostalji')">Nostalji / Taş Plak</button>
@@ -1442,12 +1442,12 @@
                 </label>
                 <button type="button" id="muzikAcKapaBtn" class="muzik-ac-kapa" onclick="canliMuzikAcKapa()">Müziği Aç</button>
             </div>
-            <button type="button" class="live-badge" onclick="izleyiciListesiniAc()">🟢 <span id="onlineCount">0</span> Canlı</button>
+            <button type="button" class="live-badge" onclick="izleyiciListesiniAc()" aria-label="Canlı izleyici listesi">🟢 <span id="onlineCount">0</span> Canlı</button>
         </div>
     </div>
     <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
     <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
-        <button type="button" class="menu-oge" onclick="genelMenuAcKapa()">✕ Kapat</button>
+        <button type="button" class="menu-oge" onclick="genelMenuAcKapa()" aria-label="Menüyü kapat">✕ Kapat</button>
         <div style="font-size:12px; margin-top:8px;">İzleyici: <b id="aktifKullaniciGosterge">Misafir</b></div>
         <h4>Dükkanlar</h4>
         <div id="menuDukkanlar"></div>
@@ -1473,7 +1473,7 @@
     <div class="modal-content" style="text-align:left; max-width:430px; width:100%; padding:14px;" onclick="event.stopPropagation()">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
             <h3 style="color:#fef08a; font-size:16px; margin:0;">🏛️ Kurumsal &amp; Banka</h3>
-            <button type="button" onclick="kurumsalIzleyiciKapat()" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:800; cursor:pointer; width:auto;">✕</button>
+            <button type="button" onclick="kurumsalIzleyiciKapat()" aria-label="Kurumsal penceresini kapat" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:800; cursor:pointer; width:auto;">✕</button>
         </div>
         <div style="font-size:13px; line-height:1.45;">
             <b style="display:block; color:#fef08a;" data-kurumsal="sirketUnvani"></b>
@@ -1527,7 +1527,7 @@
             </div>
             <div id="yuzerSohbet" class="yuzer-sohbet" hidden></div>
             <div id="yeniSlayt" class="yeni-slayt yeni-slayt-perde" hidden>
-                <button type="button" class="yeni-slayt-kapat" onclick="yeniSlaytiKapat()">✕ Mezata Dön</button>
+                <button type="button" class="yeni-slayt-kapat" onclick="yeniSlaytiKapat()" aria-label="Slaytı kapat ve mezata dön">✕ Mezata Dön</button>
                 <div id="yeniSlaytSerit" class="yeni-slayt-serit" hidden>
                     <span id="yeniSlaytDukkanRozet">🏪 Vitrin</span>
                     <button type="button" class="yeni-slayt-git">Vitrine Git →</button>
@@ -1558,7 +1558,7 @@
         <div class="chat-drawer" id="chatDrawer">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
                 <span style="font-size:9px; font-weight:bold; color:var(--accent-gold);">💬 Canlı Sohbet Odası & Sesli İletişim</span>
-                <button onclick="toggleChatDrawer()" style="background:#475569; color:#fff; border:none; padding:1px 4px; border-radius:2px; font-size:8px; cursor:pointer;">✕</button>
+                <button type="button" onclick="toggleChatDrawer()" aria-label="Sohbeti kapat" style="background:#475569; color:#fff; border:none; padding:1px 4px; border-radius:2px; font-size:8px; cursor:pointer;">✕</button>
             </div>
             <div class="chat-messages" id="izleyiciChatKutusu">
                 <div class="chat-item ahmet"><b>🤖 Ahmet Usta:</b> Hoş geldiniz efendim, ürünle ilgili sorularınızı bana iletebilirsiniz.</div>
@@ -1651,8 +1651,8 @@
                 </div>
             </div>
             <div class="ses-sutunu">
-                <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" onclick="bilgiKartiniAcKapa()">🔊</button>
-                <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" type="button"><span>🎤</span></button>
+                <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
+                <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button"><span>🎤</span></button>
             </div>
         </div>
         <div id="izleyiciKayanMetin" hidden></div>
@@ -1674,7 +1674,7 @@
         <div class="footer-btns">
             <button class="btn-footer" onclick="nasilKullanilirAc()">🎧 Nasıl Kullanılır? (Sesli Rehber)</button>
             <button class="btn-footer" onclick="kurallariAc()">ℹ️ Hakkımızda & Kurallar</button>
-            <button class="btn-footer" onclick="whatsappPaylas()">WhatsApp'ta Paylaş</button>
+            <button class="btn-footer" onclick="whatsappPaylas()" aria-label="WhatsApp'ta paylaş">WhatsApp'ta Paylaş</button>
             <button class="btn-footer" onclick="openFeedbackModal()">📩 Şikayet / Görüş İlet</button>
             <button id="btnPosFooter" class="btn-footer" onclick="openPosModalDirect()">💳 POS</button>
             <a href="https://wa.me/905000000000" target="_blank" class="btn-footer" style="color:#34d399;">💬 WhatsApp</a>
@@ -1696,11 +1696,11 @@
     <div class="modal-content">
         <h3 style="color:var(--accent-gold); font-size:12px; margin-bottom:6px;">📱 Lot Karekodu Paylaş</h3>
         <div style="background:#fff; padding:10px; border-radius:6px; display:inline-block; margin-bottom:6px;">
-            <img id="qrUrunGorsel" src="" alt="Lot QR" style="width:160px; height:160px; display:block;">
+            <img id="qrUrunGorsel" src="" alt="Lot QR" loading="lazy" decoding="async" style="width:160px; height:160px; display:block;">
         </div>
         <p style="font-size:9px; color:#cbd5e1; margin-bottom:8px;">Bu karekodu okutanlar doğrudan sahnede olan bu ürüne ulaşır.</p>
         <button class="btn-bid btn-action-blue" style="width:100%; margin-bottom:4px;" onclick="qrLinkiKopyala()">📋 Bağlantıyı Kopyala</button>
-        <button class="btn-bid" style="width:100%; background:#128C7E; color:#fff; margin-bottom:4px;" onclick="whatsappPaylas()">WhatsApp'ta Paylaş</button>
+        <button class="btn-bid" style="width:100%; background:#128C7E; color:#fff; margin-bottom:4px;" onclick="whatsappPaylas()" aria-label="WhatsApp'ta paylaş">WhatsApp'ta Paylaş</button>
         <button class="btn-bid" style="width:100%; background:#475569; color:#fff;" onclick="closeModal('modalUrunQr')">Kapat</button>
     </div>
 </div>
@@ -1709,7 +1709,7 @@
     <div class="modal-content" style="text-align: left;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:8px; margin-bottom:8px;">
             <h3 style="color:#fef08a; margin:0; font-size:18px; font-weight:800;">Haliç Antik — Kurallar ve Sözleşme</h3>
-            <button onclick="kurallariKapat()" style="background:#881337; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
+            <button type="button" onclick="kurallariKapat()" aria-label="Kurallar penceresini kapat" style="background:#881337; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
         </div>
         <div style="max-height:62vh; overflow-y:auto; padding-right:6px;">
             <h2>1. İşletmeci Sorumluluğu</h2>
@@ -1856,8 +1856,8 @@
         <h3 style="color:#fef08a; font-size:18px; margin-bottom:8px;">Nasıl Kullanılır?</h3>
         <div id="rehberVideoAlani" style="margin-bottom:8px;"></div>
         <div style="display:flex; gap:6px; margin-bottom:8px;">
-            <button type="button" class="btn-bid btn-action-green" style="flex:1; width:auto; font-size:13px; padding:10px 6px;" onclick="rehberKilavuzuSesliDinle()">🔊 Kılavuzu Sesli Dinle</button>
-            <button type="button" class="btn-bid" style="flex:1; width:auto; font-size:13px; padding:10px 6px; background:#881337; color:#fff;" onclick="rehberKilavuzuDurdur()">⏹ Durdur</button>
+            <button type="button" class="btn-bid btn-action-green" style="flex:1; width:auto; font-size:13px; padding:10px 6px;" onclick="rehberKilavuzuSesliDinle()" aria-label="Kılavuzu sesli dinle">🔊 Kılavuzu Sesli Dinle</button>
+            <button type="button" class="btn-bid" style="flex:1; width:auto; font-size:13px; padding:10px 6px; background:#881337; color:#fff;" onclick="rehberKilavuzuDurdur()" aria-label="Sesli kılavuzu durdur">⏹ Durdur</button>
         </div>
         <div id="rehberAdimlar" style="display:flex; flex-direction:column; gap:8px;">
             <article data-rehber="1" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
@@ -1972,7 +1972,9 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         kurumsalBilgileriYerlestir();
-        kurumsalBilgileriSunucudanAl();
+    });
+    window.addEventListener("load", function () {
+        setTimeout(kurumsalBilgileriSunucudanAl, 2500);
     });
 
     function cihazKimligi() {
@@ -2209,6 +2211,7 @@
         const btn = document.getElementById('btnDinleKisa');
         if (!btn) return;
         btn.title = yazi;
+        btn.setAttribute("aria-label", yazi);
         btn.textContent = String(yazi).indexOf('Konuşuyor') >= 0 ? '🗣️' : '🔊';
     }
 
@@ -2259,6 +2262,7 @@
             if (btn) {
                 btn.textContent = video.muted ? '🔇' : '🔊';
                 btn.title = video.muted ? 'Ses Kapalı' : 'Ses Açık';
+                btn.setAttribute("aria-label", video.muted ? "Sesi aç" : "Sesi kapat");
             }
             return;
         }
@@ -4308,7 +4312,7 @@
                 if (m.tip === 'video' || isVideoUrl(src) || isVideoUrl(m.url)) {
                     return `<span class="${sinif}" onclick="medyaDegistir(${idx})" style="display:inline-block;overflow:hidden;padding:0;"><video src="${src}" controls preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; display:block; pointer-events:none;"></video></span>`;
                 }
-                return `<img src="${src}" class="${sinif}" onclick="medyaDegistir(${idx})">`;
+                return `<img src="${src}" class="${sinif}" alt="" loading="lazy" decoding="async" onclick="medyaDegistir(${idx})">`;
             }).join('');
         } else {
             thumbsDiv.style.display = 'none';
@@ -5793,7 +5797,7 @@
                 if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
             }
         } else if (medya.tip === "foto") {
-            kare.innerHTML = '<img alt="" src="' + escapeHtml(medya.url) + '">';
+            kare.innerHTML = '<img alt="" loading="lazy" decoding="async" src="' + escapeHtml(medya.url) + '">';
         } else {
             kare.innerHTML = '<div class="yeni-slayt-bos">Bu üründe görsel yok</div>';
         }
