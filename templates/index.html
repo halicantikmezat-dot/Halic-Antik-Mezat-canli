@@ -887,10 +887,10 @@
         #altCekmece {
             position: fixed;
             left: 50%;
-            bottom: 118px;
+            bottom: calc(96px + env(safe-area-inset-bottom));
             width: min(100%, 480px);
-            max-height: 52vh;
-            z-index: 900;
+            max-height: calc(100dvh - 150px - env(safe-area-inset-bottom));
+            z-index: 1050;
             transform: translateX(-50%) translateY(120%);
             transition: transform 0.28s ease;
             background: rgba(15, 21, 30, 0.86);
@@ -901,6 +901,7 @@
             border: 1px solid rgba(212, 175, 55, 0.35);
         }
         #altCekmece.acik { transform: translateX(-50%) translateY(0); visibility: visible; pointer-events: auto; }
+        #altCekmece #katalogSonucListesi { max-height: 36vh !important; }
         #altCekmece:not(.acik) {
             transform: translateX(-50%) translateY(120vh);
             visibility: hidden;
@@ -3520,6 +3521,26 @@
         aramaZamanlayici = setTimeout(katalogSunucudanAra, 300);
     }
 
+    function katalogUrununuUyarla(u) {
+        const fotolar = Array.isArray(u.fotograflar) ? u.fotograflar : [];
+        const hemen = Number(u.hemen_al != null ? u.hemen_al : (u.hemen_al_fiyat != null ? u.hemen_al_fiyat : (u.hemen_al_fiyati || 0))) || 0;
+        const fiyat = Number(u.fiyat || 0) || 0;
+        return {
+            id: u.id,
+            lot: u.lot,
+            ad: u.ad || "",
+            fiyat: fiyat,
+            hemen_al: hemen,
+            hemen_al_fiyat: hemen,
+            hemen_al_fiyati: hemen,
+            resim: u.resim || fotolar[0] || u.video || "",
+            kategori: u.kategori || "Genel",
+            durum: u.durum || "",
+            guncel_fiyat: u.guncel_fiyat != null ? u.guncel_fiyat : fiyat,
+            tanitim_yazisi: u.tanitim_yazisi || ""
+        };
+    }
+
     async function katalogSunucudanAra() {
         const arama = (document.getElementById('katalogAramaInput').value || '').trim();
         const kat = (document.getElementById('kategoriFiltre').value || '').trim();
@@ -3528,16 +3549,17 @@
         listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Aranıyor...</div>';
 
         try {
-            const res = await fetch(`/admin/urun-ara?dukkan=${encodeURIComponent(aktifDukkan)}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
+            const res = await fetch(`/vitrin-urunler?dukkan=${encodeURIComponent(aktifDukkan)}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
             const data = await res.json();
-            if (!data.urunler || data.urunler.length === 0) {
+            const urunler = (data.urunler || []).map(katalogUrununuUyarla);
+            if (!urunler.length) {
                 listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Bu dükkanda ürün bulunamadı.</div>';
                 sonBulunanUrunler = [];
                 return;
             }
-            sonBulunanUrunler = data.urunler;
+            sonBulunanUrunler = urunler;
             listeDiv.innerHTML = "";
-            data.urunler.forEach(u => {
+            urunler.forEach(u => {
                 let div = document.createElement('div');
                 div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#080c13; padding:4px 5px; border-radius:4px; border:1px solid #1c2541;";
                 div.innerHTML = `
