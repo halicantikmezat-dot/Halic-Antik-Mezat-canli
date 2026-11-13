@@ -991,6 +991,10 @@
             justify-content: center;
             padding: 46px 56px 8px;
         }
+        .yeni-slayt-kare.tiklanir,
+        .yeni-slayt-alt.tiklanir {
+            cursor: pointer;
+        }
         .yeni-slayt-ok {
             position: absolute;
             top: 50%;
@@ -1038,6 +1042,10 @@
         .yeni-slayt-alt {
             padding: 10px 14px 16px;
             text-align: center;
+        }
+        .yeni-slayt-kare.tiklanir img,
+        .yeni-slayt-kare.tiklanir video {
+            cursor: pointer;
         }
         .yeni-slayt-rozet {
             display: inline-block;
@@ -5267,10 +5275,14 @@
         yeniSlaytSayaciniYaz();
         if (!kare || !alt) return;
         if (!yeniSlaytListe.length) {
+            kare.classList.remove("tiklanir");
+            alt.classList.remove("tiklanir");
             kare.innerHTML = '<div class="yeni-slayt-bos">Son eklenen ürün bulunmuyor.</div>';
             alt.innerHTML = "";
             return;
         }
+        kare.classList.add("tiklanir");
+        alt.classList.add("tiklanir");
         var urun = yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length];
         var medya = yeniSlaytMedyasi(urun);
         if (medya.tip === "video") {
@@ -5279,6 +5291,9 @@
             if (video) {
                 video.src = sahneMedyaAdresi(medya.url);
                 video.load();
+                video.addEventListener("click", function (event) {
+                    if (yeniSlaytVideoKontrolunde(event)) event.stopPropagation();
+                });
                 var oynat = video.play();
                 if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
             }
@@ -5295,6 +5310,78 @@
             '<div class="yeni-slayt-lot">LOT #' + escapeHtml(lot) + '</div>' +
             '<div class="yeni-slayt-ad">' + escapeHtml(ad) + '</div>' +
             '<div class="yeni-slayt-fiyat">Başlangıç pey: ' + Math.round(acilis).toLocaleString("tr-TR") + ' TL</div>';
+    }
+
+    function yeniSlaytVideoKontrolunde(event) {
+        var hedef = event && event.target;
+        if (!hedef || !hedef.closest) return false;
+        var video = hedef.closest("video");
+        if (!video) return false;
+        var kutu = video.getBoundingClientRect();
+        if (!kutu.height) return true;
+        return (event.clientY - kutu.top) >= (kutu.height - 48);
+    }
+
+    function yeniSlaytInceleKaydi(urun) {
+        var fotolar = Array.isArray(urun.fotograflar) ? urun.fotograflar.slice() : [];
+        var gorsel = String(urun.gorsel || "").trim();
+        var video = String(urun.video || urun.video_yolu || "").trim();
+        if (gorsel && fotolar.indexOf(gorsel) === -1) fotolar.unshift(gorsel);
+        if (!fotolar.length && video) fotolar = [video];
+        return {
+            id: urun.id,
+            lot: urun.lot_no != null ? urun.lot_no : urun.lot,
+            ad: urun.baslik || urun.urun_adi || urun.ad || "",
+            fiyat: urun.baslangic_fiyati != null ? urun.baslangic_fiyati : (urun.fiyat || 0),
+            guncel_fiyat: urun.guncel_fiyat || urun.fiyat || urun.baslangic_fiyati || 0,
+            hemen_al_fiyat: urun.hemen_al_fiyat || urun.hemen_al_fiyati || 0,
+            kategori: urun.kategori || "Genel",
+            tanitim_yazisi: urun.tanitim_yazisi || urun.aciklama || "",
+            fotograflar: fotolar,
+            video: video,
+            dukkan: urun.dukkan || urun.dukkan_id || urun.dukkan_kodu || aktifDukkan
+        };
+    }
+
+    function yeniSlaytDukkaninaGec(kod) {
+        kod = String(kod || "").trim() || aktifDukkan;
+        if (typeof dukkanSec === "function") {
+            dukkanSec(kod);
+        } else if (typeof dukkanDegistir === "function") {
+            dukkanDegistir(kod);
+        }
+        if (kod === aktifDukkan) return;
+        socket.emit("leave_dukkan", { dukkan: aktifDukkan });
+        aktifDukkan = kod;
+        try {
+            var adres = new URL(window.location.href);
+            adres.searchParams.set("dukkan", kod);
+            history.replaceState(null, "", adres.pathname + adres.search);
+        } catch (e) {}
+        odayaKatil();
+        dukkanMenuYukle();
+    }
+
+    function yeniSlaytUrununeGit(urun) {
+        if (!urun) return;
+        if (typeof playUserClickSound === "function") playUserClickSound();
+        var kod = String(urun.dukkan || urun.dukkan_id || urun.dukkan_kodu || aktifDukkan).trim() || aktifDukkan;
+        yeniSlaytDukkaninaGec(kod);
+        var kayit = yeniSlaytInceleKaydi(urun);
+        sonBulunanUrunler = [kayit];
+        var oynatilan = document.querySelector("#yeniSlaytKare video");
+        if (oynatilan) oynatilan.pause();
+        yeniSlaytiKapat();
+        urunIncele(kayit.id);
+        canliDurumuGetirHafif();
+    }
+
+    function yeniSlaytKartTikla(event) {
+        if (event.target && event.target.closest && event.target.closest("button, a")) return;
+        if (yeniSlaytVideoKontrolunde(event)) return;
+        var urun = yeniSlaytListe.length ? yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length] : null;
+        if (!urun) return;
+        yeniSlaytUrununeGit(urun);
     }
 
     function yeniSlaytVideoMu(url) {
@@ -5386,6 +5473,10 @@
         var basX = 0;
         var basY = 0;
         var izleniyor = false;
+        var kare = document.getElementById("yeniSlaytKare");
+        var alt = document.getElementById("yeniSlaytAlt");
+        if (kare) kare.addEventListener("click", yeniSlaytKartTikla);
+        if (alt) alt.addEventListener("click", yeniSlaytKartTikla);
         perde.addEventListener("touchstart", function (e) {
             if (e.target.closest("button")) return;
             if (!e.touches || !e.touches.length) return;
