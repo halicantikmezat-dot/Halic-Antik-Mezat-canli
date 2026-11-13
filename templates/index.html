@@ -1805,15 +1805,36 @@
     </div>
 </div>
 
-<div id="rehberModal" class="modal">
-    <div class="modal-content" style="text-align:left;">
+<div id="rehberModal" class="modal" onclick="if(event.target===this) rehberKapat()">
+    <div class="modal-content" style="text-align:left; max-width:520px;" onclick="event.stopPropagation()">
         <h3 style="color:#fef08a; font-size:18px; margin-bottom:8px;">Nasıl Kullanılır?</h3>
-        <ol id="rehberAdimlar" style="font-size:15px; line-height:1.45; padding-left:18px;">
-            <li data-rehber="1">Vitrin / lot seçimi</li>
-            <li data-rehber="2">Hızlı kayıt ve e-posta kodu</li>
-            <li data-rehber="3">Yazılı / sesli pey ve Hemen Al</li>
-            <li data-rehber="4">Sepet ve ödeme</li>
-        </ol>
+        <div id="rehberVideoAlani" style="margin-bottom:8px;"></div>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <button type="button" class="btn-bid btn-action-green" style="flex:1; width:auto; font-size:13px; padding:10px 6px;" onclick="rehberKilavuzuSesliDinle()">🔊 Kılavuzu Sesli Dinle</button>
+            <button type="button" class="btn-bid" style="flex:1; width:auto; font-size:13px; padding:10px 6px; background:#881337; color:#fff;" onclick="rehberKilavuzuDurdur()">⏹ Durdur</button>
+        </div>
+        <div id="rehberAdimlar" style="display:flex; flex-direction:column; gap:8px;">
+            <article data-rehber="1" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
+                <b style="color:#fef08a; font-size:15px;">1) Dükkan Seçimi</b>
+                <p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">Üst menüden Antika, Gümüş, Bijuteri, Saat/Tesbih veya diğer dükkanlar arasında tek dokunuşla geçiş yapın.</p>
+            </article>
+            <article data-rehber="2" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
+                <b style="color:#fef08a; font-size:15px;">2) Canlı Mezatta Pey Verme</b>
+                <p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">Sahnedeki ürüne +%10, +%25 hızlı artış butonlarıyla veya kendi belirlediğiniz tutarla anında teklif verin.</p>
+            </article>
+            <article data-rehber="3" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
+                <b style="color:#fef08a; font-size:15px;">3) Hemen Al &amp; Sepet</b>
+                <p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">Süre bitimini beklemeden ürünü "Hemen Al" ile doğrudan kazanabilir veya "Vitrin" sayfasından ürünleri kıyaslayıp sepetinize ekleyebilirsiniz.</p>
+            </article>
+            <article data-rehber="4" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
+                <b style="color:#fef08a; font-size:15px;">4) Ses &amp; Müzik Kontrolü</b>
+                <p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">Sağ üst/sahne kontrollerinden canlı sunucu anlatımını açabilir, dilerseniz arka plan müziğini değiştirebilirsiniz.</p>
+            </article>
+            <article data-rehber="5" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">
+                <b style="color:#fef08a; font-size:15px;">5) Güvenli Ödeme &amp; Kargo</b>
+                <p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">Kazandığınız veya sepete eklediğiniz ürünler için sipariş formunu doldurun; ekibimiz WhatsApp üzerinden onay ve kargo takip kodunu iletir.</p>
+            </article>
+        </div>
         <p id="rehberDurum" style="font-size:14px; color:#e2e8f0; margin:8px 0;">Sesli anlatım yalnızca size gelir.</p>
         <button class="btn-bid btn-action-green" style="width:100%;" onclick="rehberAdiminiOynat()">Bu adımı sesli dinle</button>
         <button class="btn-bid btn-action-blue" style="width:100%;" onclick="rehberSonraki()">Sonraki adım</button>
@@ -3173,10 +3194,15 @@
         }, 1200);
     });
 
+    var rehberAdimSesi = null;
     socket.on("rehber_ses", function (data) {
         const durum = document.getElementById('rehberDurum');
         if (data && data.audio_url) {
+            if (rehberAdimSesi) {
+                try { rehberAdimSesi.pause(); } catch (e) {}
+            }
             const ses = new Audio(data.audio_url);
+            rehberAdimSesi = ses;
             ses.play().catch(function () {
                 if (durum) durum.textContent = "Ses hazır. Sayfaya bir kez dokunup adımı yeniden dinleyin.";
             });
@@ -4812,7 +4838,11 @@
         });
     }
 
-    function closeModal(id) { playUserClickSound(); document.getElementById(id).style.display = 'none'; }
+    function closeModal(id) {
+        playUserClickSound();
+        if (id === 'rehberModal') rehberKilavuzSesiniKapat();
+        document.getElementById(id).style.display = 'none';
+    }
 
     function sesliDinle() {
         playUserClickSound();
@@ -4877,7 +4907,7 @@
             const el = document.getElementById(id);
             if (el) el.classList.add('rehber-vurgu');
         });
-        document.querySelectorAll('#rehberAdimlar li').forEach(function (li) {
+        document.querySelectorAll('#rehberAdimlar [data-rehber]').forEach(function (li) {
             li.classList.toggle('rehber-vurgu', li.getAttribute('data-rehber') === String(rehberAdim));
         });
         if (rehberAdim === 2) {
@@ -4892,6 +4922,7 @@
         rehberAdim = 1;
         const kutu = document.getElementById('rehberModal');
         if (kutu) kutu.style.display = 'flex';
+        rehberVideoAlaniniKur();
         rehberVurgula();
         rehberAdiminiOynat();
     }
@@ -4913,6 +4944,133 @@
         rehberVurguyuTemizle();
         closeModal('rehberModal');
     }
+
+    const REHBER_VIDEO_URL = "";
+    var rehberDurdurulanlar = [];
+    var rehberSesNesil = 0;
+
+    function rehberKilavuzMetni() {
+        var parcalar = [];
+        document.querySelectorAll("#rehberAdimlar [data-rehber]").forEach(function (kart) {
+            var yazi = (kart.innerText || "").replace(/\s+/g, " ").trim();
+            if (yazi) parcalar.push(yazi);
+        });
+        return parcalar.join(" ");
+    }
+
+    function rehberCanliSesiBeklet() {
+        if (rehberAdimSesi && !rehberAdimSesi.paused) {
+            try { rehberAdimSesi.pause(); } catch (e) {}
+        }
+        [currentAudio, moderatorAkisSesi, window.aktifSes, document.getElementById("stageVideo")].forEach(function (el) {
+            if (!el || el.paused || rehberDurdurulanlar.indexOf(el) !== -1) return;
+            try {
+                el.pause();
+                rehberDurdurulanlar.push(el);
+            } catch (e) {}
+        });
+    }
+
+    function rehberCanliSesiSurdur() {
+        var liste = rehberDurdurulanlar.splice(0, rehberDurdurulanlar.length);
+        liste.forEach(function (el) {
+            try {
+                if (!el || !el.paused) return;
+                var oynat = el.play();
+                if (oynat && typeof oynat.catch === "function") oynat.catch(function () {});
+            } catch (e) {}
+        });
+    }
+
+    function rehberVideosunuDurdur() {
+        var video = document.getElementById("rehberVideo");
+        if (!video) return;
+        try { video.pause(); } catch (e) {}
+    }
+
+    function rehberKilavuzSesiniKapat() {
+        rehberSesNesil += 1;
+        rehberVideosunuDurdur();
+        if (window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+        rehberCanliSesiSurdur();
+    }
+
+    function rehberKilavuzuDurdur() {
+        rehberKilavuzSesiniKapat();
+        var durum = document.getElementById("rehberDurum");
+        if (durum) durum.textContent = "Kılavuz sesi durduruldu.";
+    }
+
+    function rehberKilavuzuSesliDinle() {
+        var durum = document.getElementById("rehberDurum");
+        if (!window.speechSynthesis || typeof SpeechSynthesisUtterance !== "function") {
+            if (durum) durum.textContent = "Bu cihazda sesli okuma yok. Aşağıdaki adımları okuyabilirsiniz.";
+            return;
+        }
+        rehberSesNesil += 1;
+        var nesil = rehberSesNesil;
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        rehberCanliSesiBeklet();
+        var ham = rehberKilavuzMetni();
+        var cumleler = ham.match(/[^.!?]+[.!?]?/g) || [ham];
+        var sesler = window.speechSynthesis.getVoices() || [];
+        var turkce = null;
+        for (var i = 0; i < sesler.length; i++) {
+            if (sesler[i].lang && sesler[i].lang.toLowerCase().indexOf("tr") === 0) {
+                turkce = sesler[i];
+                break;
+            }
+        }
+        cumleler.forEach(function (cumle, index) {
+            var u = new SpeechSynthesisUtterance(cumle.trim());
+            u.lang = "tr-TR";
+            if (turkce) u.voice = turkce;
+            if (index === cumleler.length - 1) {
+                u.onend = function () {
+                    if (nesil !== rehberSesNesil) return;
+                    rehberCanliSesiSurdur();
+                    if (durum) durum.textContent = "Kılavuz sesi bitti.";
+                };
+            }
+            window.speechSynthesis.speak(u);
+        });
+        if (durum) durum.textContent = "Kılavuz Türkçe okunuyor.";
+    }
+
+    function rehberYoutubeEmbed(url) {
+        var id = "";
+        var kisa = String(url).match(/youtu\.be\/([A-Za-z0-9_-]{6,})/);
+        var izle = String(url).match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+        var gomulu = String(url).match(/youtube\.com\/embed\/([A-Za-z0-9_-]{6,})/);
+        if (kisa) id = kisa[1];
+        else if (izle) id = izle[1];
+        else if (gomulu) id = gomulu[1];
+        return id ? ("https://www.youtube.com/embed/" + id) : "";
+    }
+
+    function rehberVideoAlaniniKur() {
+        var alan = document.getElementById("rehberVideoAlani");
+        if (!alan) return;
+        var url = String(REHBER_VIDEO_URL || "").trim();
+        if (!url) {
+            alan.innerHTML = '<div style="background:#1e293b; color:#fef08a; border:1px solid #334155; border-radius:10px; padding:10px 12px; font-size:14px; line-height:1.45;">🎥 Video Rehber Yakında Eklenecek — Şimdilik Sesli Dinleyebilir veya Aşağıdaki 5 Adımı İnceleyebilirsiniz</div>';
+            return;
+        }
+        var embed = rehberYoutubeEmbed(url);
+        if (embed) {
+            alan.innerHTML = '<div style="position:relative; width:100%; padding-top:56.25%; background:#000; border-radius:10px; overflow:hidden;"><iframe src="' + embed + '" title="Kullanma kılavuzu" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>';
+            return;
+        }
+        if (/\.mp4(\?|#|$)/i.test(url)) {
+            var src = url.replace(/"/g, "%22");
+            alan.innerHTML = '<video id="rehberVideo" controls playsinline preload="metadata" style="width:100%; max-height:42vh; border-radius:10px; background:#000;" src="' + src + '"></video>';
+            return;
+        }
+        alan.innerHTML = '<div style="background:#1e293b; color:#fef08a; border:1px solid #334155; border-radius:10px; padding:10px 12px; font-size:14px; line-height:1.45;">🎥 Video Rehber Yakında Eklenecek — Şimdilik Sesli Dinleyebilir veya Aşağıdaki 5 Adımı İnceleyebilirsiniz</div>';
+    }
+    rehberVideoAlaniniKur();
 
     var ytApiEtiketiEklendi = false;
     var muzikBekleyenIslem = null;
