@@ -962,12 +962,15 @@
         }
         .yeni-slayt,
         .yeni-slayt-perde {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 135px;
+            z-index: 90;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            justify-content: center;
             overflow-y: auto;
             background: rgba(7, 11, 18, 0.96);
         }
@@ -1033,7 +1036,7 @@
         .yeni-slayt-kare img,
         .yeni-slayt-kare video {
             max-width: 100%;
-            max-height: 44vh;
+            max-height: 36vh;
             object-fit: contain;
             border-radius: 10px;
             animation: yeniSlaytKay 0.55s ease;
@@ -1041,18 +1044,48 @@
         @media (max-width: 720px) {
             .yeni-slayt-kare img,
             .yeni-slayt-kare video {
-                max-height: 38vh;
+                max-height: 30vh;
             }
         }
         @keyframes yeniSlaytKay {
             from { opacity: 0; transform: translateX(28px); }
             to { opacity: 1; transform: translateX(0); }
         }
+        .yeni-slayt-serit {
+            position: absolute;
+            top: 8px;
+            left: 74px;
+            right: 126px;
+            z-index: 5;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: flex-end;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(212, 175, 55, 0.6);
+            color: #fff;
+            border-radius: 999px;
+            padding: 4px 6px 4px 10px;
+            font-size: 12px;
+        }
+        .yeni-slayt-serit[hidden] { display: none !important; }
+        .yeni-slayt-serit span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .yeni-slayt-alt {
             position: relative;
             z-index: 4;
             flex-shrink: 0;
-            padding: 10px 14px 22px;
+            padding: 8px 12px;
+            font-size: 12px;
+            max-width: 92%;
+            margin: 6px auto 0;
+            background: rgba(10, 14, 23, 0.88);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
             text-align: center;
         }
         .yeni-slayt-kare.tiklanir img,
@@ -1070,34 +1103,19 @@
             font-weight: 800;
             letter-spacing: 0.3px;
         }
-        .yeni-slayt-lot { color: #f6e27a; font-size: 13px; font-weight: 800; }
-        .yeni-slayt-ad { color: #fff; font-size: 16px; font-weight: 800; margin-top: 4px; }
-        .yeni-slayt-fiyat { color: #86efac; font-size: 15px; font-weight: 800; margin-top: 4px; }
-        .yeni-slayt-dukkan {
-            display: inline-block;
-            margin-top: 10px;
-            background: linear-gradient(90deg, #1e3a8a, #0f766e);
-            color: #fff;
-            border: 1px solid #f6e27a;
+        .yeni-slayt-lot { color: #f6e27a; font-size: 12px; font-weight: 800; }
+        .yeni-slayt-ad { color: #fff; font-size: 12px; font-weight: 800; margin-top: 2px; }
+        .yeni-slayt-fiyat { color: #86efac; font-size: 12px; font-weight: 800; margin-top: 2px; }
+        .yeni-slayt-git {
+            flex: 0 0 auto;
+            border: none;
+            background: var(--accent-gold);
+            color: #111;
             border-radius: 999px;
             padding: 6px 12px;
-            font-size: 14px;
-            font-weight: 800;
-        }
-        .yeni-slayt-git {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            margin-top: 12px;
-            background: linear-gradient(180deg, #f8e7a1, #d4af37);
-            color: #1a1406;
-            border: none;
-            border-radius: 999px;
-            padding: 11px 18px;
-            font-size: 15px;
+            font-size: 12px;
             font-weight: 800;
             cursor: pointer;
-            box-shadow: 0 8px 18px rgba(212, 175, 55, 0.35);
         }
         .yeni-slayt-bos { color: #cbd5e1; font-size: 14px; font-weight: 700; padding: 24px; text-align: center; }
         .btn-muzik-ust.muzik-aktif { background: #881337; border-color: #f43f5e; }
@@ -1470,6 +1488,10 @@
             <div id="yuzerSohbet" class="yuzer-sohbet" hidden></div>
             <div id="yeniSlayt" class="yeni-slayt yeni-slayt-perde" hidden>
                 <button type="button" class="yeni-slayt-kapat" onclick="yeniSlaytiKapat()">✕ Mezata Dön</button>
+                <div id="yeniSlaytSerit" class="yeni-slayt-serit" hidden>
+                    <span id="yeniSlaytDukkanRozet">🏪 Dükkan: —</span>
+                    <button type="button" class="yeni-slayt-git">Ürüne Git →</button>
+                </div>
                 <div id="yeniSlaytSayac" class="yeni-slayt-sayac" hidden>1 / 1</div>
                 <button type="button" class="yeni-slayt-ok sol" onclick="yeniSlaytGit(-1)" aria-label="Önceki ürün">❮</button>
                 <div class="yeni-slayt-kare" id="yeniSlaytKare"></div>
@@ -5312,9 +5334,12 @@
         var alt = document.getElementById("yeniSlaytAlt");
         yeniSlaytSayaciniYaz();
         if (!kare || !alt) return;
+        var serit = document.getElementById("yeniSlaytSerit");
+        var dukkanRozet = document.getElementById("yeniSlaytDukkanRozet");
         if (!yeniSlaytListe.length) {
             kare.classList.remove("tiklanir");
             alt.classList.remove("tiklanir");
+            if (serit) serit.hidden = true;
             kare.innerHTML = '<div class="yeni-slayt-bos">Son eklenen ürün bulunmuyor.</div>';
             alt.innerHTML = "";
             return;
@@ -5322,6 +5347,8 @@
         kare.classList.add("tiklanir");
         alt.classList.add("tiklanir");
         var urun = yeniSlaytListe[yeniSlaytSira % yeniSlaytListe.length];
+        if (serit) serit.hidden = false;
+        if (dukkanRozet) dukkanRozet.textContent = "🏪 Dükkan: " + yeniSlaytDukkanAdi(urun);
         var medya = yeniSlaytMedyasi(urun);
         if (medya.tip === "video") {
             kare.innerHTML = '<video autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain;"></video>';
@@ -5344,12 +5371,10 @@
         var lot = urun.lot_no != null ? urun.lot_no : urun.lot;
         var ad = urun.baslik || urun.urun_adi || urun.ad || "";
         alt.innerHTML =
-            '<div class="yeni-slayt-rozet">🔥 YENİ EKLENEN</div>' +
+            '<div class="yeni-slayt-rozet">🔥 YENİ</div>' +
             '<div class="yeni-slayt-lot">LOT #' + escapeHtml(lot) + '</div>' +
             '<div class="yeni-slayt-ad">' + escapeHtml(ad) + '</div>' +
-            '<div class="yeni-slayt-fiyat">Başlangıç pey: ' + Math.round(acilis).toLocaleString("tr-TR") + ' TL</div>' +
-            '<div class="yeni-slayt-dukkan">🏪 Dükkan: ' + escapeHtml(yeniSlaytDukkanAdi(urun)) + '</div>' +
-            '<div><button type="button" class="yeni-slayt-git">Ürüne Git →</button></div>';
+            '<div class="yeni-slayt-fiyat">Başlangıç pey: ' + Math.round(acilis).toLocaleString("tr-TR") + ' TL</div>';
     }
 
     function yeniSlaytDukkanAdi(urun) {
@@ -5540,6 +5565,8 @@
         var alt = document.getElementById("yeniSlaytAlt");
         if (kare) kare.addEventListener("click", yeniSlaytKartTikla);
         if (alt) alt.addEventListener("click", yeniSlaytKartTikla);
+        var serit = document.getElementById("yeniSlaytSerit");
+        if (serit) serit.addEventListener("click", yeniSlaytKartTikla);
         perde.addEventListener("touchstart", function (e) {
             if (e.target.closest("button")) return;
             if (!e.touches || !e.touches.length) return;
