@@ -4227,6 +4227,9 @@
             let medyaDiv = document.getElementById('medyaKapsayici');
             medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
             sonYuklenenSahneMedyaUrl = null;
+            sahneMedyaDongusunuDurdur();
+            aktifSahneMedyaIndex = 0;
+            sahneMedyaImza = "";
             return;
         }
 
@@ -4301,10 +4304,20 @@
         }
         if (urunObj.canli_yayin_hls) aktifUrunMedyalari.push({ tip: 'hls', url: urunObj.canli_yayin_hls });
 
+        const medyaImza = String(urunObj.id || "") + "|" + aktifUrunMedyalari.map(m => (m.tip || "") + ":" + (m.url || "")).join("||");
+        const ayniMedya = medyaImza === sahneMedyaImza && aktifUrunMedyalari.length > 0;
+        if (!ayniMedya) {
+            sahneMedyaImza = medyaImza;
+            aktifSahneMedyaIndex = 0;
+            sahneMedyaDongusunuDurdur();
+            sonYuklenenSahneMedyaUrl = null;
+        }
+        if (aktifSahneMedyaIndex >= aktifUrunMedyalari.length) aktifSahneMedyaIndex = 0;
+
         if (aktifUrunMedyalari.length > 1) {
             thumbsDiv.style.display = 'flex';
             thumbsDiv.innerHTML = aktifUrunMedyalari.map((m, idx) => {
-                const sinif = `thumb-item ${idx === 0 ? 'active' : ''}`;
+                const sinif = `thumb-item ${idx === aktifSahneMedyaIndex ? 'active' : ''}`;
                 const src = sahneMedyaAdresi(m.url);
                 if (m.tip === 'hls') {
                     return `<video src="${src}" class="${sinif}" controls playsinline onclick="medyaDegistir(${idx})"></video>`;
@@ -4318,9 +4331,9 @@
             thumbsDiv.style.display = 'none';
         }
 
-        if (aktifUrunMedyalari.length > 0) {
-            medyaGoster(aktifUrunMedyalari[0]);
-        } else {
+        if (!ayniMedya && aktifUrunMedyalari.length > 0) {
+            medyaGoster(aktifUrunMedyalari[aktifSahneMedyaIndex] || aktifUrunMedyalari[0]);
+        } else if (!aktifUrunMedyalari.length) {
             if (hlsInstance) {
                 hlsInstance.detachMedia();
                 hlsInstance.destroy();
@@ -4332,12 +4345,66 @@
         }
     }
 
-    function medyaDegistir(index) {
-        playUserClickSound();
-        if (aktifUrunMedyalari[index]) {
-            document.querySelectorAll('.thumb-item').forEach((el, i) => { el.classList.toggle('active', i === index); });
-            medyaGoster(aktifUrunMedyalari[index]);
+    let aktifSahneMedyaIndex = 0;
+    let sahneMedyaDonguZamanlayici = null;
+    let sahneMedyaImza = "";
+
+    function sahneMedyaDongusunuDurdur() {
+        if (sahneMedyaDonguZamanlayici) {
+            clearTimeout(sahneMedyaDonguZamanlayici);
+            sahneMedyaDonguZamanlayici = null;
         }
+    }
+
+    function sahneMedyaSonrakineGec() {
+        if (!aktifUrunMedyalari || aktifUrunMedyalari.length < 2) return;
+        const sonraki = (aktifSahneMedyaIndex + 1) % aktifUrunMedyalari.length;
+        medyaDegistir(sonraki, true);
+    }
+
+    function sahneMedyaSonrakiniPlanla(medya) {
+        sahneMedyaDongusunuDurdur();
+        if (!medya || !aktifUrunMedyalari || aktifUrunMedyalari.length < 2) return;
+        const videoMu = medya.tip === "video" || medya.tip === "hls" || isVideoUrl(medya.url) || videoDosyasiMi(medya.url);
+        if (videoMu) return;
+        sahneMedyaDonguZamanlayici = setTimeout(sahneMedyaSonrakineGec, 4000);
+    }
+
+    function sahneVideosunuOynat(v, tekMedya) {
+        if (!v) return;
+        v.loop = !!tekMedya;
+        v.muted = false;
+        v.playsInline = true;
+        const oynat = () => {
+            const deneme = v.play();
+            if (deneme && deneme.catch) {
+                deneme.catch(() => {
+                    v.muted = true;
+                    v.play().catch(() => {});
+                });
+            }
+        };
+        if (!tekMedya) {
+            const buIndex = aktifSahneMedyaIndex;
+            v.addEventListener("ended", () => {
+                if (aktifSahneMedyaIndex !== buIndex) return;
+                if (!aktifUrunMedyalari || aktifUrunMedyalari.length < 2) return;
+                sahneMedyaSonrakineGec();
+            });
+        }
+        v.addEventListener("canplay", oynat, { once: true });
+        oynat();
+    }
+
+    function medyaDegistir(index, otomatik) {
+        if (!otomatik) playUserClickSound();
+        if (!aktifUrunMedyalari[index]) return;
+        sahneMedyaDongusunuDurdur();
+        aktifSahneMedyaIndex = index;
+        document.querySelectorAll("#stageThumbs .thumb-item").forEach((el, i) => {
+            el.classList.toggle("active", i === index);
+        });
+        medyaGoster(aktifUrunMedyalari[index]);
     }
 
     function isVideoUrl(url) {
@@ -4364,7 +4431,12 @@
     }
 
     function medyaGoster(medya) {
-        if (medya.url === sonYuklenenSahneMedyaUrl) return;
+        if (!medya) return;
+        sahneMedyaDongusunuDurdur();
+        if (medya.url === sonYuklenenSahneMedyaUrl) {
+            sahneMedyaSonrakiniPlanla(medya);
+            return;
+        }
         sonYuklenenSahneMedyaUrl = medya.url;
 
         let medyaDiv = document.getElementById('medyaKapsayici');
@@ -4399,12 +4471,20 @@
                 v.src = medya.url;
                 v.addEventListener('loadedmetadata', () => v.play().catch(e => {}));
             }
+            if (aktifUrunMedyalari.length > 1) {
+                const buIndex = aktifSahneMedyaIndex;
+                v.addEventListener("ended", () => {
+                    if (aktifSahneMedyaIndex !== buIndex) return;
+                    sahneMedyaSonrakineGec();
+                });
+            }
         } else if (medya.tip === 'video' || isVideoUrl(medya.url) || videoDosyasiMi(medya.url)) {
             const src = sahneMedyaAdresi(medya.url);
+            const tekMedya = aktifUrunMedyalari.length <= 1;
             const sahneKutu = medyaDiv;
-            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
+            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls ${tekMedya ? "loop" : ""} playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
             const v = sahneKutu.querySelector('video');
-            if (v) { v.muted = false; v.load(); v.play().catch(()=>{}); }
+            if (v) { v.load(); sahneVideosunuOynat(v, tekMedya); }
         } else {
             let img = document.createElement('img');
             img.src = sahneMedyaAdresi(medya.url);
@@ -4412,6 +4492,7 @@
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
         }
+        sahneMedyaSonrakiniPlanla(medya);
     }
 
     function oturumVarMi() {
