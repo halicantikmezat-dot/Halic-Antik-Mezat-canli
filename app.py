@@ -6314,6 +6314,27 @@ def studyo_analiz():
 @app.route("/api/studyo/transfer", methods=["POST"])
 @admin_required
 def studyo_transfer():
+    def _izleyici_url(adres, video_mu):
+        adres = str(adres or "").strip()
+        damga = "/upload/"
+        yer = adres.find(damga)
+        if "res.cloudinary.com" not in adres or yer < 0:
+            return adres
+        kuyruk = adres[yer + len(damga):]
+        if not kuyruk:
+            return adres
+        ilk = kuyruk.split("/", 1)[0]
+        surum = len(ilk) > 1 and ilk[0] == "v" and ilk[1:].isdigit()
+        onekler = ("f_", "q_", "w_", "c_", "h_", "e_", "g_", "b_", "a_", "dpr_", "fl_", "ar_")
+        if ("," in ilk) or (not surum and ilk.startswith(onekler)):
+            return adres
+        ek = (
+            "f_auto,q_auto:good,w_1080,c_limit/"
+            if video_mu
+            else "f_auto,q_auto,w_1200,c_limit/"
+        )
+        return adres[: yer + len(damga)] + ek + kuyruk
+
     try:
         dukkan = dukkan_dogrula(request.form.get("dukkan", "gumus"))
         baslik = (request.form.get("baslik") or "İsimsiz Ürün").strip()[:200]
@@ -6341,7 +6362,9 @@ def studyo_transfer():
             if not url or not temiz_ad:
                 continue
             uzanti = _studyo_uzanti(temiz_ad)
-            if uzanti in _STUDYO_VIDEO and not video_url:
+            video_mu = uzanti in _STUDYO_VIDEO
+            url = _izleyici_url(url, video_mu)
+            if video_mu and not video_url:
                 video_url = url
             fotograflar.append(url)
         if not fotograflar:

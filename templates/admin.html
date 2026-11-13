@@ -2828,6 +2828,106 @@
 
     let studyoDosyalar = [];
     let studyoOnizlemeAdresi = "";
+    let studyoHazirlik = Promise.resolve();
+    const studyoMedyaOzet = { sikisan: 0, kazanc: 0 };
+
+    function studyoBoyutYazi(bayt) {
+        if (bayt >= 1048576) return (bayt / 1048576).toFixed(1).replace(".", ",") + " MB";
+        return Math.max(1, Math.round(bayt / 1024)) + " KB";
+    }
+
+    function studyoOzetYaz() {
+        const ozet = document.getElementById("studyoDosyaOzet");
+        if (!ozet) return;
+        const gorseller = studyoDosyalar.filter(d => d.type && d.type.startsWith("image/"));
+        const videolar = studyoDosyalar.filter(d => d.type && d.type.startsWith("video/"));
+        if (!studyoDosyalar.length) {
+            ozet.textContent = "";
+            return;
+        }
+        const satir = [];
+        if (gorseller.length) {
+            satir.push(studyoMedyaOzet.sikisan + " fotoğraf sıkıştırıldı");
+            satir.push(studyoMedyaOzet.kazanc > 0 ? studyoBoyutYazi(studyoMedyaOzet.kazanc) + " kazanç" : "ek boyut kazancı yok");
+            satir.push("kapak görseli ayarlandı");
+        }
+        if (videolar.length) satir.push(videolar.length + " video sırada");
+        ozet.style.color = "#d6c089";
+        ozet.textContent = satir.join(" · ");
+    }
+
+    function studyoGorselYukle(dosya) {
+        return new Promise(resolve => {
+            const adres = URL.createObjectURL(dosya);
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(adres);
+                resolve(img);
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(adres);
+                resolve(null);
+            };
+            img.src = adres;
+        });
+    }
+
+    function studyoJpegBlob(tuval, kalite) {
+        return new Promise(resolve => {
+            tuval.toBlob(blob => resolve(blob || null), "image/jpeg", kalite);
+        });
+    }
+
+    async function studyoFotoHazirla(dosya) {
+        if (!dosya || !dosya.type || !dosya.type.startsWith("image/")) {
+            return { dosya: dosya, sikisti: false, kazanc: 0 };
+        }
+        const kaynak = await studyoGorselYukle(dosya);
+        const genis = kaynak ? (kaynak.naturalWidth || kaynak.width) : 0;
+        const yuksek = kaynak ? (kaynak.naturalHeight || kaynak.height) : 0;
+        if (!genis || !yuksek) return { dosya: dosya, sikisti: false, kazanc: 0 };
+        const olcek = genis > 1200;
+        if (!olcek && dosya.size <= 300 * 1024) return { dosya: dosya, sikisti: false, kazanc: 0 };
+        const hedefGen = olcek ? 1200 : genis;
+        const hedefYuk = Math.max(1, Math.round(yuksek * (hedefGen / genis)));
+        const tuval = document.createElement("canvas");
+        tuval.width = hedefGen;
+        tuval.height = hedefYuk;
+        const ctx = tuval.getContext("2d");
+        if (!ctx) return { dosya: dosya, sikisti: false, kazanc: 0 };
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, hedefGen, hedefYuk);
+        ctx.drawImage(kaynak, 0, 0, hedefGen, hedefYuk);
+        let kalite = 0.84;
+        let blob = await studyoJpegBlob(tuval, kalite);
+        while (blob && blob.size > 300 * 1024 && kalite > 0.5) {
+            kalite = Math.round((kalite - 0.06) * 100) / 100;
+            blob = await studyoJpegBlob(tuval, kalite);
+        }
+        if (!blob) return { dosya: dosya, sikisti: false, kazanc: 0 };
+        if (!olcek && blob.size >= dosya.size) return { dosya: dosya, sikisti: false, kazanc: 0 };
+        const ad = (String(dosya.name || "fotograf").replace(/\.[^.]+$/, "") || "fotograf") + ".jpg";
+        const yeni = new File([blob], ad, { type: "image/jpeg", lastModified: Date.now() });
+        return { dosya: yeni, sikisti: true, kazanc: Math.max(0, dosya.size - yeni.size) };
+    }
+
+    async function studyoGeleniHazirla(gelen) {
+        const sonuclar = await Promise.all(gelen.map(studyoFotoHazirla));
+        sonuclar.forEach(sonuc => {
+            studyoDosyalar.push(sonuc.dosya);
+            if (sonuc.sikisti) studyoMedyaOzet.sikisan += 1;
+            studyoMedyaOzet.kazanc += sonuc.kazanc || 0;
+        });
+        const gorseller = [];
+        const videolar = [];
+        studyoDosyalar.forEach(dosya => {
+            if (dosya.type && dosya.type.startsWith("video/")) videolar.push(dosya);
+            else gorseller.push(dosya);
+        });
+        studyoDosyalar = gorseller.concat(videolar);
+        studyoOzetYaz();
+        studyoOnizle();
+    }
 
     function studyoAc() {
         playClickSound();
@@ -2859,15 +2959,19 @@
     }
 
     function studyoDosyaEkle(liste) {
-        const gelen = Array.from(liste || []);
-        gelen.forEach(dosya => {
-            if (dosya && (dosya.type.startsWith('image/') || dosya.type.startsWith('video/'))) {
-                studyoDosyalar.push(dosya);
-            }
+        const gelen = Array.from(liste || []).filter(dosya => {
+            return dosya && dosya.type && (dosya.type.startsWith("image/") || dosya.type.startsWith("video/"));
         });
-        const ozet = document.getElementById('studyoDosyaOzet');
-        if (ozet) ozet.textContent = studyoDosyalar.length ? studyoDosyalar.length + " dosya hazır" : "";
-        studyoOnizle();
+        if (!gelen.length) return;
+        const ozet = document.getElementById("studyoDosyaOzet");
+        if (ozet) {
+            ozet.style.color = "#94a3b8";
+            ozet.textContent = "Medya optimize ediliyor…";
+        }
+        studyoHazirlik = studyoHazirlik
+            .catch(() => {})
+            .then(() => studyoGeleniHazirla(gelen))
+            .catch(() => studyoOzetYaz());
     }
 
     function studyoOnizle() {
@@ -2899,10 +3003,11 @@
         }
     }
 
-    function studyoAnalizEt() {
+    async function studyoAnalizEt() {
         playClickSound();
-        const gorsel = studyoDosyalar.find(d => d.type.startsWith('image/'));
         const durum = document.getElementById('studyoDurum');
+        try { await studyoHazirlik; } catch (e) {}
+        const gorsel = studyoDosyalar.find(d => d.type.startsWith('image/'));
         if (!gorsel) {
             if (durum) durum.textContent = "Şecere için bir fotoğraf ekleyin. Video kayda gider, analiz fotoğraftan yapılır.";
             return;
@@ -2932,7 +3037,7 @@
             });
     }
 
-    function studyoAktar() {
+    async function studyoAktar() {
         playClickSound();
         const durum = document.getElementById('studyoDurum');
         const baslik = (document.getElementById('studyoBaslik').value || "").trim();
@@ -2940,6 +3045,7 @@
             if (durum) durum.textContent = "Ürün başlığı gerekli.";
             return;
         }
+        try { await studyoHazirlik; } catch (e) {}
         if (!studyoDosyalar.length) {
             if (durum) durum.textContent = "En az bir fotoğraf veya video ekleyin.";
             return;
@@ -2964,6 +3070,8 @@
                 }
                 if (durum) durum.textContent = "Kaydedildi. Lot #" + data.lot_no + " yeni ürün havuzuna girdi.";
                 studyoDosyalar = [];
+                studyoMedyaOzet.sikisan = 0;
+                studyoMedyaOzet.kazanc = 0;
                 studyoOnizle();
                 const ozet = document.getElementById('studyoDosyaOzet');
                 if (ozet) ozet.textContent = "";
