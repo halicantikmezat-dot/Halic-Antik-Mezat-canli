@@ -3050,35 +3050,66 @@
             if (durum) durum.textContent = "En az bir fotoğraf veya video ekleyin.";
             return;
         }
-        if (durum) durum.textContent = "Dükkana aktarılıyor...";
-        const paket = new FormData();
-        studyoDosyalar.forEach(dosya => paket.append('dosyalar', dosya, dosya.name));
-        paket.append('baslik', baslik);
-        paket.append('malzeme', document.getElementById('studyoMalzeme').value || "");
-        paket.append('boyut', document.getElementById('studyoBoyut').value || "");
-        paket.append('secere', document.getElementById('studyoSecere').value || "");
-        paket.append('kondisyon', document.getElementById('studyoKondisyon').value || "");
-        paket.append('baslangic_fiyati', document.getElementById('studyoFiyat').value || "0");
-        paket.append('hemen_al_fiyati', document.getElementById('studyoHemenAl').value || "0");
-        paket.append('dukkan', document.getElementById('studyoDukkan').value || "gumus");
-        fetch('/api/studyo/transfer', { method: 'POST', body: paket })
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) {
-                    if (durum) durum.textContent = data.mesaj || "Aktarım yapılamadı.";
+        if (durum) durum.textContent = "Cloudinary imzası alınıyor...";
+        try {
+            const imzaYaniti = await fetch('/api/cloudinary-imza', { method: 'POST' });
+            const imza = await imzaYaniti.json().catch(() => ({}));
+            if (!imzaYaniti.ok || !imza.success || !imza.cloud_name || !imza.signature) {
+                if (durum) durum.textContent = imza.mesaj || "Cloudinary imzası alınamadı.";
+                return;
+            }
+            const medyaUrlleri = [];
+            for (let sira = 0; sira < studyoDosyalar.length; sira++) {
+                const dosya = studyoDosyalar[sira];
+                if (durum) durum.textContent = "Buluta yükleniyor (" + (sira + 1) + "/" + studyoDosyalar.length + ")...";
+                const yukleme = new FormData();
+                yukleme.append('file', dosya, dosya.name);
+                yukleme.append('api_key', imza.api_key);
+                yukleme.append('timestamp', String(imza.timestamp));
+                yukleme.append('folder', imza.folder || 'halic-antik');
+                yukleme.append('signature', imza.signature);
+                const bulut = await fetch(
+                    'https://api.cloudinary.com/v1_1/' + imza.cloud_name + '/auto/upload',
+                    { method: 'POST', body: yukleme }
+                );
+                const sonuc = await bulut.json().catch(() => ({}));
+                const adres = String((sonuc && sonuc.secure_url) || '');
+                if (!bulut.ok || adres.indexOf('https://res.cloudinary.com/') !== 0) {
+                    const detay = (sonuc && sonuc.error && sonuc.error.message)
+                        || sonuc.mesaj
+                        || ('HTTP ' + bulut.status);
+                    if (durum) durum.textContent = "Cloudinary yüklemesi başarısız: " + detay;
                     return;
                 }
-                if (durum) durum.textContent = "Kaydedildi. Lot #" + data.lot_no + " yeni ürün havuzuna girdi.";
-                studyoDosyalar = [];
-                studyoMedyaOzet.sikisan = 0;
-                studyoMedyaOzet.kazanc = 0;
-                studyoOnizle();
-                const ozet = document.getElementById('studyoDosyaOzet');
-                if (ozet) ozet.textContent = "";
-            })
-            .catch(() => {
-                if (durum) durum.textContent = "Aktarım isteği tamamlanamadı.";
-            });
+                medyaUrlleri.push(adres);
+            }
+            if (durum) durum.textContent = "Dükkana aktarılıyor...";
+            const paket = new FormData();
+            paket.append('medya_urlleri', JSON.stringify(medyaUrlleri));
+            paket.append('baslik', baslik);
+            paket.append('malzeme', document.getElementById('studyoMalzeme').value || "");
+            paket.append('boyut', document.getElementById('studyoBoyut').value || "");
+            paket.append('secere', document.getElementById('studyoSecere').value || "");
+            paket.append('kondisyon', document.getElementById('studyoKondisyon').value || "");
+            paket.append('baslangic_fiyati', document.getElementById('studyoFiyat').value || "0");
+            paket.append('hemen_al_fiyati', document.getElementById('studyoHemenAl').value || "0");
+            paket.append('dukkan', document.getElementById('studyoDukkan').value || "gumus");
+            const kayit = await fetch('/api/studyo/transfer', { method: 'POST', body: paket });
+            const data = await kayit.json().catch(() => ({}));
+            if (!data.success) {
+                if (durum) durum.textContent = data.mesaj || "Aktarım yapılamadı.";
+                return;
+            }
+            if (durum) durum.textContent = "Kaydedildi. Lot #" + data.lot_no + " yeni ürün havuzuna girdi.";
+            studyoDosyalar = [];
+            studyoMedyaOzet.sikisan = 0;
+            studyoMedyaOzet.kazanc = 0;
+            studyoOnizle();
+            const ozet = document.getElementById('studyoDosyaOzet');
+            if (ozet) ozet.textContent = "";
+        } catch (e) {
+            if (durum) durum.textContent = "Aktarım isteği tamamlanamadı.";
+        }
     }
 
     (function studyoBirakKur() {

@@ -6357,16 +6357,45 @@ def studyo_transfer():
 
         fotograflar = []
         video_url = ""
-        for dosya in request.files.getlist("dosyalar"):
-            url, temiz_ad = medyayi_kaydet(dosya)
-            if not url or not temiz_ad:
+        gelen_adresler = []
+        for ham in request.form.getlist("medya_urlleri"):
+            metin = str(ham or "").strip()
+            if not metin:
                 continue
-            uzanti = _studyo_uzanti(temiz_ad)
-            video_mu = uzanti in _STUDYO_VIDEO
-            url = _izleyici_url(url, video_mu)
-            if video_mu and not video_url:
-                video_url = url
-            fotograflar.append(url)
+            if metin.startswith("["):
+                try:
+                    cozulen = json.loads(metin)
+                except (TypeError, ValueError):
+                    cozulen = None
+                if isinstance(cozulen, list):
+                    for oge in cozulen:
+                        adres = str(oge or "").strip()
+                        if adres:
+                            gelen_adresler.append(adres)
+                    continue
+            gelen_adresler.append(metin)
+
+        if gelen_adresler:
+            for url in gelen_adresler:
+                if not url.startswith("https://res.cloudinary.com/"):
+                    continue
+                yol = url.split("?", 1)[0].lower()
+                video_mu = ("/video/upload/" in yol) or (_studyo_uzanti(yol) in _STUDYO_VIDEO)
+                url = _izleyici_url(url, video_mu)
+                if video_mu and not video_url:
+                    video_url = url
+                fotograflar.append(url)
+        else:
+            for dosya in request.files.getlist("dosyalar"):
+                url, temiz_ad = medyayi_kaydet(dosya)
+                if not url or not temiz_ad:
+                    continue
+                uzanti = _studyo_uzanti(temiz_ad)
+                video_mu = uzanti in _STUDYO_VIDEO
+                url = _izleyici_url(url, video_mu)
+                if video_mu and not video_url:
+                    video_url = url
+                fotograflar.append(url)
         if not fotograflar:
             return jsonify({"success": False, "mesaj": "En az bir fotoğraf veya video gerekli."}), 400
 
