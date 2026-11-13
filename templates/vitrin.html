@@ -133,6 +133,7 @@
         
         .btn-direkt-sepet { width: 100%; background: var(--btn-cart); color: #fff; border: none; padding: 8px 4px; border-radius: 4px; font-weight: bold; font-size: 11px; cursor: pointer; text-align: center; margin-top: 5px; transition: 0.2s; }
         .btn-direkt-sepet:hover { background: #059669; }
+        .btn-paylas { width: 100%; background: #1d4ed8; color: #fff; border: none; padding: 8px 4px; border-radius: 4px; font-weight: bold; font-size: 11px; cursor: pointer; text-align: center; margin-top: 5px; }
 
         .pagination-bar { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 25px; padding: 10px; }
         .btn-page { background: #1e293b; color: #fff; border: 1px solid var(--card-border); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 12px; }
@@ -193,6 +194,7 @@
         <button onclick="sepetModalGoster()" class="btn-sepet-goruntule" id="vitrinSepetSayac">🛒 Sepetim (0)</button>
         <a id="btnCanliMezatGit" href="/" class="btn-live">🔴 Canlı Mezata Git</a>
         <button type="button" onclick="vitrinWhatsappPaylas()" style="background:#128C7E; color:#fff; border:none; padding:8px 10px; border-radius:6px; font-weight:800; cursor:pointer;">WhatsApp'ta Paylaş</button>
+        <button type="button" onclick="vitrinSayfaPaylas()" style="background:#1d4ed8; color:#fff; border:none; padding:8px 10px; border-radius:6px; font-weight:800; cursor:pointer;">📤 Paylaş</button>
     </div>
 </div>
 
@@ -223,11 +225,26 @@
     <button onclick="karsilastirmaTemizle()" style="background:transparent; color:#94a3b8; border:none; font-size:14px; cursor:pointer;" title="Temizle">✕</button>
 </div>
 
+<div id="paylasimModal" class="modal" style="z-index:10050;" onclick="if(event.target===this) paylasimPenceresiniKapat()">
+    <div class="modal-content" style="max-width:420px;">
+        <h3 style="color:var(--accent-gold); font-size:14px; font-weight:800; margin-bottom:6px;">📤 Paylaş</h3>
+        <p id="paylasimOzet" style="font-size:12px; color:#e2e8f0; margin-bottom:8px;"></p>
+        <button type="button" style="background:#128C7E; color:#fff;" onclick="paylasimWhatsapp()">WhatsApp'ta Paylaş</button>
+        <button type="button" style="background:#1877F2; color:#fff;" onclick="paylasimFacebook()">Facebook'ta Paylaş</button>
+        <button type="button" style="background:#0f172a; color:#fff; border:1px solid #334155;" onclick="paylasimX()">X (Twitter)'da Paylaş</button>
+        <button type="button" style="background:#229ED9; color:#fff;" onclick="paylasimTelegram()">Telegram'da Paylaş</button>
+        <button type="button" style="background:#d4af37; color:#111;" onclick="paylasimMetniniKopyala()">Instagram / TikTok İçin Metni & Linki Kopyala</button>
+        <p id="paylasimKopyaDurum" style="font-size:12px; color:#86efac; font-weight:800; min-height:18px; margin-top:6px;"></p>
+        <button type="button" style="background:#475569; color:#fff;" onclick="paylasimPenceresiniKapat()">Kapat</button>
+    </div>
+</div>
+
 <div id="vitrinInceleModal" class="modal" onclick="if(event.target===this)vitrinInceleKapat()">
     <div class="modal-content" style="max-width:520px;">
         <div id="vitrinInceleMedya" style="background:#000; border-radius:8px; min-height:180px; max-height:46vh; display:flex; align-items:center; justify-content:center; overflow:hidden;"></div>
         <h3 id="vitrinInceleBaslik" style="color:var(--accent-gold); font-size:14px; font-weight:800; margin:10px 0 4px;">Ürün</h3>
         <p id="vitrinInceleFiyat" style="font-size:12px; color:#86efac; font-weight:800; margin-bottom:8px;"></p>
+        <button type="button" style="background:#1d4ed8; color:#fff;" onclick="vitrinIncelePaylas()">📤 Paylaş</button>
         <button type="button" style="background:#475569; color:#fff;" onclick="vitrinInceleKapat()">Kapat</button>
     </div>
 </div>
@@ -437,6 +454,116 @@
         const ad = adEncoded ? decodeURIComponent(adEncoded) : 'Haliç Antik vitrin';
         const metin = (lot ? ('LOT #' + lot + ' ') : '') + ad + ' ' + window.location.href;
         window.open('https://wa.me/?text=' + encodeURIComponent(metin), '_blank');
+    }
+
+    let paylasimBaslik = '';
+    let paylasimMetin = '';
+    let paylasimUrl = '';
+    let vitrinIncelenenUrun = null;
+
+    function urunPaylasimPaketi(u) {
+        const url = window.location.origin + "/vitrin?dukkan=" + encodeURIComponent(aktifDukkan) + "&urun=" + encodeURIComponent(u.id) + "&lot=" + encodeURIComponent(u.lot || "");
+        const metin = "Haliç Antik Canlı Mezat | LOT #" + u.lot + " - " + u.ad + " | Açılış: " + formatFiyat(u.fiyat || 0);
+        return { baslik: metin, metin: metin, url: url };
+    }
+
+    function paylasimiBaslat(baslik, metin, url) {
+        if (navigator.share) {
+            const istek = navigator.share({ title: baslik, text: metin, url: url });
+            if (istek && typeof istek.catch === "function") {
+                istek.catch(function (err) {
+                    if (err && err.name === "AbortError") return;
+                    paylasimPenceresiniAc(baslik, metin, url);
+                });
+            }
+            return;
+        }
+        paylasimPenceresiniAc(baslik, metin, url);
+    }
+
+    function sosyalPaylas(urun) {
+        if (!urun) return;
+        const paket = urunPaylasimPaketi(urun);
+        paylasimiBaslat(paket.baslik, paket.metin, paket.url);
+    }
+
+    function karttanSosyalPaylas(urunId) {
+        const urun = tumGetirilenUrunler.find(function (u) { return String(u.id) === String(urunId); });
+        if (urun) sosyalPaylas(urun);
+    }
+
+    function vitrinSayfaPaylas() {
+        const url = window.location.href;
+        const metin = "Haliç Antik Canlı Mezat";
+        paylasimiBaslat(metin, metin, url);
+    }
+
+    function vitrinIncelePaylas() {
+        sosyalPaylas(vitrinIncelenenUrun);
+    }
+
+    function paylasimPenceresiniAc(baslik, metin, url) {
+        paylasimBaslik = baslik || "";
+        paylasimMetin = metin || "";
+        paylasimUrl = url || "";
+        const ozet = document.getElementById("paylasimOzet");
+        const durum = document.getElementById("paylasimKopyaDurum");
+        if (ozet) ozet.textContent = paylasimMetin;
+        if (durum) durum.textContent = "";
+        const pencere = document.getElementById("paylasimModal");
+        if (pencere) pencere.style.display = "flex";
+    }
+
+    function paylasimPenceresiniKapat() {
+        const pencere = document.getElementById("paylasimModal");
+        if (pencere) pencere.style.display = "none";
+    }
+
+    function paylasimWhatsapp() {
+        window.open("https://wa.me/?text=" + encodeURIComponent(paylasimMetin + " " + paylasimUrl), "_blank");
+    }
+
+    function paylasimFacebook() {
+        window.open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(paylasimUrl), "_blank");
+    }
+
+    function paylasimX() {
+        window.open("https://twitter.com/intent/tweet?text=" + encodeURIComponent(paylasimMetin) + "&url=" + encodeURIComponent(paylasimUrl), "_blank");
+    }
+
+    function paylasimTelegram() {
+        window.open("https://t.me/share/url?url=" + encodeURIComponent(paylasimUrl) + "&text=" + encodeURIComponent(paylasimMetin), "_blank");
+    }
+
+    function paylasimKopyalandi() {
+        const durum = document.getElementById("paylasimKopyaDurum");
+        if (durum) durum.textContent = "Kopyalandı!";
+    }
+
+    function paylasimMetniniKopyala() {
+        const tam = paylasimMetin + "\n" + paylasimUrl;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(tam).then(paylasimKopyalandi).catch(function () {
+                paylasimYedekKopyala(tam);
+            });
+            return;
+        }
+        paylasimYedekKopyala(tam);
+    }
+
+    function paylasimYedekKopyala(tam) {
+        const alan = document.createElement("textarea");
+        alan.value = tam;
+        alan.setAttribute("readonly", "");
+        alan.style.position = "fixed";
+        alan.style.left = "-9999px";
+        document.body.appendChild(alan);
+        alan.select();
+        try {
+            document.execCommand("copy");
+            paylasimKopyalandi();
+        } catch (e) {}
+        document.body.removeChild(alan);
     }
 
     function vitrinYapisalVeri(urunler) {
@@ -751,6 +878,7 @@
                                     <button class="btn-hemen-al" onclick="vitrindenHemenAl(${u.id}, '${u.lot}', '${safeAd}', ${hemenAl > 0 ? hemenAl : acilisFiyat})">⚡ Hemen Al</button>
                                     <button class="btn-on-teklif" onclick="vitrinWhatsappPaylas('${safeAd}', ${u.lot})">WhatsApp</button>
                                 </div>
+                                <button type="button" class="btn-paylas" onclick="karttanSosyalPaylas(${u.id})">📤 Paylaş</button>
                                 <button class="btn-direkt-sepet" onclick="vitrindenSepeteEkle(${u.id}, '${safeAd}')">🛒 Sepete Ekle</button>
                             </div>
                         </div>
@@ -791,6 +919,7 @@
     function vitrinUrunIncele(urunId) {
         const urun = tumGetirilenUrunler.find(function (u) { return String(u.id) === String(urunId); });
         if (!urun) return;
+        vitrinIncelenenUrun = urun;
         document.querySelectorAll(".item-card.vitrin-hedef").forEach(function (kart) {
             kart.classList.remove("vitrin-hedef");
         });
