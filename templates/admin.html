@@ -2352,25 +2352,57 @@
         });
     }
 
-    function urunYukle(e) {
+    async function urunYukle(e) {
         e.preventDefault();
         playClickSound();
-        let formData = new FormData();
-        formData.append('dukkan', seciliDukkan);
-        formData.append('lot', document.getElementById('lot').value);
-        formData.append('ad', document.getElementById('ad').value);
-        formData.append('tedarikci_id', document.getElementById('tedarikci_id').value);
-        formData.append('kategori', document.getElementById('kategori').value);
-        formData.append('fiyat', document.getElementById('fiyat').value);
-        formData.append('hemen_al_fiyat', document.getElementById('hemen_al_fiyat').value);
-        formData.append('tanitim_yazisi', document.getElementById('tanitim_yazisi').value);
-        
-        Array.from(medyaDosyaHavuzu.files).forEach(file => { formData.append('dosyalar', file); });
+        try {
+            const dosyalar = Array.from(medyaDosyaHavuzu.files || []);
+            const medyaUrlleri = [];
+            if (dosyalar.length) {
+                const imzaYaniti = await fetch('/api/cloudinary-imza', { method: 'POST' });
+                const imza = await imzaYaniti.json().catch(() => ({}));
+                if (!imzaYaniti.ok || !imza.success || !imza.cloud_name || !imza.signature) {
+                    alert(imza.mesaj || "Cloudinary imzası alınamadı.");
+                    return;
+                }
+                for (const dosya of dosyalar) {
+                    const yukleme = new FormData();
+                    yukleme.append('file', dosya, dosya.name);
+                    yukleme.append('api_key', imza.api_key);
+                    yukleme.append('timestamp', String(imza.timestamp));
+                    yukleme.append('folder', imza.folder || 'halic-antik');
+                    yukleme.append('signature', imza.signature);
+                    const bulut = await fetch(
+                        'https://api.cloudinary.com/v1_1/' + imza.cloud_name + '/auto/upload',
+                        { method: 'POST', body: yukleme }
+                    );
+                    const sonuc = await bulut.json().catch(() => ({}));
+                    const adres = String((sonuc && sonuc.secure_url) || '');
+                    if (!bulut.ok || adres.indexOf('https://res.cloudinary.com/') !== 0) {
+                        const detay = (sonuc && sonuc.error && sonuc.error.message)
+                            || sonuc.mesaj
+                            || ('HTTP ' + bulut.status);
+                        alert('Cloudinary yüklemesi başarısız: ' + detay);
+                        return;
+                    }
+                    medyaUrlleri.push(adres);
+                }
+            }
 
-        fetch('/urun-ekle', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(d => {
-            if(d.success) {
+            const formData = new FormData();
+            formData.append('dukkan', seciliDukkan);
+            formData.append('lot', document.getElementById('lot').value);
+            formData.append('ad', document.getElementById('ad').value);
+            formData.append('tedarikci_id', document.getElementById('tedarikci_id').value);
+            formData.append('kategori', document.getElementById('kategori').value);
+            formData.append('fiyat', document.getElementById('fiyat').value);
+            formData.append('hemen_al_fiyat', document.getElementById('hemen_al_fiyat').value);
+            formData.append('tanitim_yazisi', document.getElementById('tanitim_yazisi').value);
+            medyaUrlleri.forEach(url => formData.append('medya_urls', url));
+
+            const kayit = await fetch('/urun-ekle', { method: 'POST', body: formData });
+            const d = await kayit.json().catch(() => ({}));
+            if (d.success) {
                 alert(`✅ Ürün başarıyla [${dukkanlar[seciliDukkan] ? dukkanlar[seciliDukkan].ad : seciliDukkan}] dükkanına kaydedildi ve abonelere bildiri gönderildi.`);
                 document.getElementById('urunForm').reset();
                 document.getElementById('formDukkan').value = seciliDukkan;
@@ -2380,8 +2412,12 @@
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
                 adminUrunAra();
-            } else alert("Hata: " + d.mesaj);
-        });
+            } else {
+                alert("Hata: " + (d.mesaj || "Ürün kaydedilemedi."));
+            }
+        } catch (hata) {
+            alert("Yükleme hatası: " + (hata && hata.message ? hata.message : hata));
+        }
     }
 
     function duzenleModalAc(urunId) {

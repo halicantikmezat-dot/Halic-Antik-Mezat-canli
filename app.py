@@ -5131,37 +5131,64 @@ def musteri_dosya_sil():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/cloudinary-imza", methods=["POST"])
+@admin_required
+def cloudinary_imza():
+    cloud_name = (os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip()
+    api_key = (os.environ.get("CLOUDINARY_API_KEY") or "").strip()
+    api_secret = (os.environ.get("CLOUDINARY_API_SECRET") or "").strip()
+    if not cloud_name or not api_key or not api_secret:
+        return jsonify({
+            "success": False,
+            "mesaj": (
+                "Cloudinary anahtarları eksik. CLOUDINARY_CLOUD_NAME, "
+                "CLOUDINARY_API_KEY ve CLOUDINARY_API_SECRET tanımlı olmalı."
+            ),
+        }), 400
+    timestamp = int(time.time())
+    signature = hashlib.sha1(
+        f"folder=halic-antik&timestamp={timestamp}{api_secret}".encode("utf-8")
+    ).hexdigest()
+    return jsonify({
+        "success": True,
+        "cloud_name": cloud_name,
+        "api_key": api_key,
+        "timestamp": timestamp,
+        "folder": "halic-antik",
+        "signature": signature,
+    })
+
+
 @app.route("/urun-ekle", methods=["POST"])
 @admin_required
 def urun_ekle():
     try:
         dukkan = dukkan_dogrula(request.form.get("dukkan", "gumus"))
-        dosyalar = (
-            request.files.getlist("dosyalar")
-            or request.files.getlist("medyalar")
-            or []
-        )
+        ham_adresler = request.form.getlist("medya_urls")
 
         fotograflar = []
         video_url = ""
         ses_url = ""
+        video_uzantilari = (
+            ".mp4", ".mov", ".avi", ".webm", ".mkv", ".3gp", ".m4v"
+        )
+        ses_uzantilari = (".mp3", ".wav", ".ogg", ".m4a")
 
-        for dosya in dosyalar:
-            url, temiz_ad = medyayi_kaydet(dosya)
-            if url and temiz_ad:
-                ext = temiz_ad.lower()
-                if ext.endswith((
-                    ".mp4", ".mov", ".avi", ".webm", ".mkv", ".3gp", ".m4v"
-                )):
-                    if not video_url:
-                        video_url = url
-                    fotograflar.append(url)
-                elif ext.endswith((".mp3", ".wav", ".ogg", ".m4a")):
-                    if not ses_url:
-                        ses_url = url
-                    fotograflar.append(url)
-                else:
-                    fotograflar.append(url)
+        for ham in ham_adresler:
+            url = str(ham or "").strip()
+            if not url.startswith("https://res.cloudinary.com/"):
+                continue
+            yol = url.split("?", 1)[0].lower()
+            if "/video/upload/" in yol or yol.endswith(video_uzantilari):
+                if not video_url:
+                    video_url = url
+                fotograflar.append(url)
+            elif yol.endswith(ses_uzantilari):
+                if not ses_url:
+                    ses_url = url
+                fotograflar.append(url)
+            else:
+                fotograflar.append(url)
 
         lot_raw = request.form.get("lot")
         if lot_raw and str(lot_raw).strip().isdigit():
