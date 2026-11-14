@@ -277,45 +277,58 @@ _ses_kuyruk_kilit = threading.Lock()
 
 
 def _elevenlabs_mp3(text: str) -> bytes | None:
-    """Canlı mezat sunucusu. Flash model, sıcak ve vurgulu ses ayarı."""
+    """Canlı mezat sunucusu. urllib3/requests SSL döngüsüne girmeden ham HTTPS kullanır."""
     metin = str(text or "").strip()
     anahtar = (getattr(Config, "ELEVENLABS_API_KEY", "") or "").strip()
     if not metin or not anahtar:
         return None
     voice_id = (getattr(Config, "ELEVENLABS_VOICE_ID", "") or "EXAVITQu4vr4xnSDxMaL").strip()
     model_id = (getattr(Config, "ELEVENLABS_MODEL_ID", "") or "eleven_flash_v2_5").strip()
-    url = (
-        "https://api.elevenlabs.io/v1/text-to-speech/"
-        f"{voice_id}?output_format=mp3_44100_128"
-    )
+    yol = f"/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128"
+    govde = json.dumps(
+        {
+            "text": metin,
+            "model_id": model_id,
+            "voice_settings": {
+                "stability": 0.45,
+                "similarity_boost": 0.80,
+                "style": 0.35,
+                "use_speaker_boost": True,
+            },
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    baglanti = None
     try:
-        yanit = requests.post(
-            url,
+        import http.client
+
+        baglanti = http.client.HTTPSConnection("api.elevenlabs.io", timeout=15)
+        baglanti.request(
+            "POST",
+            yol,
+            body=govde,
             headers={
                 "xi-api-key": anahtar,
                 "Content-Type": "application/json",
                 "Accept": "audio/mpeg",
             },
-            json={
-                "text": metin,
-                "model_id": model_id,
-                "voice_settings": {
-                    "stability": 0.45,
-                    "similarity_boost": 0.80,
-                    "style": 0.35,
-                    "use_speaker_boost": True,
-                },
-            },
-            timeout=12,
         )
-        if yanit.status_code != 200 or not yanit.content:
-            ozet = (yanit.text or "").replace("\n", " ")[:240]
-            print(f"[SES HATA] ElevenLabs HTTP {yanit.status_code}: {ozet}", flush=True)
+        yanit = baglanti.getresponse()
+        veri = yanit.read() or b""
+        if yanit.status != 200 or not veri:
+            ozet = veri.decode("utf-8", errors="replace").replace("\n", " ")[:240]
+            print(f"[SES HATA] ElevenLabs HTTP {yanit.status}: {ozet}", flush=True)
             return None
-        return yanit.content
+        return veri
     except Exception as hata:
         print(f"[SES HATA] ElevenLabs: {hata}", flush=True)
         return None
+    finally:
+        if baglanti is not None:
+            try:
+                baglanti.close()
+            except Exception:
+                pass
 
 
 def _openai_mp3(istemci, model, ses, soylenen):
