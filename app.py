@@ -15,6 +15,7 @@ except Exception:
 # GEVENT VE ASENKRON MOTOR (EN BAŞTA OLMALI)
 # ==========================================
 from datetime import datetime, timedelta, timezone
+import collections
 import functools
 import hashlib
 import hmac
@@ -77,6 +78,9 @@ def ek_guvenlik_ve_cors_ekle(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
 # ==========================================
@@ -1042,6 +1046,36 @@ def _entegrasyon_tokeni_gecerli():
     return False
 
 
+_rate_kovalar = {}
+
+
+def _rate_limit_kontrol(anahtar, limit, pencere_sn, kaydet=True):
+    """Pencere doluysa False. kaydet True ise izin verilen isteği de sayar."""
+    simdi = time.time()
+    kova = _rate_kovalar.get(anahtar)
+    if kova is None:
+        kova = collections.deque()
+        _rate_kovalar[anahtar] = kova
+    sinir = simdi - float(pencere_sn)
+    while kova and kova[0] <= sinir:
+        kova.popleft()
+    if len(kova) >= int(limit):
+        return False
+    if kaydet:
+        kova.append(simdi)
+    elif not kova:
+        _rate_kovalar.pop(anahtar, None)
+    return True
+
+
+def _rate_limit_sifirla(anahtar):
+    _rate_kovalar.pop(anahtar, None)
+
+
+def _iki_asama_acik():
+    return bool((os.environ.get("ADMIN_2FA_SECRET") or "").strip())
+
+
 def admin_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
@@ -1061,6 +1095,15 @@ def admin_required(f):
         if incoming_pass and check_password_hash(
             ADMIN_PASSWORD_HASH, str(incoming_pass)
         ):
+            if _iki_asama_acik() and session.get("admin_2fa_ok") is not True:
+                session["admin_sifre_ok"] = True
+                return (
+                    jsonify({
+                        "success": False,
+                        "mesaj": "İki aşamalı doğrulama gerekli. 2FA tamamlanmadan işlem yapılamaz.",
+                    }),
+                    403,
+                )
             return f(*args, **kwargs)
 
         if (
@@ -2726,6 +2769,32 @@ def kurumsal_bilgileri_oku():
             return _kurumsal_json_oku()
 
 
+def _iban_denetim_yaz(onceki, sonraki):
+    izlenen = ("iban", "bankaAdi", "aliciAdi")
+    if all((onceki.get(alan) or "") == (sonraki.get(alan) or "") for alan in izlenen):
+        return
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    yol = os.path.join(basedir, "instance", "iban_audit.log")
+    satir = {
+        "zaman": datetime.now().isoformat(timespec="seconds"),
+        "ip": get_client_ip(),
+        "once": {
+            "unvan": onceki.get("sirketUnvani") or "",
+            "banka": onceki.get("bankaAdi") or "",
+            "alici": onceki.get("aliciAdi") or "",
+            "iban": onceki.get("iban") or "",
+        },
+        "sonra": {
+            "unvan": sonraki.get("sirketUnvani") or "",
+            "banka": sonraki.get("bankaAdi") or "",
+            "alici": sonraki.get("aliciAdi") or "",
+            "iban": sonraki.get("iban") or "",
+        },
+    }
+    with open(yol, "a", encoding="utf-8") as dosya:
+        dosya.write(json.dumps(satir, ensure_ascii=False) + "\n")
+
+
 def kurumsal_bilgileri_yaz(kayit):
     temiz = _kurumsal_kaydi_normallestir(kayit)
     metin = json.dumps(temiz, ensure_ascii=False)
@@ -2750,7 +2819,8 @@ def kurumsal_bilgiler_kaydet_api():
     gelen = request.get_json(silent=True) or {}
     if not isinstance(gelen, dict):
         gelen = {}
-    kayit = kurumsal_bilgileri_oku()
+    onceki = kurumsal_bilgileri_oku()
+    kayit = dict(onceki)
     for alan in _KURUMSAL_ALANLAR:
         if alan not in gelen:
             continue
@@ -2760,6 +2830,10 @@ def kurumsal_bilgiler_kaydet_api():
     except Exception:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": "Kurumsal bilgiler kaydedilemedi."}), 500
+    try:
+        _iban_denetim_yaz(onceki, kayit)
+    except Exception:
+        print("[IBAN] Denetim kaydı yazılamadı.")
     cevap = {"success": True, "mesaj": "✓ Kurumsal bilgiler kaydedildi"}
     cevap.update(kayit)
     return jsonify(cevap)
@@ -3968,6 +4042,11 @@ def pey_ver():
     oda = odalar[dukkan]
 
     musteri_id = veri.get("musteri_id") or veri.get("kullanici_id") or session.get("kullanici_id") or session.get("musteri_id")
+    if not _rate_limit_kontrol("pey:" + str(musteri_id or "yok") + ":" + client_ip, 3, 2):
+        return jsonify({
+            "success": False,
+            "mesaj": "Çok hızlı pey denemesi. Birkaç saniye sonra tekrar deneyin.",
+        }), 429
     musteri_adi = (veri.get("musteri_adi") or veri.get("isim") or "").strip()
     telefon = (veri.get("telefon") or "").strip()
 
@@ -4324,6 +4403,13 @@ def urun_takip_et():
 @app.route("/kayit", methods=["POST"])
 @app.route("/kayit-ol", methods=["POST"])
 def kayit_ol():
+    if not _rate_limit_kontrol("kayit:" + get_client_ip(), 6, 60):
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "mesaj": "Çok fazla kayıt denemesi. Bir dakika sonra tekrar deneyin.",
+            "message": "Çok fazla kayıt denemesi. Bir dakika sonra tekrar deneyin.",
+        }), 429
     veri = request.get_json(silent=True) or request.form or {}
     ad = (veri.get("ad") or veri.get("ad_soyad") or veri.get("isim") or "").strip()
     tel = (veri.get("tel") or veri.get("telefon") or veri.get("phone") or "").strip()
@@ -4416,7 +4502,9 @@ def kayit_ol():
     def kod_yaniti(kayit, kod, gitti):
         mesaj = "E-postanıza 6 haneli doğrulama kodu gönderildi."
         if not gitti:
-            mesaj = "SMTP tanımlı değil. Test doğrulama kodu: " + kod
+            mesaj = "Doğrulama kodu şu an e-posta ile gönderilemedi."
+            if app.debug:
+                mesaj = "SMTP tanımlı değil. Test doğrulama kodu: " + kod
         govde = {
             "status": "pending",
             "success": True,
@@ -4425,7 +4513,7 @@ def kayit_ol():
             "mesaj": mesaj,
             "message": mesaj,
         }
-        if not gitti:
+        if not gitti and app.debug:
             govde["test_kod"] = kod
         return jsonify(govde)
 
@@ -4623,6 +4711,11 @@ def dogrulama_durum():
 
 @app.route("/dogrulama-tamamla", methods=["POST"])
 def dogrulama_tamamla():
+    if not _rate_limit_kontrol("dogrulama:" + get_client_ip(), 6, 60):
+        return jsonify({
+            "success": False,
+            "mesaj": "Çok fazla doğrulama denemesi. Bir dakika sonra tekrar deneyin.",
+        }), 429
     veri = request.json or {}
     kod = "".join(ch for ch in str(veri.get("kod") or "") if ch.isdigit())
     try:
@@ -4944,11 +5037,19 @@ def admin_login_ekrani():
 def admin_login_post():
     veri = request.json or {}
     girilen_sifre = str(veri.get("sifre", ""))
+    giris_anahtari = "admin-giris:" + get_client_ip()
+    if not _rate_limit_kontrol(giris_anahtari, 5, 900, kaydet=False):
+        return jsonify({
+            "success": False,
+            "mesaj": "Çok fazla hatalı giriş. 15 dakika sonra tekrar deneyin.",
+        }), 429
     if check_password_hash(ADMIN_PASSWORD_HASH, girilen_sifre):
+        _rate_limit_sifirla(giris_anahtari)
         session["admin_sifre_ok"] = True
         return jsonify({
             "success": True, "mesaj": "Şifre doğrulandı, 2FA kodunu giriniz.",
         })
+    _rate_limit_kontrol(giris_anahtari, 5, 900)
     return jsonify({"success": False, "mesaj": "Hatalı şifre!"}), 401
 
 
@@ -5002,6 +5103,66 @@ def admin_panel():
         secili_dukkan=dukkan,
         dukkanlar=DUKKANLAR,
     )
+
+
+_YEDEK_GIZLI_ALANLAR = {"sifre_hash", "sifre", "otp_code", "dogrulama_kodu"}
+
+
+def _yedek_deger(deger):
+    if isinstance(deger, datetime):
+        return deger.isoformat(sep=" ")
+    if isinstance(deger, (bytes, bytearray)):
+        return None
+    return deger
+
+
+def _model_yedek_satirlari(model, sorgu=None):
+    satirlar = []
+    kayitlar = sorgu.all() if sorgu is not None else model.query.all()
+    for kayit in kayitlar:
+        satir = {}
+        for kolon in model.__table__.columns:
+            if kolon.name in _YEDEK_GIZLI_ALANLAR:
+                continue
+            satir[kolon.name] = _yedek_deger(getattr(kayit, kolon.name, None))
+        satirlar.append(satir)
+    return satirlar
+
+
+@app.route("/admin/yedek-indir", methods=["GET"])
+@admin_required
+def admin_yedek_indir():
+    try:
+        urunler = _model_yedek_satirlari(Urun)
+        satislar = [
+            satir for satir in urunler
+            if str(satir.get("durum") or "") in ("Satıldı", "satildi")
+        ]
+        paket = {
+            "olusturma": datetime.now().isoformat(timespec="seconds"),
+            "urunler": urunler,
+            "musteriler": _model_yedek_satirlari(Kullanici),
+            "teklifler": _model_yedek_satirlari(Teklif),
+            "on_teklifler": _model_yedek_satirlari(OnTeklif),
+            "satislar": satislar,
+            "sepet": _model_yedek_satirlari(SepetItem),
+            "sozlesmeler": _model_yedek_satirlari(UrunAlimSozlesmesi),
+            "kurumsal_bilgiler": kurumsal_bilgileri_oku(),
+        }
+        try:
+            paket["ayarlar"] = _model_yedek_satirlari(Ayar)
+        except Exception:
+            paket["ayarlar"] = []
+        ham = json.dumps(paket, ensure_ascii=False, indent=2).encode("utf-8")
+        ad = "halic_antik_yedek_" + datetime.now().strftime("%Y%m%d_%H%M") + ".json"
+        return send_file(
+            io.BytesIO(ham),
+            as_attachment=True,
+            download_name=ad,
+            mimetype="application/json",
+        )
+    except Exception as hata:
+        return jsonify({"success": False, "mesaj": "Yedek oluşturulamadı: " + str(hata)}), 500
 
 
 @app.route("/admin-cikis-yap", methods=["POST", "GET"])
