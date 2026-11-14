@@ -392,9 +392,9 @@
         <!-- ÇOKLU PLATFORM CANLI SOHBET & BAS-KONUŞ GELEN KUTUSU -->
         <div class="card" style="display: flex; flex-direction: column;">
             <div class="card-title">
-                <span>🔴 Canlı Akış & Ahmet Usta Cevapları</span>
+                <span>🔴 Canlı Akış ve Mezat Sunucusu</span>
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <button id="btnBasKonus" class="btn-bas-konus" title="Ahmet Usta'ya sesle soru sorun / talimat verin">
+                    <button id="btnBasKonus" class="btn-bas-konus" title="Gizli reji kulaklığı">
                         🎙️ Bas-Konuş (AI Dinlesin)
                     </button>
                     <button type="button" id="btnPatronYayin" class="btn-bas-konus" title="Mikrofon sürekli açık kalsın">Patron Yayında (Sürekli Dinleme)</button>
@@ -404,7 +404,7 @@
             </div>
             <div id="adminCanliSohbetAlani" style="flex: 1; min-height: 180px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; background: #0f141c; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px;">
                 <div style="color: #64748b; font-size: 12px; text-align: center; margin-top: 75px;" id="sohbetBosUyarisi">
-                    Yayındaki tüm yorumlar, sorular ve Ahmet Usta'nın yanıtları burada akar...
+                    Yayındaki yorumlar ve mezat sunucusunun yanıtları burada akar...
                 </div>
             </div>
         </div>
@@ -1119,7 +1119,7 @@
         let platformAd = data.platform || "Web";
         let logoSvg = "💬";
 
-        if (platformAd === "Ahmet Usta AI") {
+        if (platformAd === "Mezat Sunucusu" || platformAd === "Canlı Sunucu") {
             platformRenk = "var(--accent-gold)";
             logoSvg = "🤖";
         } else if (platformAd.includes("TikTok")) {

@@ -1120,7 +1120,7 @@
                 <button onclick="toggleChatDrawer()" style="background:#475569; color:#fff; border:none; padding:1px 4px; border-radius:2px; font-size:8px; cursor:pointer;">✕</button>
             </div>
             <div class="chat-messages" id="izleyiciChatKutusu">
-                <div class="chat-item ahmet"><b>🤖 Ahmet Usta:</b> Hoş geldiniz efendim, ürünle ilgili sorularınızı bana iletebilirsiniz.</div>
+                <div class="chat-item ahmet"><b>🎙️ Canlı Sunucu:</b> Hoş geldiniz, sorunuzu sorun, peynizi de esirgemeyin.</div>
             </div>
             <p style="font-size:11px; color:#94a3b8;">Mesaj ve bas-konuş alt bantta.</p>
         </div>
@@ -2386,7 +2386,7 @@
                 const oge = document.createElement("span");
                 oge.className = "bant-oge";
                 oge.style.color = "var(--accent-gold)";
-                oge.innerHTML = `<strong>🤖 Ahmet Usta:</strong> ${escapeHtml(data.metin)} • `;
+                oge.innerHTML = `<strong>🎙️ Canlı Sunucu:</strong> ${escapeHtml(data.metin)} • `;
                 bant.appendChild(oge);
 
                 const tumOgeler = bant.getElementsByClassName("bant-oge");

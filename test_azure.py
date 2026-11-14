@@ -5,4 +5,4 @@ speech_config = speechsdk.SpeechConfig(subscription=Config.AZURE_SPEECH_KEY, reg
 speech_config.speech_synthesis_voice_name = Config.AZURE_SPEECH_VOICE
 
 synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config)
-synthesizer.speak_text_async("Haliç Antik mezatına hoş geldiniz! Ahmet Usta yayında.").get()
+synthesizer.speak_text_async("Haliç Antik mezatına hoş geldiniz! Canlı sunucu yayında.").get()

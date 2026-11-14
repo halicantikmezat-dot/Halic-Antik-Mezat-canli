@@ -290,9 +290,9 @@ def _elevenlabs_mp3(text: str) -> bytes | None:
             "text": metin,
             "model_id": model_id,
             "voice_settings": {
-                "stability": 0.45,
+                "stability": 0.30,
                 "similarity_boost": 0.80,
-                "style": 0.35,
+                "style": 0.70,
                 "use_speaker_boost": True,
             },
         },
@@ -638,11 +638,12 @@ def ahmet_usta_anons_yap(dukkan, metin, yedek_dene=True, tur="anons", kesinti=Fa
     if not temiz:
         return
     socketio.emit("yeni_canli_yorum", {
-        "kullanici": "Ahmet Usta",
+        "kullanici": "Canlı Sunucu",
         "yorum": temiz,
         "mesaj": temiz,
         "dukkan": dukkan,
-        "tip": "ahmet_anons",
+        "platform": "Mezat Sunucusu",
+        "tip": "sunucu_anons",
         "tur": tur,
     }, room=dukkan)
     ahmet_ses_akisi(dukkan, temiz, tur=tur, kesinti=kesinti)
@@ -665,16 +666,42 @@ def ahmet_nida_sec():
 
 _yorum_yedek_sira = 0
 YORUM_YEDEKLERI = (
-    "{ad}, sizi duydum efendim, eserin başındayız, buyurun!",
-    "Canım {ad}, notunuz düştü, hemen bu parçaya dönüyorum!",
-    "{ad}, sorunuz yerinde, eserin hikayesi tam da burada!",
+    "{ad}, kulağım sizde. {eser} şu an {pey} lirada duruyor, bir nefes daha yaklaşın da salon uyanıversin.",
+    "Canım {ad}, notunuz düştü. {eser} {pey} lirada nazlanıyor, siz bir kıvılcım çaksanıza.",
+    "{ad}, sorunuz tam yerinde. {eser} için {pey} lira konuşuluyor ama ben hâlâ üstüne varacak bir cesur arıyorum.",
+    "Bakın {ad}, {eser} sizi duydu. {pey} lira kapı eşiği, içeri buyurun, kimse kırılmadan yarışı kızıştıralım.",
+    "{ad}, tezgahtarınız buradayım. {eser} {pey} lirada bekliyor, sadece izlemek de olur ama kapan o zaman kaçırır.",
 )
 
 
-def ahmet_yorum_yedegi(kullanici):
+def _sahne_eser_ozeti(dukkan):
+    oda = odalar.get(dukkan) or {}
+    eser = "bu parça"
+    pey = 0
+    try:
+        pey = int(round(float((oda.get("durum") or {}).get("pey") or 0)))
+    except (TypeError, ValueError):
+        pey = 0
+    try:
+        with app.app_context():
+            urun_id = oda.get("aktif_urun_id")
+            urun = db.session.get(Urun, urun_id) if urun_id else None
+            if urun is not None and (urun.urun_adi or "").strip():
+                eser = urun.urun_adi.strip()
+            if pey <= 0 and urun is not None:
+                pey = int(round(float(urun.guncel_fiyat or urun.acilis_fiyati or 0)))
+    except Exception:
+        pass
+    return eser, pey
+
+
+def ahmet_yorum_yedegi(dukkan, kullanici):
     global _yorum_yedek_sira
     ad = ahmet_kisa_ad(kullanici) if kullanici else "Efendim"
-    metin = YORUM_YEDEKLERI[_yorum_yedek_sira % len(YORUM_YEDEKLERI)].format(ad=ad)
+    eser, pey = _sahne_eser_ozeti(dukkan)
+    metin = YORUM_YEDEKLERI[_yorum_yedek_sira % len(YORUM_YEDEKLERI)].format(
+        ad=ad, eser=eser, pey=pey,
+    )
     _yorum_yedek_sira += 1
     return metin
 
@@ -947,8 +974,8 @@ def ahmet_usta_ekranda_yaz(dukkan, metin):
     socketio.emit(
         "yeni_canli_yorum",
         {
-            "platform": "Ahmet Usta AI",
-            "kullanici": "[Ahmet Usta]",
+            "platform": "Mezat Sunucusu",
+            "kullanici": "Canlı Sunucu",
             "mesaj": metin,
             "zaman": time.strftime("%H:%M:%S"),
             "dukkan": dukkan,
@@ -958,7 +985,7 @@ def ahmet_usta_ekranda_yaz(dukkan, metin):
 
 
 def ahmet_yanitini_yayinla(dukkan, metin):
-    """Yalnızca Ahmet'in kendi cümlesini yazar ve seslendirir. Ham izleyici metni okunmaz."""
+    """Yalnızca sunucunun kendi cümlesini yazar ve seslendirir. Ham izleyici metni okunmaz."""
     temiz = re.sub(r"[\*#_]", "", str(metin or "")).strip().strip('"')
     if not temiz:
         temiz = ahmet_nida_sec()
@@ -967,35 +994,48 @@ def ahmet_yanitini_yayinla(dukkan, metin):
 
 
 AHMET_SISTEM = (
-    "Sen Haliç Antik Mezat'ın tatlı dilli, güler yüzlü, saygılı, hazırcevap ve esprili hanımefendi sunucususun. "
-    "Konuşman son derece akıcı, samimi, kibar ve davetkardır. "
-    "İzleyicilere nezaketle takıl; 'Efendim', 'Canlar', 'Hoş geldiniz' gibi sıcak bir mezat sohbeti kur. "
+    "Sen Haliç Antik Canlı Mezat'ın kadın sunucususun. Sabit bir adın yok. "
+    "İzleyici ismini, kim olduğunu veya nasıl hitap edeceğini sorarsa o anki enerjiye göre "
+    "kendine yaratıcı ve havalı bir lakap tak: Haliç'in Nazlısı, Mezat Kraliçesi, Antika Avcısı gibi. "
+    "Lakabı bir kez seçince oturum boyunca onu sahiplen, her soruda değiştirme. "
+    "Verilen oturum lakabı doluysa onu kullan ve yeni lakap uydurma. "
+    "Lakap ilk kez seçildiyse yanıtın en başına yalnızca bir kez [LAKAP:seçtiğin lakap] yaz, sonra sohbete geç. "
+    "Üslubun Türkiye mezat kültürüne hakim, hazırcevap, tatlı dilli, hafif cilveli ve esprili. "
+    "Adamına göre muamele yap: pey vereni şımart, sadece izleyip pey vermeyene tatlı tatlı takıl, "
+    "kimseyi kırmadan rekabeti kızıştır. Asla sıkıcı memur gibi kalıp cümle kurma. "
     "Yapay şive taklidi yapma. gardaş diye hitap etme. "
-    "Normal pey anonsunda asla 'hayırlı olsun' veya 'bereketini görün' deme. Bu iki ifade yalnızca süre bitip satış onaylandığında söylenir. "
-    "Pey anonsunu kısa ve rekabeti açık tut: '[İsim] Beyden / Hanımdan [Tutar] TL geldi! Var mı artıran efendim?' "
-    "Satış anında: 'LOT #[No] [Ürün Adı], [İsim] Beyefendiye / Hanımefendiye hayırlı uğurlu olsun, çok güzel günlerde kullanılsın!' de ve çekici vur. "
-    "Yorumlara tek cümlelik, kibar ve esprili bir hanımefendi cevabı ver. "
+    "Normal pey anonsunda asla 'hayırlı olsun' veya 'bereketini görün' deme. "
+    "Bu iki ifade yalnızca süre bitip satış onaylandığında söylenir. "
+    "Yorumlara bir veya iki cümlelik, canlı ve esprili bir kadın tezgahtar cevabı ver. "
     + SES_DIL_KURALI
 )
 
 def _patron_sistemi(aktif_urun, patron_komut):
+    gizli = str(patron_komut or "").startswith("[PATRON GİZLİ EMRİ]")
+    gizlilik = (
+        "Bu bir gizli reji emridir. İzleyici patronu duymadı. Emri aynen okuma, "
+        "patronu, kulaklığı ve emri ağzına alma. Fiyatı, tavrı veya anlatımı "
+        "seyirciye çaktırmadan kendin söylemiş gibi düzelt."
+        if gizli else
+        "Patronun cümlesini papağan gibi tekrarlama."
+    )
     return f"""
-Sen Haliç Antik Mezat'ın profesyonel, coşkulu ve esprili canlı yayın sunucusu Ahmet Usta'sın.
+Sen Haliç Antik Canlı Mezat'ın sabit ismi olmayan, hazırcevap, tatlı dilli, hafif cilveli kadın mezat sunucususun.
 Şu an sahnede olan aktif ürün bilgileri:
 - Ürün Adı: {aktif_urun.get('baslik', 'Antika Eser')}
 - Açıklama: {aktif_urun.get('aciklama', '')}
 - Başlangıç Fiyatı: {aktif_urun.get('baslangic_fiyati', 0)} TL
 - Güncel Pey: {aktif_urun.get('anlik_fiyat', 0)} TL
 
-PATRON SANA ŞU ANONS TALİMATINI VERDİ: "{patron_komut}"
+PATRON TALİMATI: "{patron_komut}"
 
 KURALLAR:
-1. ASLA patronun sözlerini papağan gibi tekrarlama!
+1. {gizlilik}
 2. "Patronun dediği üzere", "Yöneticimin belirttiği gibi", "Pardon efendim" gibi lafları KESİNLİKLE KULLANMA.
-3. Patron "fiyatı söyle / kaç para" dediyse doğrudan izleyicilere dönüp güncel pey/fiyatı söyle ve yeni teklif iste.
-4. Patron "ürünü tanıt / anlat" dediyse ürünün antika hikayesini, detaylarını öne çıkararak heyecanla tanıt.
-5. Doğrudan canlı yayındaki izleyicilere hitap et (Örn: "Evet değerli koleksiyonerler, elimizdeki bu nadide parça...").
-6. Yanıtın kısa, net, mezat ortamına yakışır ve en fazla 2-3 cümle olsun.
+3. Fiyat sorulursa doğrudan izleyicilere dönüp güncel peyi söyle ve yeni teklif iste.
+4. Tanıtım istenirse eserin hikâyesini heyecanla anlat.
+5. Doğrudan canlı yayındaki izleyicilere hitap et.
+6. Yanıtın en fazla 2-3 cümle, canlı ve esprili olsun.
 Yalnızca Türkçe yaz. {TURKCE_DIREKTIF}.
 """
 
@@ -1039,8 +1079,18 @@ def _openai_metin_iste(sistem, kullanici_metni, max_tokens=420, zaman_asimi=1.5)
 
 
 # ==========================================
-# AHMET USTA YORUM CEVABI (OPENAI)
+# CANLI SUNUCU YORUM CEVABI
 # ==========================================
+def _lakabi_ayikla(dukkan, cevap):
+    oda = odalar.get(dukkan) or {}
+    bulunan = re.search(r"\[LAKAP:\s*([^\]]+)\]", str(cevap or ""))
+    if bulunan:
+        lakap = bulunan.group(1).strip()[:40]
+        if lakap:
+            oda["sunucu_lakap"] = lakap
+    return re.sub(r"\[LAKAP:\s*[^\]]+\]\s*", "", str(cevap or "")).strip()
+
+
 def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
     def _cevapla():
         try:
@@ -1048,6 +1098,7 @@ def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
             oda = odalar.get(dukkan, {})
             aktif_urun_id = oda.get("aktif_urun_id")
             urun_bilgi = "Şu an sahnede aktif ürün bulunmamaktadır."
+            lakap = (oda.get("sunucu_lakap") or "").strip() or "henüz yok"
 
             with app.app_context():
                 if aktif_urun_id:
@@ -1062,13 +1113,14 @@ def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
 
             cevap = _openai_metin_iste(
                 AHMET_SISTEM,
-                f"Sahnedeki ürün: {urun_bilgi}\nİzleyici {kullanici} dedi ki: {mesaj}",
+                f"Oturum lakabı: {lakap}.\nSahnedeki ürün: {urun_bilgi}\nİzleyici {kullanici} dedi ki: {mesaj}",
             )
-            print(f"[Ahmet Usta]: {cevap}")
-            ahmet_yanitini_yayinla(dukkan, cevap or ahmet_yorum_yedegi(kullanici))
+            cevap = _lakabi_ayikla(dukkan, cevap)
+            print(f"[Canlı Sunucu]: {cevap}")
+            ahmet_yanitini_yayinla(dukkan, cevap or ahmet_yorum_yedegi(dukkan, kullanici))
         except Exception as e:
-            print(f"⚠️ Ahmet Usta Yorum Cevaplama Hatası: {e}")
-            ahmet_yanitini_yayinla(dukkan, ahmet_yorum_yedegi(kullanici))
+            print(f"⚠️ Canlı Sunucu yorum hatası: {e}")
+            ahmet_yanitini_yayinla(dukkan, ahmet_yorum_yedegi(dukkan, kullanici))
 
     socketio.start_background_task(_cevapla)
 
@@ -1779,12 +1831,13 @@ def _hazir_secere(urun, acilis):
     )
 
 
-def ahmet_sahne_acilis_metni(urun, acilis_fiyati):
+def ahmet_sahne_acilis_metni(urun, acilis_fiyati, lot=""):
     ad = (getattr(urun, "urun_adi", None) or "Eser").strip()
     tutar = int(round(float(acilis_fiyati or 0)))
+    lot_yazi = f"Lot {lot}, " if str(lot or "").strip() else ""
     return (
-        f"Mezatımız başlıyor efendim! Sıradaki eserimiz {ad}. "
-        f"Açılış fiyatımız {tutar} TL. Alıcısına şimdiden hayırlı uğurlu olsun."
+        f"Sahne bizim dostlar! {lot_yazi}{ad} indi! "
+        f"Açılış {tutar} lira, gözünüz işçiliğinde, eli değen kapar, kim artırıyor?"
     )
 
 
@@ -1812,13 +1865,14 @@ def ahmet_secere_metni(ad, aciklama, acilis):
         return yedek
 
 
-def ahmet_kisa_acilis_seslendir(dukkan, ad, acilis):
-    """Yeni sahne: yalnız kısa açılış. Uzun tanıtım dokununca okunur."""
+def ahmet_kisa_acilis_seslendir(dukkan, ad, acilis, lot=""):
+    """Yeni sahne: ad, lot ve açılış fiyatı yüksek enerjiyle okunur."""
     sahte = type("UrunSatir", (), {"urun_adi": ad})()
     ahmet_usta_anons_yap(
         dukkan,
-        ahmet_sahne_acilis_metni(sahte, acilis),
+        ahmet_sahne_acilis_metni(sahte, acilis, lot),
         tur="tanitim",
+        kesinti=True,
     )
 
 
@@ -2044,6 +2098,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
     ahmet_zaferi_seslendir(dukkan, konusma_adi or etiket_ad)
     _otonom_disi_satisi_bosalt(dukkan, oda)
     bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
+    _admin_satisi_duyur(dukkan, biten_id, etiket_ad, tutar, "esik")
 
 
 def _uc_dakikalik_pazarlik(dukkan, gorev_id):
@@ -2077,7 +2132,7 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
         if asama == "karar" and kalan == 15 and not son_uyari_yapildi:
             son_uyari_yapildi = True
             bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
-            ahmet_usta_anons_yap(dukkan, "Son 15 saniye beyler, eser elden gidiyor!")
+            ahmet_usta_anons_yap(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
         elif kalan > 15:
             son_uyari_yapildi = False
         socketio.emit(
@@ -2185,7 +2240,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
             if oda["sayac_kalan"] == 15 and not son_uyari_yapildi:
                 son_uyari_yapildi = True
                 bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
-                ahmet_usta_anons_yap(dukkan, "Son 15 saniye beyler, eser elden gidiyor!")
+                ahmet_usta_anons_yap(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
 
             socketio.emit(
                 "sayac_guncelle",
@@ -2292,9 +2347,84 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                     )
 
             bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
+            if pey_var_mi:
+                _admin_satisi_duyur(
+                    dukkan, biten_urun_id, oda["durum"]["kazanan"], oda["durum"]["pey"], "sure",
+                )
 
 
 _otonom_dongu_calisiyor = {}
+
+
+def _admin_satisi_duyur(dukkan, urun_id, kazanan, fiyat, neden):
+    """Satış anında yönetici paneli yenilemeden ciro ve havuzu güncellesin."""
+    try:
+        tutar = float(fiyat or 0)
+    except (TypeError, ValueError):
+        tutar = 0
+    socketio.emit(
+        "admin_satis_guncelle",
+        {
+            "dukkan": dukkan,
+            "urun_id": urun_id,
+            "kazanan": kazanan or "",
+            "fiyat": tutar,
+            "neden": neden,
+        },
+        room="admin_room",
+    )
+
+
+def _nabiz_dokun(dukkan):
+    oda = odalar.get(dukkan)
+    if oda is not None:
+        oda["son_hareket"] = time.time()
+
+
+_SESSIZLIK_KALIPLARI = (
+    "Burada mısınız dostlar, salon çok sessiz kaldı! {eser} {pey} lirada duruyor, bu fiyata bu parça kaçmaz, kim artırıyor?",
+    "Ayıp oluyor ama uyandınız mı? {eser} {pey} lirada naz yapıyor, bir el kalksın da ben de nefes alayım.",
+    "Mikrofon bende, salon uykuda. {eser} için {pey} lira konuşuluyor, sadece bakanlar değil alanlar kazansın!",
+    "Dostlar çay soğumadan bir pey gelsin. {eser} {pey} lirada bekliyor, kaçırırsanız sonra bana bakmayın.",
+)
+_sessizlik_sira = 0
+
+
+def _sessizlik_anonsu(dukkan):
+    global _sessizlik_sira
+    eser, pey = _sahne_eser_ozeti(dukkan)
+    metin = _SESSIZLIK_KALIPLARI[_sessizlik_sira % len(_SESSIZLIK_KALIPLARI)].format(
+        eser=eser, pey=pey,
+    )
+    _sessizlik_sira += 1
+    ahmet_usta_anons_yap(dukkan, metin, tur="anons")
+
+
+def _sessizlik_dongusu():
+    time.sleep(8)
+    while True:
+        try:
+            simdi = time.time()
+            for dukkan, oda in list(odalar.items()):
+                if not oda.get("aktif_urun_id"):
+                    continue
+                durum = str((oda.get("durum") or {}).get("durum") or "")
+                if durum in ("Satıldı", "Pas", "bosta"):
+                    continue
+                son = float(oda.get("son_hareket") or 0)
+                if son <= 0:
+                    oda["son_hareket"] = simdi
+                    continue
+                if simdi - son < 25:
+                    continue
+                if simdi - float(oda.get("son_sessizlik") or 0) < 25:
+                    continue
+                oda["son_sessizlik"] = simdi
+                oda["son_hareket"] = simdi
+                socketio.start_background_task(_sessizlik_anonsu, dukkan)
+        except Exception as hata:
+            print(f"[SESSİZLİK] {hata}", flush=True)
+        time.sleep(5)
 
 
 def _otonom_urun_satildi(urun):
@@ -3247,7 +3377,7 @@ def kategoriler_listesi():
 
 
 # ==========================================
-# CANLI CHAT, SESLİ BAS-KONUŞ VE AHMET USTA KÖPRÜSÜ
+# CANLI SOHBET, GİZLİ REJİ VE PATRON YAYINI
 # ==========================================
 KAYIT_PEY_MESAJI = "Teklif verebilmek için lütfen önce kayıt olun ve giriş yapın"
 BAN_MESAJI = "Hesabınız yönetici tarafından askıya alınmıştır. Detaylar için mezat yönetimi ile iletişime geçin"
@@ -3567,6 +3697,7 @@ def chat_mesaj_gonder():
         "dukkan": dukkan,
     }
     socketio.emit("yeni_canli_yorum", yorum_verisi, room=dukkan)
+    _nabiz_dokun(dukkan)
 
     if teklif_tutari and teklif_tutari > 0 and aktif_urun_id:
         try:
@@ -3730,7 +3861,7 @@ def admin_bas_konus_ses():
                 print(f"⚠️ Ses İletim Hatası: {ex}")
 
         socketio.start_background_task(_bota_ses_ilet)
-        return jsonify({"success": True, "mesaj": "Ses Ahmet Usta'ya iletildi."})
+        return jsonify({"success": True, "mesaj": "Ses mezat sunucusuna iletildi."})
     except Exception as e:
         return jsonify({"success": False, "mesaj": str(e)}), 500
 
@@ -3750,8 +3881,8 @@ def bot_ahmet_usta_yanit():
         socketio.emit(
             "yeni_canli_yorum",
             {
-                "platform": "Ahmet Usta AI",
-                "kullanici": "[Ahmet Usta]",
+                "platform": "Mezat Sunucusu",
+                "kullanici": "Canlı Sunucu",
                 "mesaj": yanit,
                 "zaman": time.strftime("%H:%M:%S"),
                 "dukkan": dukkan,
@@ -4367,6 +4498,7 @@ def pey_ver():
                 _otonom_disi_satisi_bosalt(dukkan, oda)
                 bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
 
+                _admin_satisi_duyur(dukkan, biten_id, etiket_ad, hemen_al_fiyat, "hemen_al")
                 return jsonify({
                     "success": True,
                     "guncel_fiyat": hemen_al_fiyat,
@@ -4503,6 +4635,7 @@ def pey_ver():
                     },
                     room=dukkan,
                 )
+                _nabiz_dokun(dukkan)
                 return jsonify({
                     "success": True,
                     "guncel_fiyat": miktar,
@@ -5376,6 +5509,12 @@ def sahneye_al():
 
         db.session.add(urun)
         db.session.commit()
+        oda["lot_kapanis"] = ""
+        oda["satis_tebrik_bekleniyor"] = False
+        oda["karar_pey_geldi"] = False
+        oda["son_hareket"] = time.time()
+        oda["son_sessizlik"] = 0
+        gorev = _pazarligi_hazirla(oda, urun)
 
     takipciler = UrunTakip.query.filter_by(urun_id=urun.id).all()
     urun_paket = urun.to_dict()
@@ -5416,7 +5555,26 @@ def sahneye_al():
         },
     )
 
-    ahmet_kisa_acilis_seslendir(dukkan, urun_paket["ad"], oda["durum"]["pey"])
+    socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik")
+    socketio.emit(
+        "sayac_guncelle",
+        {
+            "dukkan": dukkan,
+            "kalan": 180,
+            "kalan_sure": 180,
+            "toplam": 180,
+            "sayac_gorunsun": True,
+            "asama": "pazarlik",
+        },
+        room=dukkan,
+    )
+    socketio.emit("mezat_basladi_muzik", room=dukkan)
+    ahmet_kisa_acilis_seslendir(
+        dukkan,
+        urun_paket["ad"],
+        urun_paket.get("fiyat") or 0,
+        urun_paket.get("lot") or "",
+    )
 
     return jsonify({"success": True, "urun": urun_paket})
 
@@ -5553,6 +5711,9 @@ def satis_bitir():
             tur="satis",
         )
         bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
+        _admin_satisi_duyur(
+            dukkan, biten_urun_id, oda["durum"]["kazanan"], oda["durum"]["pey"], "satis_bitir",
+        )
     return jsonify({"success": True, "dukkan": dukkan})
 
 
@@ -7509,7 +7670,50 @@ def _patron_sesini_metne_cevir(yol):
     return str(getattr(cevap, "text", "") or "").strip()
 
 
-def _patron_sesini_isle(dukkan, ses_b64, uzanti):
+_PATRON_DEVRALMA = (
+    "Patron sen hiç yorulma, mikrofon bende, salonu şimdi ayağa kaldırıyorum!",
+    "Tamam patron, sen çayını yudumla, sahne bende, fiyatı ben ısıtıyorum!",
+    "Duydum patron, sen kenara çekil, ben bu salonu bir dakikada ayaklandırırım!",
+)
+_patron_devir_sira = 0
+
+
+def _patron_sunucuya_dondu(metin):
+    s = _patron_yazi_sade(metin)
+    return any(k in s for k in (
+        "sunucu", "spiker", "mezatci", "kralice", "nazli", "sana soyluyorum",
+        "bana bak", "sen anlat", "sen devam", "mikrofon sende", "mikrofonu al",
+        "devral", "pas at", "pasliyorum", "seni dinle", "sus artik", "birak",
+        "yanlis yaptin", "fiyati kacirdin", "duzelt sunucu",
+    ))
+
+
+def _patron_yayinina_cevap(dukkan, metin):
+    global _patron_devir_sira
+    temiz = ses_metnini_temizle(metin)
+    if len(temiz) < 2:
+        return
+    socketio.emit(
+        "yeni_canli_yorum",
+        {
+            "platform": "Patron",
+            "kullanici": "Patron",
+            "mesaj": temiz,
+            "yorum": temiz,
+            "zaman": time.strftime("%H:%M:%S"),
+            "dukkan": dukkan,
+        },
+        room=dukkan,
+    )
+    _nabiz_dokun(dukkan)
+    if not _patron_sunucuya_dondu(temiz):
+        return
+    yanit = _PATRON_DEVRALMA[_patron_devir_sira % len(_PATRON_DEVRALMA)]
+    _patron_devir_sira += 1
+    ahmet_usta_anons_yap(dukkan, yanit, tur="anons")
+
+
+def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True):
     import tempfile
     yol = ""
     try:
@@ -7530,6 +7734,8 @@ def _patron_sesini_isle(dukkan, ses_b64, uzanti):
             print("[PATRON SESİ] Ses anlaşılmadı, metin boş.")
             return
         print(f"[PATRON SESİ METNE ÇEVRİLDİ]: '{metin}'")
+        if gizli and not metin.startswith("[PATRON GİZLİ EMRİ]"):
+            metin = "[PATRON GİZLİ EMRİ] " + metin
         _patron_emrini_uygula(dukkan, metin)
     except Exception as hata:
         print(f"[PATRON SESİ] Ses anlaşılmadı: {hata}")
@@ -7556,7 +7762,24 @@ def patron_ses_komut(veri):
         mime = str(veri.get("mime") or "audio/webm")
         uzanti = "wav" if "wav" in mime else "webm"
         dukkan = dukkan_dogrula(veri.get("room") or veri.get("dukkan") or "gumus")
-        socketio.start_background_task(_patron_sesini_isle, dukkan, ses, uzanti)
+        gizli = bool(veri.get("gizli", True))
+        socketio.start_background_task(_patron_sesini_isle, dukkan, ses, uzanti, gizli)
+    finally:
+        db.session.remove()
+
+
+@socketio.on("patron_yayin_metni")
+def patron_yayin_metni(veri):
+    """Patron yayındayken söz izleyiciye düşer. Sunucu yalnız hitap, eleştiri veya pasta cevap verir."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        metin = ses_metnini_temizle(veri.get("metin"))
+        if len(metin) < 2:
+            return
+        dukkan = dukkan_dogrula(veri.get("dukkan") or veri.get("room") or "gumus")
+        _patron_yayinina_cevap(dukkan, metin)
     finally:
         db.session.remove()
 
@@ -7765,7 +7988,6 @@ def handle_admin_sesli_komut(data):
     dukkan = data.get('dukkan', 'gumus')
     metin = data.get('metin', '').strip()
     if metin:
-        # Yönetici sesli konuştuğunda hem yorum olarak bas hem Ahmet Usta anonsunu tetikle
         ahmet_usta_anons_yap(dukkan, metin)
 
 
@@ -7984,6 +8206,7 @@ except Exception:
     pass
 
 veritabani_onarimini_bir_kez_baslat()
+threading.Thread(target=_sessizlik_dongusu, daemon=True, name="sessizlik-savar").start()
 
 # ==========================================
 # SUNUCUYU BAŞLATMA

@@ -66,7 +66,7 @@ function flaskPeyGonder(user, text) {
         message: temizYazi
     });
 
-    // 3. Ahmet Usta AI & Pey Çözücü Motoru (Port 5005)
+    // 3. Mezat sunucusu ve pey çözücü (Port 5005)
     postIstegiGonder(5005, '/canli_yorum', {
         platform: 'TikTok',
         user: temizKullanici,

@@ -1562,7 +1562,7 @@
                 <button type="button" onclick="toggleChatDrawer()" aria-label="Sohbeti kapat" style="background:#475569; color:#fff; border:none; padding:1px 4px; border-radius:2px; font-size:8px; cursor:pointer;">✕</button>
             </div>
             <div class="chat-messages" id="izleyiciChatKutusu">
-                <div class="chat-item ahmet"><b>🤖 Ahmet Usta:</b> Hoş geldiniz efendim, ürünle ilgili sorularınızı bana iletebilirsiniz.</div>
+                <div class="chat-item ahmet"><b>🎙️ Canlı Sunucu:</b> Hoş geldiniz, sorunuzu sorun, peynizi de esirgemeyin.</div>
             </div>
             <p style="font-size:11px; color:#94a3b8;">Mesaj ve bas-konuş alt bantta.</p>
         </div>
@@ -2283,6 +2283,51 @@
         sahneAnlatiminiBaslat();
     }
 
+    let sunucuTtsSes = null;
+    let slaytEslikAni = 0;
+    let slaytEslikSira = 0;
+    const SLAYT_ESLIKLERI = [
+        "Bakın şu işçiliğe, detaylara yakından bakın dostlar!",
+        "Şu köşeyi kaçırmayın, el emeği burada konuşuyor.",
+        "Yaklaşın, bu karede parça kendini ele veriyor.",
+        "Bir de bu açıdan bakın, vitrin böyle durmaz."
+    ];
+
+    function sunucuTtsCal(metin, bildirim) {
+        const yazi = String(metin || "").trim();
+        if (!yazi) return;
+        if (bildirim && typeof showToast === "function") showToast(bildirim);
+        fetch("/api/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: yazi })
+        }).then(function (r) {
+            if (!r.ok) throw new Error("tts");
+            return r.blob();
+        }).then(function (blob) {
+            if (!blob || !blob.size) throw new Error("bos");
+            if (sunucuTtsSes) {
+                try { sunucuTtsSes.pause(); } catch (e) {}
+            }
+            const url = URL.createObjectURL(blob);
+            sunucuTtsSes = new Audio(url);
+            sunucuTtsSes.setAttribute("playsinline", "");
+            sunucuTtsSes.play().catch(function () {});
+        }).catch(function () {
+            if (typeof showToast === "function") showToast("Ses şu an çıkmadı, metin ekranda duruyor.");
+        });
+    }
+
+    function slaytSunucuEsligi() {
+        if (sahneKapali || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
+        const simdi = Date.now();
+        if (simdi - slaytEslikAni < 15000) return;
+        slaytEslikAni = simdi;
+        const cumle = SLAYT_ESLIKLERI[slaytEslikSira % SLAYT_ESLIKLERI.length];
+        slaytEslikSira += 1;
+        sunucuTtsCal(cumle);
+    }
+
     function sahneAnlatiminiBaslat() {
         if (sahneKapali || sahnedekiUrunSatildiMi || !aktifSahneUrunId) {
             showToast("Bu ürün satılmıştır, sıradaki eser sahneye alınacaktır.");
@@ -2294,7 +2339,7 @@
             showToast("Bu ürün satılmıştır, sıradaki eser sahneye alınacaktır.");
             return;
         }
-        socket.emit('ahmet_ses_iste', { dukkan: aktifDukkan, metin: okunacak });
+        sunucuTtsCal(okunacak, "Eser Hikâyesi Okunuyor");
     }
 
     function izleyiciListesiniAc() {
@@ -2540,7 +2585,7 @@
             return;
         }
         showToast(sozdenTutar(mesaj) > 0
-            ? "✓ Peyiniz alındı, Ahmet Usta anons ediyor..."
+            ? "✓ Peyiniz alındı, mezat sunucusu anons ediyor..."
             : "✓ Mesajınız sahneye düştü");
 
         let gonderen = kullaniciAdi || "Ziyaretçi";
@@ -3519,7 +3564,7 @@
                 const oge = document.createElement("span");
                 oge.className = "bant-oge";
                 oge.style.color = "var(--accent-gold)";
-                oge.innerHTML = `<strong>🤖 Ahmet Usta:</strong> ${escapeHtml(data.metin)} • `;
+                oge.innerHTML = `<strong>🎙️ Canlı Sunucu:</strong> ${escapeHtml(data.metin)} • `;
                 bant.appendChild(oge);
 
                 const tumOgeler = bant.getElementsByClassName("bant-oge");
@@ -3935,6 +3980,24 @@
         if (kart) kart.classList.remove('acik');
         if (muhur) muhur.classList.remove('acik');
         clearTimeout(window.zaferKartZaman);
+        const digits = document.getElementById('timerDigits');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        const cockpit = document.getElementById('mezatSayaci');
+        const soldBanner = document.getElementById('soldBanner');
+        if (digits) {
+            digits.classList.remove('satildi-yazi');
+            digits.classList.add('pazarlik-sayac');
+            digits.innerText = "3:00";
+        }
+        if (statusTitle) statusTitle.innerText = "PAZARLIK";
+        if (cockpit) cockpit.classList.remove('urgent');
+        if (soldBanner) soldBanner.style.display = 'none';
+        ["btnYuzdeOn", "btnSerbestPey", "btnHemenAl"].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.remove('btn-disabled-sold');
+        });
+        const btnHemenAl = document.getElementById('btnHemenAl');
+        if (btnHemenAl && btnHemenAl.innerText.indexOf("SATILDI") !== -1) btnHemenAl.innerText = "Hemen Al";
     });
 
     socket.on('sahne_bosta', function (data) {
@@ -4420,12 +4483,14 @@
     function medyaDegistir(index, otomatik) {
         if (!otomatik) playUserClickSound();
         if (!aktifUrunMedyalari[index]) return;
+        const onceki = aktifSahneMedyaIndex;
         sahneMedyaDongusunuDurdur();
         aktifSahneMedyaIndex = index;
         document.querySelectorAll("#stageThumbs .thumb-item").forEach((el, i) => {
             el.classList.toggle("active", i === index);
         });
         medyaGoster(aktifUrunMedyalari[index]);
+        if (onceki !== index) slaytSunucuEsligi();
     }
 
     function isVideoUrl(url) {
@@ -4712,7 +4777,7 @@
         if (!dogrulamaKontrol()) return;
         if (peyGonderiliyorMu) return;
         peyGonderiliyorMu = true;
-        showToast("✓ Peyiniz alındı, Ahmet Usta anons ediyor...");
+        showToast("✓ Peyiniz alındı, mezat sunucusu anons ediyor...");
         fetch('/pey-ver', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -5652,6 +5717,8 @@
         let sonDokunus = 0;
         let anlatimZaman = null;
         let hareket = 0;
+        let basX = 0;
+        let basY = 0;
         const parmaklar = new Map();
 
         function medya() {
@@ -5731,6 +5798,10 @@
             try { kutu.setPointerCapture(e.pointerId); } catch (err) {}
             parmaklar.set(e.pointerId, { x: e.clientX, y: e.clientY });
             hareket = 0;
+            if (parmaklar.size === 1) {
+                basX = e.clientX;
+                basY = e.clientY;
+            }
             if (parmaklar.size >= 2) {
                 const noktalar = Array.from(parmaklar.values());
                 const odak = orta(noktalar);
@@ -5782,6 +5853,19 @@
             }
             panBas = null;
             if (parmaklar.size > 0) return;
+            const dx = e.clientX - basX;
+            const dy = e.clientY - basY;
+            if (olcek <= 1.02 && Math.abs(dx) > 42 && Math.abs(dx) > Math.abs(dy) && aktifUrunMedyalari && aktifUrunMedyalari.length > 1) {
+                clearTimeout(anlatimZaman);
+                medyaDegistir((aktifSahneMedyaIndex + (dx < 0 ? 1 : -1) + aktifUrunMedyalari.length) % aktifUrunMedyalari.length, true);
+                return;
+            }
+            const kutuOlcu = kutu.getBoundingClientRect();
+            const ortada = e.clientX > kutuOlcu.left + kutuOlcu.width * 0.28
+                && e.clientX < kutuOlcu.left + kutuOlcu.width * 0.72
+                && e.clientY > kutuOlcu.top + kutuOlcu.height * 0.22
+                && e.clientY < kutuOlcu.top + kutuOlcu.height * 0.78;
+            if (!ortada) return;
             const zaman = Date.now();
             if (zaman - sonDokunus < 300) {
                 sonDokunus = 0;

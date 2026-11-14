@@ -15,7 +15,7 @@ okunan_yorumlar_set = set()
 
 
 def konsol_ve_sunucu_test(platform, user, text):
-    """Yorumları ekrana basar, Ahmet Usta'ya ve Flask paneline iletir."""
+    """Yorumları ekrana basar, mezat sunucusuna ve Flask paneline iletir."""
     print(f"💬 [{platform}] {user}: {text}")
     temiz_kucuk = text.lower()
 
@@ -31,7 +31,7 @@ def konsol_ve_sunucu_test(platform, user, text):
             pass
         return
 
-    # 2. Ahmet Usta Spiker ve Pey Motoru (Port 5005)
+    # 2. Mezat sunucusu ve pey motoru (Port 5005)
     try:
         requests.post(
             "http://127.0.0.1:5005/canli_yorum",

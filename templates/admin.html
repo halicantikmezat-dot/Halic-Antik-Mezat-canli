@@ -481,19 +481,19 @@
         <!-- ÇOKLU PLATFORM CANLI SOHBET & BAS-KONUŞ GELEN KUTUSU -->
         <div class="card" style="display: flex; flex-direction: column;">
             <div class="card-title">
-                <span>🔴 Canlı Akış & Ahmet Usta Cevapları</span>
+                <span>🔴 Canlı Akış ve Mezat Sunucusu</span>
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <button id="btnBasKonus" class="btn-bas-konus" title="Ahmet Usta'ya sesle soru sorun / talimat verin">
-                        🎙️ Bas-Konuş (AI Dinlesin)
+                    <button id="btnBasKonus" class="btn-bas-konus" title="Basılı tutulan ses izleyiciye gitmez, bırakınca gizli reji emri olur">
+                        🎙️ Bas-Konuş (Gizli Reji)
                     </button>
-                    <button type="button" id="btnPatronYayin" class="btn-bas-konus" title="Mikrofon sürekli açık kalsın">Patron Yayında (Sürekli Dinleme)</button>
+                    <button type="button" id="btnPatronYayin" class="btn-bas-konus" title="Patronun sesi yayına düşer, sunucu dinler">Patron Yayında (Sürekli Canlı Dinleme)</button>
                     <button type="button" id="adminSesDugmesi" class="btn-bas-konus" title="Yönetici ekranında anons sesi">Ses kapalı</button>
                     <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
                 </div>
             </div>
             <div id="adminCanliSohbetAlani" style="flex: 1; min-height: 180px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; background: #0f141c; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px;">
                 <div style="color: #64748b; font-size: 12px; text-align: center; margin-top: 75px;" id="sohbetBosUyarisi">
-                    Yayındaki tüm yorumlar, sorular ve Ahmet Usta'nın yanıtları burada akar...
+                    Yayındaki yorumlar, sorular ve mezat sunucusunun yanıtları burada akar...
                 </div>
             </div>
         </div>
@@ -1260,13 +1260,14 @@
         adminUrunAra();
     }
 
-    // BAS-KONUŞ: moderatör mikrofonu canlı olarak izleyiciye gider
+    // Gizli reji bas-konuş izleyiciye gitmez. Patron yayını hem salona hem sunucuya gider.
     const btnBasKonus = document.getElementById('btnBasKonus');
     let moderatorAkis = null;
     let moderatorBasili = false;
     let moderatorSira = 0;
     let patronYayinda = false;
     let patronTaniyici = null;
+    let yayinKaydi = null;
     function moderatorMime() {
         const adaylar = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
         if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
@@ -1324,17 +1325,13 @@
                 const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
                 if (!base64Data) return;
                 const oda = (typeof seciliDukkan !== "undefined" && seciliDukkan) || "gumus";
-                socket.emit("admin_voice_broadcast", {
-                    audio: base64Data,
-                    room: oda
-                });
                 socket.emit("patron_ses_komut", {
                     audio: base64Data,
                     room: oda,
-                    mime: tur
+                    mime: tur,
+                    gizli: true
                 });
-                console.log("[PATRON MIC] Ses sunucuya gönderildi, boyut:", base64Data.length);
-                console.log("[ADMIN MIC] Ses sunucuya gönderildi, boyut:", base64Data.length);
+                console.log("[GİZLİ REJİ] Ses yalnız sunucuya gitti, boyut:", base64Data.length);
             };
             okuyucu.readAsDataURL(butun);
         };
@@ -1344,7 +1341,7 @@
 
     async function basKonusBaslat(e) {
         if (e) e.preventDefault();
-        if (moderatorBasili) return;
+        if (patronYayinda || moderatorBasili) return;
         moderatorBasili = true;
         try {
             moderatorAkis = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1356,7 +1353,7 @@
             moderatorDilimiBaslat();
             if (btnBasKonus) {
                 btnBasKonus.classList.add('kayit-aktif');
-                btnBasKonus.innerText = "🔴 Canlı... Bırakın!";
+                btnBasKonus.innerText = "🔴 Gizli reji... Bırakın!";
             }
         } catch (err) {
             moderatorBasili = false;
@@ -1377,7 +1374,7 @@
         }
         if (btnBasKonus) {
             btnBasKonus.classList.remove('kayit-aktif');
-            btnBasKonus.innerText = "🎙️ Bas-Konuş (AI Dinlesin)";
+            btnBasKonus.innerText = "🎙️ Bas-Konuş (Gizli Reji)";
         }
     }
 
@@ -1394,7 +1391,7 @@
             if (!sonuc || !sonuc.isFinal) return;
             const metin = String((sonuc[0] && sonuc[0].transcript) || "").trim();
             if (metin.length < 2) return;
-            socket.emit("yonetici_duzeltmesi", { dukkan: seciliDukkan, metin: metin });
+            socket.emit("patron_yayin_metni", { dukkan: seciliDukkan, metin: metin });
         };
         patronTaniyici.onend = function () {
             if (!patronYayinda || !patronTaniyici) return;
@@ -1410,20 +1407,78 @@
         patronTaniyici = null;
     }
 
+    function yayinDilimiBaslat() {
+        if (!patronYayinda || !moderatorAkis || !window.MediaRecorder) return;
+        const mime = moderatorMime();
+        let rec;
+        try {
+            rec = mime ? new MediaRecorder(moderatorAkis, { mimeType: mime }) : new MediaRecorder(moderatorAkis);
+        } catch (e) {
+            rec = new MediaRecorder(moderatorAkis);
+        }
+        yayinKaydi = rec;
+        moderatorSira = 0;
+        rec.ondataavailable = function (ev) {
+            if (!patronYayinda || !ev.data || !ev.data.size) return;
+            blobBase64(ev.data).then(function (b64) {
+                if (!b64 || !patronYayinda) return;
+                moderatorSira += 1;
+                socket.emit("moderator_ses_parcasi", {
+                    dukkan: seciliDukkan,
+                    parca: b64,
+                    mime: rec.mimeType || mime || "audio/webm",
+                    seq: moderatorSira,
+                    sira: moderatorSira
+                });
+            });
+        };
+        rec.onstop = function () {
+            if (yayinKaydi === rec) yayinKaydi = null;
+        };
+        rec.start(400);
+    }
+
+    async function patronYayininiAc() {
+        if (moderatorBasili) basKonusBitir();
+        try {
+            moderatorAkis = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (!patronYayinda) {
+                moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
+                moderatorAkis = null;
+                return;
+            }
+            yayinDilimiBaslat();
+            patronTanimaBaslat();
+        } catch (err) {
+            patronYayinda = false;
+            alert("Mikrofon erişim izni verilmedi: " + err);
+        }
+    }
+
+    function patronYayininiKapat() {
+        patronTanimaDurdur();
+        if (yayinKaydi && yayinKaydi.state === "recording") {
+            try { yayinKaydi.stop(); } catch (e) {}
+        }
+        yayinKaydi = null;
+        if (moderatorAkis) {
+            moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
+            moderatorAkis = null;
+        }
+    }
+
     function patronModuAcKapa() {
         patronYayinda = !patronYayinda;
         const btn = document.getElementById("btnPatronYayin");
         if (btn) {
-            btn.textContent = patronYayinda ? "Patron Yayında ●" : "Patron Yayında (Sürekli Dinleme)";
+            btn.textContent = patronYayinda ? "Patron Yayında ●" : "Patron Yayında (Sürekli Canlı Dinleme)";
             btn.style.background = patronYayinda ? "#881337" : "";
         }
         if (patronYayinda) {
-            if (!moderatorBasili) basKonusBaslat();
-            patronTanimaBaslat();
+            patronYayininiAc();
             return;
         }
-        patronTanimaDurdur();
-        basKonusBitir();
+        patronYayininiKapat();
     }
 
     if (btnBasKonus) {
@@ -1438,7 +1493,7 @@
     const btnPatronYayin = document.getElementById("btnPatronYayin");
     if (btnPatronYayin) btnPatronYayin.addEventListener("click", patronModuAcKapa);
 
-    // CANLI SOHBET VE AHMET USTA AKIŞI
+    // CANLI SOHBET VE MEZAT SUNUCUSU AKIŞI
     socket.on("yeni_canli_yorum", function(data) {
         const bosUyari = document.getElementById("sohbetBosUyarisi");
         if (bosUyari) bosUyari.remove();
@@ -1450,7 +1505,7 @@
         let platformAd = data.platform || "Web";
         let logoSvg = "💬";
 
-        if (platformAd === "Ahmet Usta AI") {
+        if (platformAd === "Mezat Sunucusu" || platformAd === "Canlı Sunucu") {
             platformRenk = "var(--accent-gold)";
             logoSvg = "🤖";
         } else if (platformAd.includes("TikTok")) {
@@ -1976,6 +2031,11 @@
         if (detay) detay.innerText = data.mesaj || 'Pazarlık Başarılı - Ürün Satıldı!';
         const pop = document.getElementById('pazarlikPopup');
         if (pop) pop.classList.add('acik');
+    });
+
+    socket.on('admin_satis_guncelle', function () {
+        veriCekAdmin();
+        if (typeof adminUrunAra === "function") adminUrunAra();
     });
 
     socket.on('sayac_bitti', function(data) {

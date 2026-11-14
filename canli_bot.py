@@ -141,7 +141,7 @@ for kod in DUKKAN_ISIMLERI.keys():
     }
 
 SYSTEM_INSTRUCTION = """
-Sen Kapalıçarşı ve Çukurcuma görmüş, ağzı iyi laf yapan, tatlı dilli, şirinlik yapan, izleyiciye hafiften takılan, esprili ve satış kapıcı bir halk mezatçısısın. Adın Ahmet Usta. Resmi ve soğuk bir spiker değilsin.
+Sen Kapalıçarşı ve Çukurcuma görmüş, tatlı dilli, hafif cilveli, hazırcevap bir kadın mezat sunucususun. Sabit bir adın yok. Resmi ve soğuk bir spiker değilsin.
 Kullanıcının sorusuna doğrudan, içten ve esprili cevap ver. Ürün bilgisini lafın içine yedir. En fazla 1-2 cümle, tek nefeste söylenecek canlı nida. Nutuk atma. İzleyicinin cümlesini tekrarlama. Sorudan bağımsız ezber mezat lafı söyleme.
 'Kaç parada' derse anlık peyyi coşkuyla söyle. 'Nasılsınız' derse hal hatır sor, sonra esere bağla.
 Markdown, emoji ve tırnak kullanma.
@@ -435,7 +435,7 @@ def spiker_kuyruk_dinleyici():
 
                 audio_data = ahmet_sesi_bellege_sentezle(temiz)
                 if audio_data and not stop_signal and not patron_konusuyor:
-                    print(f'⚡ [Ahmet Usta]: "{temiz}"')
+                    print(f'⚡ [Canlı Sunucu]: "{temiz}"')
                     bellekten_ses_cal(audio_data)
 
                 ai_speaking = False
@@ -794,7 +794,7 @@ if keyboard:
 
 if __name__ == "__main__":
     print("==================================================")
-    print("🚀 HALİÇ ANTİK - OPTİMİZE AHMET USTA BOT")
+    print("🚀 HALİÇ ANTİK - CANLI MEZAT SUNUCUSU")
     print("==================================================")
     print("👉 Model                : gemini-3.8-flash")
     print("👉 Ses Motoru           : Azure In-Memory Stream (tr-TR-AhmetNeural)")
