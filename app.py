@@ -80,7 +80,7 @@ def ek_guvenlik_ve_cors_ekle(response):
     return response
 
 # ==========================================
-# 10 DÜKKANIN KODLARI VE KURALLARI
+# 13 DÜKKANIN KODLARI VE KURALLARI
 # ==========================================
 DUKKANLAR = {
     "gumus": {"ad": "Gümüş", "sure": 60, "min_artis": 50.0},
@@ -93,6 +93,9 @@ DUKKANLAR = {
     "modelaraba": {"ad": "Model Oyuncak Arabalar", "sure": 45, "min_artis": 50.0},
     "karma": {"ad": "Karma & Toplu Satış", "sure": 45, "min_artis": 50.0},
     "diger": {"ad": "Diğer - Her Şey", "sure": 30, "min_artis": 25.0},
+    "porselen": {"ad": "Porselen / Seramik", "sure": 60, "min_artis": 50.0},
+    "bakir": {"ad": "Bakır / Pirinç / Madenler", "sure": 60, "min_artis": 50.0},
+    "elektronik": {"ad": "Elektrik / Elektronik", "sure": 45, "min_artis": 50.0},
 }
 
 # ==========================================
