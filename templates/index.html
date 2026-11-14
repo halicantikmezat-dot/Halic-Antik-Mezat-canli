@@ -2,8 +2,9 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Haliç Antik Mezat - Canlı Mezat</title>
+    <meta name="description" content="Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.">
     <meta property="og:title" content="Haliç Antik Mezat - Canlı Mezat">
     <meta property="og:description" content="Balat'ta canlı mezat. Eseri izleyin, pey verin veya hemen alın.">
     <meta property="og:image" content="/static/img/varsayilan_urun.png">
@@ -487,7 +488,7 @@
         }
         .zafer-kart.acik { display: block; animation: zaferPat 0.45s ease-out forwards; }
         @keyframes zaferPat { to { transform: translate(-50%, -50%) scale(1); } }
-        .zafer-kart h2 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; }
+        .zafer-kart h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; }
         .zafer-kart p { margin: 6px 0; font-weight: 800; font-size: 15px; line-height: 1.35; }
         .zafer-kart .zafer-fiyat { font-size: 18px; color: #7c2d12; }
         .zafer-muhur {
@@ -513,10 +514,10 @@
 
         .btn-disabled-sold {
             background: #1e293b !important;
-            color: #64748b !important;
+            color: #a3a3a3 !important;
             border-color: #334155 !important;
             cursor: not-allowed !important;
-            opacity: 0.6;
+            opacity: 1;
             pointer-events: none !important;
         }
 
@@ -1339,7 +1340,7 @@
         .guncel-pey-kutu .price-val, .guncel-pey-kutu #aktif_kazanan { font-size: 15px !important; font-weight: 700 !important; line-height: 1 !important; color: #ffffff !important; text-shadow: none !important; }
         #modalKurallar.modal { z-index: 4000; }
         #modalKurallar .modal-content { max-width: 560px; background: #07090e !important; }
-        #modalKurallar h2 { color: #fef08a; font-size: 17px; margin: 14px 0 6px; }
+        #modalKurallar h3 { color: #fef08a; font-size: 17px; margin: 14px 0 6px; }
         #modalKurallar p { font-size: 16px !important; color: #ffffff !important; line-height: 1.5; }
         .akis-mesaj-satiri input.akis-mesaj {
             position: absolute; inset: 0; width: 100% !important; height: 100%; margin: 0 !important;
@@ -1349,7 +1350,7 @@
         }
         .hibrit-kapsul.yazi-modu input.akis-mesaj { color: #ffffff; caret-color: #fef08a; }
         .akis-mesaj-satiri input.akis-mesaj::placeholder { color: transparent; }
-        .hibrit-kapsul.yazi-modu input.akis-mesaj::placeholder { color: rgba(255,255,255,0.55); }
+        .hibrit-kapsul.yazi-modu input.akis-mesaj::placeholder { color: rgba(255,255,255,0.75); }
         .akis-mikrofon {
             width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.45);
             background: rgba(0,0,0,0.7); color: #fff; cursor: pointer; flex: 0 0 40px;
@@ -1404,7 +1405,7 @@
 </div>
 <div id="zaferKonfeti"></div>
 <div id="zaferKart" class="zafer-kart">
-    <h2>🎯 TAM 12'DEN VURDUNUZ!</h2>
+    <h1>🎯 TAM 12'DEN VURDUNUZ!</h1>
     <p id="zaferAlt">Tebrikler!</p>
     <p class="zafer-fiyat" id="zaferFiyat"></p>
 </div>
@@ -1461,7 +1462,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
-        <select id="currencySelector" onchange="paraBirimiDegistir()" style="margin-top:8px;">
+        <select id="currencySelector" aria-label="Para birimi seçimi" onchange="paraBirimiDegistir()" style="margin-top:8px;">
             <option value="TRY">₺ TL</option>
             <option value="USD">$ USD</option>
             <option value="EUR">€ EUR</option>
@@ -1578,7 +1579,7 @@
             </div>
             
             <div style="display:flex; gap:3px; margin-bottom:3px;">
-                <select id="kategoriFiltre" onchange="katalogSunucudanAra()" style="width:100%; margin:0;">
+                <select id="kategoriFiltre" aria-label="Kategori filtresi" onchange="katalogSunucudanAra()" style="width:100%; margin:0;">
                     <option value="">Tüm Kategoriler</option>
                 </select>
             </div>
@@ -1614,7 +1615,7 @@
         <div class="chat-drawer" id="elestiriPaneli">
             <div style="font-size:12px; font-weight:800; color:var(--accent-gold); margin-bottom:6px;">Eleştiri Odası</div>
             <p style="font-size:11px; color:#cbd5e1; margin-bottom:6px;">Ürün, satıcı veya mezat hakkındaki yazılar canlı sohbete düşmez. Yalnızca yönetici arşivine gider.</p>
-            <select id="elestiri_hedef">
+            <select id="elestiri_hedef" aria-label="Geri bildirim hedefi">
                 <option value="Ürün">Ürün</option>
                 <option value="Satıcı">Satıcı</option>
                 <option value="Mezat">Mezat</option>
@@ -1708,17 +1709,17 @@
 <div id="modalKurallar" class="modal">
     <div class="modal-content" style="text-align: left;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:8px; margin-bottom:8px;">
-            <h3 style="color:#fef08a; margin:0; font-size:18px; font-weight:800;">Haliç Antik — Kurallar ve Sözleşme</h3>
+            <h2 style="color:#fef08a; margin:0; font-size:18px; font-weight:800;">Haliç Antik — Kurallar ve Sözleşme</h2>
             <button type="button" onclick="kurallariKapat()" aria-label="Kurallar penceresini kapat" style="background:#881337; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
         </div>
         <div style="max-height:62vh; overflow-y:auto; padding-right:6px;">
-            <h2>1. İşletmeci Sorumluluğu</h2>
+            <h3>1. İşletmeci Sorumluluğu</h3>
             <p>Haliç Antik Mezat, 6563 sayılı kanun kapsamında Aracı Hizmet Sağlayıcıdır; ürünlerin mülkiyeti satıcıya/tedarikçiye aittir.</p>
-            <h2>2. Tedarikçi Taahhüdü ve Cezai Şart</h2>
+            <h3>2. Tedarikçi Taahhüdü ve Cezai Şart</h3>
             <p>Yayına ürün veren tedarikçi, ürünü mezat bitimine kadar rezerve etmekle yükümlüdür. Ürünü haricen satan, teslim etmeyen, kırık veya fotoğraftakinden farklı gönderen tedarikçiye son satış tutarı üzerinden %20 cezai şart fatura edilir ve sistemden süresiz men edilir.</p>
-            <h2>3. Kargo ve Hasar Güvencesi</h2>
+            <h3>3. Kargo ve Hasar Güvencesi</h3>
             <p>Tedarikçi ürünü kargo taşımacılığına uygun darbe emici korumayla paketlemek zorundadır. Alıcı, kargo teslim anında paketi açarken kesintisiz video kaydı almakla yükümlüdür; videosuz hasar bildirimleri işleme alınmaz.</p>
-            <h2>4. Güvenli Havuz Sistemi</h2>
+            <h3>4. Güvenli Havuz Sistemi</h3>
             <p>Alıcının ödediği bedel, ürün teslim edilip alıcı onay verene kadar Haliç Antik Mezat havuz hesabında güvende tutulur.</p>
         </div>
         <a href="/kurallar" style="display:block; color:#fef08a; font-size:15px; margin:8px 0;">Kuralları tam sayfada aç</a>
@@ -1815,7 +1816,7 @@
 <div id="feedbackModal" class="modal">
     <div class="modal-content" style="text-align: left;">
         <h3 style="color: var(--accent-gold); margin-bottom: 5px; font-size:11px; font-weight:800;">📩 Yöneticiye Görüş / Şikayet İlet</h3>
-        <select id="fb_tur">
+        <select id="fb_tur" aria-label="Bildirim türü">
             <option value="Görüş / Tavsiye">Görüş / Tavsiye</option>
             <option value="Pey İtirazı">Pey İtirazı</option>
             <option value="Teknik Sorun">Teknik Sorun</option>

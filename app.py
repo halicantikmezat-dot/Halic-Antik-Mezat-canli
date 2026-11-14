@@ -2588,6 +2588,17 @@ def favicon():
     return ("", 204)
 
 
+@app.route("/robots.txt")
+def robots_txt():
+    icerik = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /admin\n"
+        "Sitemap: https://halicantikcanli.com/sitemap.xml\n"
+    )
+    return Response(icerik, mimetype="text/plain")
+
+
 @app.route("/dukkan/<string:dukkan_adi>")
 def dukkan_sayfasi(dukkan_adi):
     dukkan = dukkan_dogrula(dukkan_adi)
