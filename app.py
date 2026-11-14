@@ -2488,13 +2488,7 @@ _sessizlik_sira = 0
 
 
 def _sessizlik_anonsu(dukkan):
-    global _sessizlik_sira
-    eser, pey = _sahne_eser_ozeti(dukkan)
-    metin = _SESSIZLIK_KALIPLARI[_sessizlik_sira % len(_SESSIZLIK_KALIPLARI)].format(
-        eser=eser, pey=pey,
-    )
-    _sessizlik_sira += 1
-    ahmet_usta_anons_yap(dukkan, metin, tur="anons")
+    return
 
 
 def _sessizlik_dongusu():
@@ -8830,7 +8824,6 @@ except Exception:
 
 veritabani_onarimini_bir_kez_baslat()
 socketio.sleep(0.05)
-socketio.start_background_task(_sessizlik_dongusu)
 
 # ==========================================
 # SUNUCUYU BAŞLATMA

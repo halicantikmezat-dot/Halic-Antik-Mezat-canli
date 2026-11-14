@@ -954,8 +954,8 @@
             display: flex !important;
             margin: 0;
             border-radius: 0;
-            padding: 6px 34px;
-            gap: 6px;
+            padding: 2px 6px;
+            gap: 4px;
             background: rgba(8, 12, 19, 0.82);
             z-index: 1;
             overflow-x: auto;
@@ -964,7 +964,7 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
             -ms-overflow-style: none;
-            min-height: 44px;
+            min-height: 26px;
             min-width: 0;
             flex: 1 1 auto;
             width: auto;
@@ -975,27 +975,8 @@
             .shop-nav-bar { cursor: grab; }
             .shop-nav-bar.kaydiriliyor { cursor: grabbing; user-select: none; }
         }
-        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
-        .dukkan-serit-ok {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            min-height: 44px;
-            flex-shrink: 0;
-            width: 28px;
-            border: 1px solid #d4af37;
-            background: rgba(28, 22, 6, 0.94);
-            color: #f6e27a;
-            font-size: 22px;
-            font-weight: 900;
-            line-height: 1;
-            cursor: pointer;
-            z-index: 80;
-            padding: 0;
-        }
-        .dukkan-serit-ok.sol { left: 0; }
-        .dukkan-serit-ok.sag { right: 0; }
-        .shop-nav-btn { font-size: 12px; padding: 7px 10px; border-radius: 999px; }
+        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 26px; flex-shrink: 0; width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
+        .shop-nav-btn { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
         .sade-header { align-items: center; gap: 4px; background: rgba(8, 12, 19, 0.55); }
         .btn-menu, .btn-muzik-ust, .live-badge {
             border: 1px solid rgba(255,255,255,0.28);
@@ -1411,8 +1392,35 @@
             width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.45);
             background: rgba(0,0,0,0.7); color: #fff; cursor: pointer; flex: 0 0 40px;
             font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
         }
-        .akis-mikrofon span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; line-height: 1; }
+        .akis-mikrofon span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; line-height: 1; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        #ozelSohbetModal.modal {
+            background: transparent;
+            pointer-events: none;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 0 8px calc(78px + env(safe-area-inset-bottom));
+        }
+        #ozelSohbetModal .modal-content {
+            pointer-events: auto;
+            background: rgba(15, 21, 30, 0.65);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            width: min(100%, 420px);
+            max-width: 420px;
+            max-height: 42vh;
+            margin: 0;
+            text-align: left;
+        }
+        #ozelSohbetBaslikSatiri {
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #ozelSohbetModal #ozelSohbetAkis,
+        #ozelSohbetModal #ozelSohbetListe { background: transparent; }
         .ses-sutunu .btn-dinle-kisa { width: 32px; height: 32px; flex: 0 0 32px; font-size: 16px; }
         .hibrit-kapsul .guncel-pey-kutu {
             position: static !important; left: auto !important; right: auto !important; bottom: auto !important;
@@ -1502,9 +1510,7 @@
         </div>
     </div>
     <div class="dukkan-serit-kutu" id="dukkanMenu">
-        <button type="button" class="dukkan-serit-ok sol" id="dukkanSeritSol" aria-label="Dükkanları sola kaydır">&lt;</button>
         <nav class="shop-nav-bar" id="shopNavBar" aria-label="Dükkanlar"></nav>
-        <button type="button" class="dukkan-serit-ok sag" id="dukkanSeritSag" aria-label="Dükkanları sağa kaydır">&gt;</button>
     </div>
     <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
     <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
@@ -1720,7 +1726,7 @@
             </div>
             <div class="ses-sutunu">
                 <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
-                <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button"><span>🎤</span></button>
+                <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button" oncontextmenu="return false;"><span>🎤</span></button>
             </div>
         </div>
         <div id="izleyiciKayanMetin" hidden></div>
@@ -1752,15 +1758,15 @@
 </div>
 
 <!-- MODALLAR -->
-<div id="ozelSohbetModal" class="modal" onclick="if(event.target===this) ozelSohbetKapat()">
-    <div class="modal-content" style="text-align:left; max-width:420px;" onclick="event.stopPropagation()">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+<div id="ozelSohbetModal" class="modal">
+    <div class="modal-content" id="ozelSohbetKutu">
+        <div id="ozelSohbetBaslikSatiri" style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
             <h3 id="ozelSohbetBaslik" style="color:#fef08a; font-size:16px; margin:0;">💬 Sahnedeki izleyiciler</h3>
             <button type="button" onclick="ozelSohbetKapat()" aria-label="Sohbeti kapat" style="background:#7f1d1d; color:#fff; border:none; border-radius:8px; padding:6px 10px; font-weight:800; cursor:pointer;">✕ Kapat</button>
         </div>
-        <div id="ozelSohbetListe" style="max-height:46vh; overflow-y:auto;"></div>
+        <div id="ozelSohbetListe" style="max-height:28vh; overflow-y:auto;"></div>
         <div id="ozelSohbetPencere" hidden>
-            <div id="ozelSohbetAkis" style="max-height:42vh; overflow-y:auto; background:#080c13; border:1px solid #334155; border-radius:8px; padding:8px; margin-bottom:8px;"></div>
+            <div id="ozelSohbetAkis" style="max-height:24vh; overflow-y:auto; background:transparent; border:1px solid rgba(51,65,85,0.7); border-radius:8px; padding:8px; margin-bottom:8px;"></div>
             <div style="display:flex; gap:6px;">
                 <input type="text" id="ozelSohbetGirdi" placeholder="Özel mesaj" style="margin:0; flex:1;" onkeydown="if(event.key==='Enter'){ ozelSohbetGonder(); }">
                 <button type="button" class="btn-bid btn-action-green" style="width:auto; padding:8px 12px;" onclick="ozelSohbetGonder()">Gönder</button>
@@ -2435,13 +2441,7 @@
     }
 
     function slaytSunucuEsligi() {
-        if (sahneKapali || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
-        const simdi = Date.now();
-        if (simdi - slaytEslikAni < 15000) return;
-        slaytEslikAni = simdi;
-        const cumle = SLAYT_ESLIKLERI[slaytEslikSira % SLAYT_ESLIKLERI.length];
-        slaytEslikSira += 1;
-        sunucuTtsCal(cumle);
+        return;
     }
 
     function sahneAnlatiminiBaslat() {
@@ -2947,6 +2947,10 @@
     }
 
     if (btnIzleyiciSes) {
+        btnIzleyiciSes.addEventListener('contextmenu', function (e) {
+            e.preventDefault();
+            return false;
+        });
         btnIzleyiciSes.addEventListener('pointerdown', function (e) {
             e.preventDefault();
             try { btnIzleyiciSes.setPointerCapture(e.pointerId); } catch (err) {}
@@ -5738,6 +5742,43 @@
         menuGeriGetir();
     }
 
+    (function ozelSohbetSurukleKur() {
+        const tutamac = document.getElementById('ozelSohbetBaslikSatiri');
+        const kutu = document.getElementById('ozelSohbetKutu');
+        if (!tutamac || !kutu) return;
+        let surukleniyor = false;
+        let farkX = 0;
+        let farkY = 0;
+        tutamac.addEventListener('pointerdown', function (e) {
+            if (e.target.closest('button')) return;
+            surukleniyor = true;
+            const olcu = kutu.getBoundingClientRect();
+            farkX = e.clientX - olcu.left;
+            farkY = e.clientY - olcu.top;
+            kutu.style.position = 'fixed';
+            kutu.style.left = olcu.left + 'px';
+            kutu.style.top = olcu.top + 'px';
+            kutu.style.bottom = 'auto';
+            kutu.style.right = 'auto';
+            kutu.style.margin = '0';
+            kutu.style.transform = 'none';
+            try { tutamac.setPointerCapture(e.pointerId); } catch (err) {}
+            e.preventDefault();
+        });
+        tutamac.addEventListener('pointermove', function (e) {
+            if (!surukleniyor) return;
+            const genislik = kutu.offsetWidth;
+            const yukseklik = kutu.offsetHeight;
+            const x = Math.max(0, Math.min(window.innerWidth - genislik, e.clientX - farkX));
+            const y = Math.max(0, Math.min(window.innerHeight - yukseklik, e.clientY - farkY));
+            kutu.style.left = x + 'px';
+            kutu.style.top = y + 'px';
+        });
+        function suruklemeyiBitir() { surukleniyor = false; }
+        tutamac.addEventListener('pointerup', suruklemeyiBitir);
+        tutamac.addEventListener('pointercancel', suruklemeyiBitir);
+    })();
+
     function ozelSohbetDavet(sid) {
         socket.emit('ozel_sohbet_davet', { hedef_sid: sid });
     }
@@ -6589,15 +6630,6 @@
     (function dukkanSeridiKaydir() {
         var serit = document.getElementById("shopNavBar");
         if (!serit) return;
-        var adim = 160;
-        var sol = document.getElementById("dukkanSeritSol");
-        var sag = document.getElementById("dukkanSeritSag");
-        if (sol) sol.addEventListener("click", function () {
-            serit.scrollBy({ left: -adim, behavior: "smooth" });
-        });
-        if (sag) sag.addEventListener("click", function () {
-            serit.scrollBy({ left: adim, behavior: "smooth" });
-        });
         serit.addEventListener("wheel", function (e) {
             var yatay = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
             if (!yatay) return;
