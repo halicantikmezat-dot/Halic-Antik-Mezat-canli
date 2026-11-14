@@ -524,7 +524,7 @@ def _otonom_disi_satisi_bosalt(dukkan, oda):
     _sahneyi_bosa_al(dukkan, "satildi", sesi_kes=False)
 
 
-def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
+def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
     """Tanıtım kesilmeden kuyruğa girer. Zorunlu kesinti satış ve yeni sahne içindir."""
     global _ses_nesil
     temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
@@ -555,7 +555,7 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
                 if oge.get("tur") not in ("anons", "pey")
             ]
         kayit["ogeler"].append({
-            "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu,
+            "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu, "gizli": bool(gizli),
         })
         baslat = not kayit.get("calisiyor")
         if baslat:
@@ -598,7 +598,8 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             "tur": oge["tur"],
             "zorunlu": bool(oge.get("zorunlu")),
             "audio_url": adres,
-            "metin": oge["metin"],
+            "metin": "" if oge.get("gizli") else oge["metin"],
+            "gizli": bool(oge.get("gizli")),
             "motor": kaynak,
         })
         print(f"[SES] anons yayında, {len(oge['metin'])} karakter, motor {kaynak}", flush=True)
@@ -8064,7 +8065,57 @@ def _patron_yayinina_cevap(dukkan, metin):
     ahmet_usta_anons_yap(dukkan, yanit, tur="anons")
 
 
-def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True):
+def _reji_admin_yaz(sid, mesaj):
+    paket = {"mesaj": mesaj, "zaman": time.strftime("%H:%M:%S")}
+    hedef = sid or "admin_room"
+    socketio.emit("reji_geri_bildirim", paket, room=hedef)
+
+
+def _reji_emrini_uygula(dukkan, metin, sid=None):
+    """Gizli reji: GPT yanıtı sohbete yazılmaz, ElevenLabs ile seslenir."""
+    with app.app_context():
+        try:
+            komut = _patron_papaganini_sil(metin).strip()
+            komut = re.sub(r"^\[PATRON GİZLİ EMRİ\]\s*", "", komut, flags=re.IGNORECASE).strip()
+            if len(komut) < 2:
+                _reji_admin_yaz(
+                    sid,
+                    "[Gizli Reji] Kayıt sessiz veya anlaşılamadı. Mikrofonu basılı tutup net konuşun, sonra bırakın.",
+                )
+                return
+            if _patron_emir_turu(komut) == "sayac":
+                _sayaci_tetikle(dukkan)
+            _urun, ad, aciklama, acilis, guncel = _sahne_urun_bilgisi(dukkan)
+            aktif_urun = {
+                "baslik": ad or "Antika Eser",
+                "aciklama": aciklama or "",
+                "baslangic_fiyati": acilis,
+                "anlik_fiyat": guncel,
+            }
+            try:
+                yanit = _openai_metin_iste(
+                    _patron_sistemi(aktif_urun, "[PATRON GİZLİ EMRİ] " + komut),
+                    "Gizli reji emrini uygula. İzleyiciye söyleyeceğin anonsu yaz. Emri, patronu ve kulaklığı ağzına alma.",
+                    max_tokens=220,
+                    zaman_asimi=8,
+                )
+            except Exception as hata:
+                print(f"[GIZLI REJI] {hata}")
+                yanit = ""
+            yanit = _patron_papaganini_sil(yanit)
+            if not yanit or yanit.casefold() == komut.casefold():
+                _reji_admin_yaz(
+                    sid,
+                    "[Gizli Reji] Komut duyuldu ama sunucu yanıtı üretilemedi. Biraz daha net tekrar deneyin.",
+                )
+                return
+            ahmet_ses_akisi(dukkan, yanit, tur="anons", kesinti=False, gizli=True)
+            _reji_admin_yaz(sid, "[Gizli Reji Komutu İletildi] " + komut)
+        finally:
+            db.session.remove()
+
+
+def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True, sid=None):
     import tempfile
     yol = ""
     try:
@@ -8072,24 +8123,48 @@ def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True):
             ham = base64.b64decode(ses_b64)
         except Exception:
             print("[PATRON SESİ] Ses anlaşılmadı, kayıt bozuk.")
+            if gizli:
+                _reji_admin_yaz(sid, "[Gizli Reji] Ses kaydı bozuk. Tekrar basılı tutup konuşun.")
             return
-        if len(ham) < 80:
+        if len(ham) < 400:
             print("[PATRON SESİ] Ses anlaşılmadı, kayıt çok kısa.")
+            if gizli:
+                _reji_admin_yaz(
+                    sid,
+                    "[Gizli Reji] Kayıt çok kısa veya sessiz. Mikrofonu basılı tutup net konuşun, sonra bırakın.",
+                )
+            return
+        if gizli and _openai_ses_istemcisi() is None:
+            _reji_admin_yaz(sid, "[Gizli Reji] Ses motoru anahtarı yok, kayıt metne çevrilemedi.")
             return
         fd, yol = tempfile.mkstemp(prefix="temp_patron_voice_", suffix="." + uzanti)
         os.close(fd)
         with open(yol, "wb") as dosya:
             dosya.write(ham)
-        metin = _patron_papaganini_sil(_patron_sesini_metne_cevir(yol))
+        try:
+            metin = _patron_papaganini_sil(_patron_sesini_metne_cevir(yol))
+        except Exception as hata:
+            print(f"[PATRON SESİ] Transkripsiyon hatası: {hata}")
+            if gizli:
+                _reji_admin_yaz(sid, "[Gizli Reji] Ses metne çevrilemedi. Tekrar deneyin.")
+            return
         if len(metin) < 2:
             print("[PATRON SESİ] Ses anlaşılmadı, metin boş.")
+            if gizli:
+                _reji_admin_yaz(
+                    sid,
+                    "[Gizli Reji] Kayıt sessiz veya anlaşılamadı. Biraz daha uzun ve net konuşup tekrar deneyin.",
+                )
             return
         print(f"[PATRON SESİ METNE ÇEVRİLDİ]: '{metin}'")
-        if gizli and not metin.startswith("[PATRON GİZLİ EMRİ]"):
-            metin = "[PATRON GİZLİ EMRİ] " + metin
+        if gizli:
+            _reji_emrini_uygula(dukkan, metin, sid)
+            return
         _patron_emrini_uygula(dukkan, metin)
     except Exception as hata:
         print(f"[PATRON SESİ] Ses anlaşılmadı: {hata}")
+        if gizli:
+            _reji_admin_yaz(sid, "[Gizli Reji] Ses işlenemedi. Tekrar deneyin.")
     finally:
         if yol and os.path.exists(yol):
             try:
@@ -8098,23 +8173,43 @@ def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True):
                 pass
 
 
+def _reji_ses_komutunu_al(veri):
+    if not session.get("is_admin"):
+        print("[PATRON SESİ] Yönetici oturumu yok, ses işlenmedi.")
+        _reji_admin_yaz(request.sid, "[Gizli Reji] Yönetici oturumu yok. Panele yeniden girin.")
+        return
+    veri = veri or {}
+    ses = str(veri.get("audio") or "")
+    if not ses or len(ses) > 8000000:
+        print("[PATRON SESİ] Ses anlaşılmadı, paket boş.")
+        _reji_admin_yaz(
+            request.sid,
+            "[Gizli Reji] Kayıt boş veya çok kısa. Mikrofonu basılı tutup net konuşun, sonra bırakın.",
+        )
+        return
+    mime = str(veri.get("mime") or "audio/webm")
+    uzanti = "wav" if "wav" in mime else "webm"
+    dukkan = dukkan_dogrula(veri.get("room") or veri.get("dukkan") or "gumus")
+    gizli = bool(veri.get("gizli", True))
+    socketio.start_background_task(
+        _patron_sesini_isle, dukkan, ses, uzanti, gizli, request.sid,
+    )
+
+
+@socketio.on("reji_ses_komutu")
+def reji_ses_komutu(veri):
+    """Gizli reji bas-konuş: Whisper, sonra gizli GPT anonsu."""
+    try:
+        _reji_ses_komutunu_al(veri)
+    finally:
+        db.session.remove()
+
+
 @socketio.on("patron_ses_komut")
 def patron_ses_komut(veri):
     """Bas-konuş kaydını Türkçe metne çevirir ve emri sahneye uygular."""
     try:
-        if not session.get("is_admin"):
-            print("[PATRON SESİ] Yönetici oturumu yok, ses işlenmedi.")
-            return
-        veri = veri or {}
-        ses = str(veri.get("audio") or "")
-        if not ses or len(ses) > 8000000:
-            print("[PATRON SESİ] Ses anlaşılmadı, paket boş.")
-            return
-        mime = str(veri.get("mime") or "audio/webm")
-        uzanti = "wav" if "wav" in mime else "webm"
-        dukkan = dukkan_dogrula(veri.get("room") or veri.get("dukkan") or "gumus")
-        gizli = bool(veri.get("gizli", True))
-        socketio.start_background_task(_patron_sesini_isle, dukkan, ses, uzanti, gizli)
+        _reji_ses_komutunu_al(veri)
     finally:
         db.session.remove()
 

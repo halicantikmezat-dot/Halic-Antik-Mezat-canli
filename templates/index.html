@@ -939,7 +939,17 @@
             padding: 12px 4px;
             width: 33.33%;
         }
-        .shop-nav-bar, .user-bar-compact, .yuzer-sohbet, #tanitimSeridi, .cekmece-tutamac, .corner-top-left, .corner-top-right, .currency-select { display: none !important; }
+        .user-bar-compact, .yuzer-sohbet, #tanitimSeridi, .cekmece-tutamac, .corner-top-left, .corner-top-right, .currency-select { display: none !important; }
+        .shop-nav-bar {
+            display: flex !important;
+            margin: 0;
+            border-radius: 0;
+            padding: 6px;
+            gap: 6px;
+            background: rgba(8, 12, 19, 0.82);
+            z-index: 40;
+        }
+        .shop-nav-btn { font-size: 12px; padding: 7px 10px; border-radius: 999px; }
         .sade-header { align-items: center; gap: 8px; background: rgba(8, 12, 19, 0.55); }
         .btn-menu, .btn-muzik-ust, .live-badge {
             border: 1px solid rgba(255,255,255,0.28);
@@ -1430,8 +1440,6 @@
         </div>
         <div class="header-actions">
             <button type="button" class="btn-yeni-ust" onclick="yeniSlaytiAc()" aria-label="Yeni eklenen ürünler">🔥 Yeni</button>
-            <button type="button" class="btn-yeni-ust" onclick="nasilKullanilirAc()" style="background:#d4af37; color:#111;" aria-label="Nasıl kullanılır">🎙️ Nasıl Kullanılır?</button>
-            <button type="button" class="btn-yeni-ust" onclick="ozelSohbetAc()" aria-label="Özel sohbet">💬 Sohbet</button>
             <button type="button" id="btnCanliMuzikToggle" onclick="muzikMenusuAcKapa(event)" class="btn-muzik-ust" aria-label="Müzik menüsü" aria-expanded="false" aria-controls="muzikMenu">🎵 Müzik</button>
             <div id="muzikMenu" class="muzik-menu" hidden>
                 <div class="muzik-menu-baslik">Müzik İstasyonları</div>
@@ -1447,6 +1455,7 @@
             <button type="button" class="live-badge" onclick="izleyiciListesiniAc()" aria-label="Canlı izleyici listesi">🟢 <span id="onlineCount">0</span> Canlı</button>
         </div>
     </div>
+    <nav class="shop-nav-bar" id="shopNavBar" aria-label="Dükkanlar"></nav>
     <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
     <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
         <button type="button" class="menu-oge" onclick="genelMenuAcKapa()" aria-label="Menüyü kapat">✕ Kapat</button>
@@ -1461,6 +1470,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(openGecmisModal)">Geçmiş</button>
         <button type="button" class="menu-oge" onclick="menuIslem(openRegisterModal)">Profil</button>
         <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
+        <button type="button" class="menu-oge" onclick="menuIslem(ozelSohbetAc)">💬 Sohbet (İzleyici Odası)</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
         <select id="currencySelector" aria-label="Para birimi seçimi" onchange="paraBirimiDegistir()" style="margin-top:8px;">
@@ -2155,9 +2165,11 @@
             dukkanlar = data.dukkanlar || {};
 
             const navBar = document.getElementById('menuDukkanlar');
-            if (navBar) {
-                navBar.innerHTML = '';
-                for (const [kod, d] of Object.entries(dukkanlar)) {
+            const serit = document.getElementById('shopNavBar');
+            if (navBar) navBar.innerHTML = '';
+            if (serit) serit.innerHTML = '';
+            for (const [kod, d] of Object.entries(dukkanlar)) {
+                if (navBar) {
                     const btn = document.createElement('a');
                     const siniflar = [];
                     if (kod === aktifDukkan) siniflar.push('active');
@@ -2166,6 +2178,13 @@
                     btn.href = `/?dukkan=${encodeURIComponent(kod)}`;
                     btn.innerHTML = escapeHtml(d.ad) + (d.canli ? ' <span class="canli-rozet"><span class="canli-nokta"></span> CANLI</span>' : '');
                     navBar.appendChild(btn);
+                }
+                if (serit) {
+                    const gecis = document.createElement('a');
+                    gecis.className = 'shop-nav-btn' + (kod === aktifDukkan ? ' active' : '');
+                    gecis.href = `/?dukkan=${encodeURIComponent(kod)}`;
+                    gecis.innerHTML = escapeHtml(d.ad) + (d.canli ? ' <span class="canli-nokta"></span>' : '');
+                    serit.appendChild(gecis);
                 }
             }
 
@@ -3883,8 +3902,6 @@
     function urunIncele(urunId) {
         const secilen = sonBulunanUrunler.find(u => String(u.id) === String(urunId));
         if (!secilen) return;
-        menuGeriDon = false;
-        katalogCekmecesiniKapat();
         const eskiId = aktifSahneUrunId;
         const eskiSatildi = sahnedekiUrunSatildiMi;
         const eskiHemen = aktifHemenAlStatik;
@@ -3912,10 +3929,6 @@
                 sahneyeBas(tam);
             })
             .catch(function () {});
-        const menu = document.getElementById('genelMenu');
-        const perde = document.getElementById('menuPerde');
-        if (menu) menu.classList.remove('acik');
-        if (perde) perde.hidden = true;
     }
 
     function incelemeKapat() {
@@ -5643,7 +5656,6 @@
 
     function ozelSohbetAc() {
         playUserClickSound();
-        menuGeriDon = false;
         ozelSohbetOda = '';
         const pencere = document.getElementById('ozelSohbetPencere');
         const liste = document.getElementById('ozelSohbetListe');
@@ -5663,6 +5675,7 @@
         playUserClickSound();
         const kutu = document.getElementById('ozelSohbetModal');
         if (kutu) kutu.style.display = 'none';
+        menuGeriGetir();
     }
 
     function ozelSohbetDavet(sid) {

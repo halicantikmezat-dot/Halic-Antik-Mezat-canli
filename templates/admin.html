@@ -1325,6 +1325,29 @@
         });
     }
 
+    function rejiLogYaz(mesaj) {
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        const yazi = String(mesaj || "[Gizli Reji Komutu İletildi]");
+        if (!sohbetKutusu) {
+            console.log(yazi);
+            return;
+        }
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+        const satir = document.createElement("div");
+        satir.style.cssText = "background:#18202c; border-left:3px solid #d4af37; padding:6px 10px; border-radius:4px; font-size:11px;";
+        const baslik = document.createElement("div");
+        baslik.style.cssText = "font-weight:bold; color:#d4af37; margin-bottom:2px;";
+        baslik.textContent = "🎙️ [Gizli Reji]";
+        const govde = document.createElement("div");
+        govde.style.cssText = "color:#f8fafc; font-size:12px; word-break:break-word;";
+        govde.textContent = yazi;
+        satir.appendChild(baslik);
+        satir.appendChild(govde);
+        sohbetKutusu.appendChild(satir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    }
+
     function moderatorDilimiBaslat() {
         if (!moderatorBasili || !moderatorAkis || !window.MediaRecorder) return;
         audioChunks = [];
@@ -1349,8 +1372,8 @@
                 moderatorAkis = null;
             }
             mediaRecorder = null;
-            if (!butun.size) {
-                console.log("[ADMIN MIC] Ses paketi boş");
+            if (!butun.size || butun.size < 400) {
+                rejiLogYaz("[Gizli Reji] Kayıt çok kısa veya sessiz. Mikrofonu basılı tutup net konuşun, sonra bırakın.");
                 return;
             }
             const okuyucu = new FileReader();
@@ -1360,7 +1383,11 @@
                 const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
                 if (!base64Data) return;
                 const oda = (typeof seciliDukkan !== "undefined" && seciliDukkan) || "gumus";
-                socket.emit("patron_ses_komut", {
+                if (!base64Data || base64Data.length < 80) {
+                    rejiLogYaz("[Gizli Reji] Kayıt boş veya çok kısa. Mikrofonu basılı tutup net konuşun, sonra bırakın.");
+                    return;
+                }
+                socket.emit("reji_ses_komutu", {
                     audio: base64Data,
                     room: oda,
                     mime: tur,
@@ -1566,6 +1593,10 @@
 
         sohbetKutusu.appendChild(yeniSatir);
         sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+    });
+
+    socket.on("reji_geri_bildirim", function (data) {
+        rejiLogYaz((data && data.mesaj) || "[Gizli Reji Komutu İletildi]");
     });
 
     // YASAL VE HUKUKİ SÖZLEŞME İŞLEMLERİ
