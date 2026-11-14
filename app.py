@@ -302,6 +302,34 @@ def _openai_mp3(istemci, model, ses, soylenen):
     return b""
 
 
+def _edge_tts_mp3(soylenen):
+    """OpenAI susunca tarayıcıya düşmeden Emel sesiyle MP3 üretir."""
+    metin = str(soylenen or "").strip()
+    if not metin:
+        return b""
+
+    def _uret():
+        import asyncio
+        import edge_tts
+
+        async def _oku():
+            iletisim = edge_tts.Communicate(metin, "tr-TR-EmelNeural")
+            parcalar = []
+            async for parca in iletisim.stream():
+                if parca.get("type") == "audio":
+                    parcalar.append(parca["data"])
+            return b"".join(parcalar)
+
+        return asyncio.run(_oku())
+
+    try:
+        import gevent
+        return gevent.get_hub().threadpool.spawn(_uret).get(timeout=25) or b""
+    except Exception as hata:
+        print(f"[SES HATA] Edge TTS: {hata}", flush=True)
+        return b""
+
+
 def _ses_modeli():
     model = getattr(Config, "OPENAI_TTS_MODEL", "") or "tts-1-hd"
     if model not in ("tts-1", "tts-1-hd"):
@@ -450,21 +478,26 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
                 return
             oge = kayit["ogeler"].pop(0)
         istemci = _openai_ses_istemcisi()
-        if istemci is None:
-            print("[SES] OPENAI_API_KEY yok; anons sessiz geçildi.")
-            continue
         model, ses = _ses_modeli()
-        try:
-            veri = _openai_mp3(istemci, model, ses, oge["metin"])
-        except Exception as hata:
-            print(f"[SES HATA] OpenAI akış: {hata}")
-            veri = None
+        kaynak = "openai"
+        veri = None
+        if istemci is None:
+            print("[SES] OPENAI_API_KEY yok; Edge TTS deneniyor.", flush=True)
+        else:
+            try:
+                veri = _openai_mp3(istemci, model, ses, oge["metin"])
+            except Exception as hata:
+                print(f"[SES HATA] OpenAI akış: {hata}", flush=True)
+                veri = None
+        if not veri:
+            veri = _edge_tts_mp3(oge["metin"])
+            kaynak = "edge"
         with _ses_kuyruk_kilit:
             kayit = _ses_kuyruk.get(dukkan)
             if not kayit or kayit.get("isleyici") != benim:
                 return
             if not veri:
-                print("[SES] OpenAI yanıt vermedi; güncel anonsa geçiliyor.")
+                print("[SES] OpenAI yanıt vermedi; güncel anonsa geçiliyor.", flush=True)
                 continue
         adres = _mp3_kaydet(veri, oge["nesil"])
         socketio.emit("ses_oynat", {
@@ -475,7 +508,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             "audio_url": adres,
             "metin": oge["metin"],
         })
-        print(f"[SES] anons yayında, {len(oge['metin'])} karakter, model {model}, ses {ses}")
+        print(f"[SES] anons yayında, {len(oge['metin'])} karakter, model {model}, ses {ses}, kaynak {kaynak}", flush=True)
 
 
 def _satis_disi_sadelestir(metin, tur):
@@ -7595,23 +7628,23 @@ def rehber_ses_iste(veri):
 
     def uret():
         istemci = _openai_ses_istemcisi()
+        mp3 = None
         if istemci is None:
-            socketio.emit("rehber_ses", {
-                "adim": adim,
-                "mesaj": "Ses motoru hazır değil. Adım metni ekranda duruyor.",
-            }, room=sid)
-            return
-        model, ses = _ses_modeli()
-        try:
-            mp3 = _openai_mp3(istemci, model, ses, metin)
-        except Exception as hata:
-            print(f"[REHBER SES] {hata}")
+            print("[REHBER SES] OpenAI istemcisi yok; Edge TTS deneniyor.", flush=True)
+        else:
+            model, ses = _ses_modeli()
+            try:
+                mp3 = _openai_mp3(istemci, model, ses, metin)
+            except Exception as hata:
+                print(f"[REHBER SES] {hata}", flush=True)
+                mp3 = None
+        if not mp3:
+            mp3 = _edge_tts_mp3(metin)
+        if not mp3:
             socketio.emit("rehber_ses", {
                 "adim": adim,
                 "mesaj": "Ses üretilemedi. Adım metni ekranda duruyor.",
             }, room=sid)
-            return
-        if not mp3:
             return
         adres = _mp3_kaydet(mp3, adim)
         socketio.emit("rehber_ses", {
