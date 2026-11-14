@@ -144,11 +144,19 @@
             display: flex;
             gap: 4px;
             overflow-x: auto;
+            overflow-y: hidden;
+            flex-wrap: nowrap;
             white-space: nowrap;
             border-bottom: 1px solid var(--card-border);
             margin-top: 3px;
             border-radius: 4px;
             -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            min-width: 0;
+            flex: 1 1 0;
+            width: 0;
+            max-width: 100%;
         }
         .shop-nav-bar::-webkit-scrollbar { display: none; }
         .shop-nav-btn {
@@ -951,13 +959,23 @@
             background: rgba(8, 12, 19, 0.82);
             z-index: 40;
             overflow-x: auto;
+            overflow-y: hidden;
             flex-wrap: nowrap;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            -ms-overflow-style: none;
             min-height: 44px;
-            flex-shrink: 0;
+            min-width: 0;
+            flex: 1 1 0;
+            width: 0;
+            max-width: 100%;
+            overscroll-behavior-x: contain;
         }
-        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; }
+        @media (hover: hover) and (pointer: fine) {
+            .shop-nav-bar { cursor: grab; }
+            .shop-nav-bar.kaydiriliyor { cursor: grabbing; user-select: none; }
+        }
+        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
         .dukkan-serit-ok {
             position: absolute;
             top: 0;
@@ -6585,6 +6603,53 @@
             serit.scrollLeft += yatay;
             e.preventDefault();
         }, { passive: false });
+
+        var surukleniyor = false;
+        var kaydi = false;
+        var tiklamaEngel = false;
+        var basX = 0;
+        var basScroll = 0;
+        serit.addEventListener("dragstart", function (e) { e.preventDefault(); });
+        serit.addEventListener("pointerdown", function (e) {
+            if (e.pointerType === "touch" || e.button !== 0) return;
+            surukleniyor = true;
+            kaydi = false;
+            basX = e.clientX;
+            basScroll = serit.scrollLeft;
+            if (serit.setPointerCapture) serit.setPointerCapture(e.pointerId);
+        });
+        serit.addEventListener("pointermove", function (e) {
+            if (!surukleniyor || e.pointerType === "touch") return;
+            var dx = e.clientX - basX;
+            if (Math.abs(dx) > 6) {
+                kaydi = true;
+                tiklamaEngel = true;
+                serit.classList.add("kaydiriliyor");
+            }
+            serit.scrollLeft = basScroll - dx;
+        });
+        function suruklemeyiBitir(e) {
+            if (!surukleniyor) return;
+            surukleniyor = false;
+            serit.classList.remove("kaydiriliyor");
+            if (e && serit.releasePointerCapture) {
+                try { serit.releasePointerCapture(e.pointerId); } catch (err) {}
+            }
+            if (!kaydi) tiklamaEngel = false;
+        }
+        serit.addEventListener("pointerup", suruklemeyiBitir);
+        serit.addEventListener("pointercancel", function (e) {
+            suruklemeyiBitir(e);
+            tiklamaEngel = false;
+            kaydi = false;
+        });
+        serit.addEventListener("click", function (e) {
+            if (!tiklamaEngel) return;
+            tiklamaEngel = false;
+            kaydi = false;
+            e.preventDefault();
+            e.stopPropagation();
+        }, true);
     })();
 
     (function ilkSahneyiBas() {
