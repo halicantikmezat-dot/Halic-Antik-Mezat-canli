@@ -2350,37 +2350,38 @@
     });
 
     let tanitimSlaytZamanlayici = null;
+    let tanitimBaslatZamanlayici = null;
     let tanitimSlaytAdim = 0;
     const kenBurnsKoseler = ['kb-orta', 'kb-sag-ust', 'kb-sol-alt', 'kb-sag-alt'];
 
     function tanitimKaresiniGoster() {
         if (!tanitimModuAktif) return;
-        const liste = (aktifUrunMedyalari || []).filter(function (m) { return m && m.tip !== 'hls'; });
         const kutu = document.getElementById('medyaKapsayici');
         if (!kutu) return;
         kutu.classList.add('tanitim-zoom');
-        if (liste.length) {
-            medyaGoster(liste[tanitimSlaytAdim % liste.length]);
-        }
         const gorsel = kutu.querySelector('img');
-        if (gorsel) {
-            gorsel.className = kenBurnsKoseler[tanitimSlaytAdim % kenBurnsKoseler.length];
-            gorsel.style.animation = 'none';
-            void gorsel.offsetWidth;
-            gorsel.style.animation = '';
-        }
-        tanitimSlaytAdim += 1;
+        if (!gorsel) return;
+        gorsel.className = kenBurnsKoseler[tanitimSlaytAdim % kenBurnsKoseler.length];
+        gorsel.style.animation = 'none';
+        void gorsel.offsetWidth;
+        gorsel.style.animation = '';
     }
 
     function kenBurnsBaslat() {
         zoomEfektiDurdur();
-        kenBurnsDurdur();
+        if (tanitimSlaytZamanlayici) {
+            clearInterval(tanitimSlaytZamanlayici);
+            tanitimSlaytZamanlayici = null;
+        }
         tanitimSlaytAdim = 0;
         tanitimKaresiniGoster();
-        tanitimSlaytZamanlayici = setInterval(tanitimKaresiniGoster, 7000);
     }
 
     function kenBurnsDurdur() {
+        if (tanitimBaslatZamanlayici) {
+            clearTimeout(tanitimBaslatZamanlayici);
+            tanitimBaslatZamanlayici = null;
+        }
         if (tanitimSlaytZamanlayici) {
             clearInterval(tanitimSlaytZamanlayici);
             tanitimSlaytZamanlayici = null;
@@ -2422,7 +2423,11 @@
         if (data && data.dukkan === aktifDukkan) {
             tanitimModuAktif = true;
             sahnedekiUrunSatildiMi = false;
-            setTimeout(kenBurnsBaslat, 400);
+            if (tanitimBaslatZamanlayici) {
+                clearTimeout(tanitimBaslatZamanlayici);
+                tanitimBaslatZamanlayici = null;
+            }
+            tanitimBaslatZamanlayici = setTimeout(kenBurnsBaslat, 400);
             if (data.pazarlik) {
                 serbestArtis = true;
                 return;
@@ -3898,6 +3903,7 @@
             secilenArsivUrunId = null;
             const onizleme = document.getElementById('secilenUrunOnizleme');
             if (onizleme) onizleme.style.display = 'none';
+            if (typeof kenBurnsDurdur === "function") kenBurnsDurdur();
             sahneyiGuncelle(urun, urun.durum || "Bekliyor", urun.guncel_fiyat || urun.fiyat, urun.kazanan || "Yok");
         }
     });

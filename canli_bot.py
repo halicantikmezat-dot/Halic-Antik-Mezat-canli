@@ -108,6 +108,9 @@ DUKKAN_ISIMLERI = {
     "modelaraba": "Model Araba",
     "karma": "Karma Satış",
     "diger": "Serbest Mezat",
+    "porselen": "Porselen / Seramik",
+    "bakir": "Bakır / Pirinç / Madenler",
+    "elektronik": "Elektrik / Elektronik",
 }
 
 DUKKAN_TABAN_ARTIS = {
@@ -121,6 +124,9 @@ DUKKAN_TABAN_ARTIS = {
     "modelaraba": 50.0,
     "karma": 50.0,
     "diger": 25.0,
+    "porselen": 50.0,
+    "bakir": 50.0,
+    "elektronik": 50.0,
 }
 
 DUKKAN_HAFIZALARI = {}
