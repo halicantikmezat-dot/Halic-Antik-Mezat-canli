@@ -154,8 +154,8 @@
             scrollbar-width: none;
             -ms-overflow-style: none;
             min-width: 0;
-            flex: 1 1 0;
-            width: 0;
+            flex: 1 1 auto;
+            width: auto;
             max-width: 100%;
         }
         .shop-nav-bar::-webkit-scrollbar { display: none; }
@@ -954,10 +954,10 @@
             display: flex !important;
             margin: 0;
             border-radius: 0;
-            padding: 6px 22px;
+            padding: 6px 34px;
             gap: 6px;
             background: rgba(8, 12, 19, 0.82);
-            z-index: 40;
+            z-index: 1;
             overflow-x: auto;
             overflow-y: hidden;
             flex-wrap: nowrap;
@@ -966,8 +966,8 @@
             -ms-overflow-style: none;
             min-height: 44px;
             min-width: 0;
-            flex: 1 1 0;
-            width: 0;
+            flex: 1 1 auto;
+            width: auto;
             max-width: 100%;
             overscroll-behavior-x: contain;
         }
@@ -975,21 +975,22 @@
             .shop-nav-bar { cursor: grab; }
             .shop-nav-bar.kaydiriliyor { cursor: grabbing; user-select: none; }
         }
-        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; }
+        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; width: 100%; max-width: 100%; min-width: 0; overflow: visible; }
         .dukkan-serit-ok {
             position: absolute;
             top: 0;
             bottom: 0;
             min-height: 44px;
             flex-shrink: 0;
-            width: 20px;
-            border: none;
-            background: rgba(8, 12, 19, 0.78);
-            color: #fef08a;
-            font-size: 16px;
+            width: 28px;
+            border: 1px solid #d4af37;
+            background: rgba(28, 22, 6, 0.94);
+            color: #f6e27a;
+            font-size: 22px;
+            font-weight: 900;
             line-height: 1;
             cursor: pointer;
-            z-index: 2;
+            z-index: 80;
             padding: 0;
         }
         .dukkan-serit-ok.sol { left: 0; }
@@ -1501,9 +1502,9 @@
         </div>
     </div>
     <div class="dukkan-serit-kutu" id="dukkanMenu">
-        <button type="button" class="dukkan-serit-ok sol" id="dukkanSeritSol" aria-label="Dükkanları sola kaydır">‹</button>
+        <button type="button" class="dukkan-serit-ok sol" id="dukkanSeritSol" aria-label="Dükkanları sola kaydır">&lt;</button>
         <nav class="shop-nav-bar" id="shopNavBar" aria-label="Dükkanlar"></nav>
-        <button type="button" class="dukkan-serit-ok sag" id="dukkanSeritSag" aria-label="Dükkanları sağa kaydır">›</button>
+        <button type="button" class="dukkan-serit-ok sag" id="dukkanSeritSag" aria-label="Dükkanları sağa kaydır">&gt;</button>
     </div>
     <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
     <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
