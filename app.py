@@ -1359,6 +1359,7 @@ class Urun(db.Model):
     siparis_durumu = db.Column(db.String(30), default="Odeme_Bekliyor")
     kargo_takip_no = db.Column(db.String(100), nullable=True)
     kargo_firmasi = db.Column(db.String(50), default="Yurtiçi Kargo")
+    kargo_barkod_url = db.Column(db.Text, nullable=True, default="")
     silindi_mi = db.Column(db.Boolean, default=False, index=True)
     silinme_tarihi = db.Column(db.DateTime, nullable=True)
 
@@ -2474,6 +2475,7 @@ def veritabani_tablolari_onar():
                 ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
                 ("urun", "kargo_takip_no", "VARCHAR(100)"),
                 ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
+                ("urun", "kargo_barkod_url", "TEXT"),
                 ("urun", "silindi_mi", "BOOLEAN DEFAULT FALSE"),
                 ("urun", "silinme_tarihi", "TIMESTAMP"),
                 ("on_teklif", "dukkan_kodu", "VARCHAR(30) DEFAULT 'gumus'"),
@@ -2521,11 +2523,20 @@ def veritabani_tablolari_onar():
             for tablo, kolon, tip in kolonlar:
                 try:
                     db.session.execute(
-                        text(f"ALTER TABLE {tablo} ADD COLUMN {kolon} {tip};")
+                        text(
+                            f"ALTER TABLE {tablo} ADD COLUMN IF NOT EXISTS {kolon} {tip}"
+                        )
                     )
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
+                    try:
+                        db.session.execute(
+                            text(f"ALTER TABLE {tablo} ADD COLUMN {kolon} {tip}")
+                        )
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
             for genislet in (
                 "ALTER TABLE urun ALTER COLUMN video TYPE TEXT",
                 "ALTER TABLE urun ALTER COLUMN ses_dosyasi TYPE TEXT",
@@ -3002,6 +3013,9 @@ def durum_getir():
                 "urun_adi": u.urun_adi,
                 "musteri_adi": m_adi,
                 "fiyat": satiss_fiyati,
+                "kargo_firmasi": u.kargo_firmasi or "",
+                "kargo_takip_no": u.kargo_takip_no or "",
+                "kargo_barkod_url": getattr(u, "kargo_barkod_url", None) or "",
             })
             gruplanmis_dosyalar[grup_anahtari]["toplam_tutar"] += satiss_fiyati
 
@@ -5525,6 +5539,234 @@ def tek_urun_iptal_et():
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": str(e)}), 500
+
+
+_GELIVER_FIRMA_KODLARI = {
+    "yurtiçi kargo": "YURTICI_STANDART",
+    "yurtici kargo": "YURTICI_STANDART",
+    "yurtiçi": "YURTICI_STANDART",
+    "aras kargo": "ARAS_STANDART",
+    "aras": "ARAS_STANDART",
+    "mng kargo": "MNG_STANDART",
+    "mng": "MNG_STANDART",
+    "kolay gelsin": "KOLAYGELSIN_STANDART",
+    "hepsijet": "HEPSIJET_STANDART",
+    "ptt kargo": "PTT_STANDART",
+    "ptt": "PTT_STANDART",
+}
+
+
+def _geliver_metin(nesne, *adlar, derinlik=0):
+    if derinlik > 4 or not isinstance(nesne, dict):
+        return ""
+    for ad in adlar:
+        deger = nesne.get(ad)
+        if isinstance(deger, str) and deger.strip():
+            return deger.strip()
+    for anahtar in ("data", "shipment", "result"):
+        ic = nesne.get(anahtar)
+        if isinstance(ic, dict):
+            bulunan = _geliver_metin(ic, *adlar, derinlik=derinlik + 1)
+            if bulunan:
+                return bulunan
+    return ""
+
+
+def _geliver_teklif_id(yanit, firma_kodu):
+    kutular = [yanit]
+    if isinstance(yanit, dict):
+        for anahtar in ("data", "shipment"):
+            ic = yanit.get(anahtar)
+            if isinstance(ic, dict):
+                kutular.append(ic)
+    teklifler = []
+    en_ucuz = ""
+    for kutu in kutular:
+        if not isinstance(kutu, dict):
+            continue
+        offers = kutu.get("offers")
+        if isinstance(offers, list):
+            teklifler.extend(oge for oge in offers if isinstance(oge, dict))
+        elif isinstance(offers, dict):
+            liste = offers.get("list") or offers.get("offers") or []
+            if isinstance(liste, list):
+                teklifler.extend(oge for oge in liste if isinstance(oge, dict))
+            ucuz = offers.get("cheapest")
+            if isinstance(ucuz, dict) and ucuz.get("id"):
+                en_ucuz = str(ucuz.get("id"))
+    kok = (firma_kodu or "").split("_")[0]
+    for teklif in teklifler:
+        servis = str(
+            teklif.get("providerServiceCode") or teklif.get("providerCode") or ""
+        ).upper()
+        if kok and kok in servis and teklif.get("id"):
+            return str(teklif.get("id"))
+    if en_ucuz:
+        return en_ucuz
+    if teklifler and teklifler[0].get("id"):
+        return str(teklifler[0].get("id"))
+    return ""
+
+
+def _geliver_gonderi_olustur(urun, firma):
+    token = (os.environ.get("GELIVER_API_TOKEN") or "").strip()
+    if not token:
+        return None, "Geliver anahtarı tanımlı değil."
+    gonderen = (os.environ.get("GELIVER_SENDER_ADDRESS_ID") or "").strip()
+    if not gonderen:
+        return None, (
+            "Geliver gönderen adresi eksik. GELIVER_SENDER_ADDRESS_ID tanımlayın "
+            "veya takip numarasını elle girin."
+        )
+    alici = None
+    if urun.kazanan_id:
+        alici = db.session.get(Kullanici, urun.kazanan_id)
+    ad = (alici.ad_soyad if alici and alici.ad_soyad else urun.kazanan_adi) or "Alıcı"
+    telefon = "".join(ch for ch in str((alici.telefon if alici else "") or "") if ch.isdigit())
+    if telefon.startswith("0") and len(telefon) == 11:
+        telefon = "+90" + telefon[1:]
+    elif telefon.startswith("90") and len(telefon) == 12:
+        telefon = "+" + telefon
+    elif len(telefon) == 10:
+        telefon = "+90" + telefon
+    if not telefon:
+        return None, "Alıcının telefonu kayıtlı değil. Takip numarasını elle girin."
+    adres = (alici.adres if alici and alici.adres else "") or "Adres belirtilmedi"
+    email = (alici.email if alici and alici.email else "") or "alici@halicantik.com"
+    firma_kodu = _GELIVER_FIRMA_KODLARI.get(
+        (firma or "").strip().lower(), "YURTICI_STANDART"
+    )
+    basliklar = {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+    }
+    govde = {
+        "senderAddressID": gonderen,
+        "recipientAddress": {
+            "name": ad[:80],
+            "email": email[:120],
+            "phone": telefon,
+            "address1": adres[:240],
+            "countryCode": "TR",
+            "cityName": "İstanbul",
+            "cityCode": "34",
+            "districtName": "Merkez",
+        },
+        "length": "10",
+        "width": "10",
+        "height": "10",
+        "distanceUnit": "cm",
+        "weight": "1",
+        "massUnit": "kg",
+        "providerServiceCode": firma_kodu,
+        "items": [{
+            "title": (urun.urun_adi or "Mezat ürünü")[:120],
+            "quantity": 1,
+        }],
+        "order": {
+            "orderNumber": "LOT-%s" % (urun.lot_no or urun.id),
+            "sourceIdentifier": "https://halicantik.com",
+            "totalAmount": str(int(float(urun.guncel_fiyat or urun.acilis_fiyati or 0))),
+            "totalAmountCurrency": "TRY",
+        },
+    }
+    try:
+        yanit = requests.post(
+            "https://api.geliver.io/api/v1/shipments",
+            json=govde,
+            headers=basliklar,
+            timeout=25,
+        )
+        try:
+            paket = yanit.json()
+        except ValueError:
+            paket = {}
+        if yanit.status_code >= 400:
+            mesaj = _geliver_metin(paket, "message", "error", "mesaj") or (
+                "Geliver gönderi oluşturamadı (HTTP %s)." % yanit.status_code
+            )
+            return None, mesaj
+        takip = _geliver_metin(paket, "trackingNumber", "trackingNo")
+        etiket = _geliver_metin(paket, "labelURL", "labelUrl", "responsiveLabelURL")
+        if takip or etiket:
+            return {"takip_no": takip, "barkod_url": etiket}, ""
+        teklif_id = _geliver_teklif_id(paket, firma_kodu)
+        if not teklif_id:
+            return None, "Geliver teklif döndürmedi. Takip numarasını elle girebilirsiniz."
+        kabul = requests.post(
+            "https://api.geliver.io/api/v1/transactions",
+            json={"offerID": teklif_id},
+            headers=basliklar,
+            timeout=25,
+        )
+        try:
+            sonuc = kabul.json()
+        except ValueError:
+            sonuc = {}
+        if kabul.status_code >= 400:
+            mesaj = _geliver_metin(sonuc, "message", "error", "mesaj") or (
+                "Geliver etiketi kesilemedi (HTTP %s)." % kabul.status_code
+            )
+            return None, mesaj
+        takip = _geliver_metin(sonuc, "trackingNumber", "trackingNo")
+        etiket = _geliver_metin(sonuc, "labelURL", "labelUrl", "responsiveLabelURL")
+        if not takip and not etiket:
+            return None, "Geliver takip numarası döndürmedi. Takip numarasını elle girebilirsiniz."
+        return {"takip_no": takip, "barkod_url": etiket}, ""
+    except requests.RequestException as hata:
+        return None, "Geliver bağlantısı kurulamadı: %s" % hata
+
+
+@app.route("/admin/kargo-olustur", methods=["POST"])
+@admin_required
+def admin_kargo_olustur():
+    veri = request.get_json(silent=True) or {}
+    try:
+        urun_id = int(veri.get("urun_id") or 0)
+    except (TypeError, ValueError):
+        urun_id = 0
+    if not urun_id:
+        return jsonify({"success": False, "mesaj": "Ürün seçilmedi."}), 400
+    urun = db.session.get(Urun, urun_id)
+    if not urun or urun.silindi_mi:
+        return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
+    firma = (veri.get("kargo_firmasi") or "Yurtiçi Kargo").strip()[:50] or "Yurtiçi Kargo"
+    takip = (veri.get("takip_no") or veri.get("kargo_takip_no") or "").strip()[:100]
+    token = (os.environ.get("GELIVER_API_TOKEN") or "").strip()
+    elle_girildi = bool(takip)
+    barkod = (getattr(urun, "kargo_barkod_url", None) or "").strip()
+    if token and not takip:
+        gelen, hata = _geliver_gonderi_olustur(urun, firma)
+        if hata or not gelen:
+            return jsonify({
+                "success": False,
+                "mesaj": hata or "Geliver gönderisi oluşturulamadı.",
+            }), 502
+        takip = (gelen.get("takip_no") or "")[:100]
+        if gelen.get("barkod_url"):
+            barkod = gelen.get("barkod_url")
+    elif not takip and not barkod:
+        return jsonify({
+            "success": False,
+            "mesaj": "Takip numarası girin. Geliver anahtarı tanımlıysa alanı boş bırakabilirsiniz.",
+        }), 400
+    try:
+        urun.kargo_firmasi = firma
+        urun.kargo_takip_no = takip or urun.kargo_takip_no
+        if hasattr(urun, "kargo_barkod_url"):
+            urun.kargo_barkod_url = barkod
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": "Kargo bilgisi kaydedilemedi."}), 500
+    return jsonify({
+        "success": True,
+        "mesaj": "Kargo kaydedildi." if elle_girildi or not token else "Kargo oluşturuldu.",
+        "urun_id": urun.id,
+        "kargo_firmasi": urun.kargo_firmasi or "",
+        "takip_no": urun.kargo_takip_no or "",
+        "kargo_barkod_url": getattr(urun, "kargo_barkod_url", None) or "",
+    })
 
 
 @app.route("/musteri-dosya-sil", methods=["POST"])

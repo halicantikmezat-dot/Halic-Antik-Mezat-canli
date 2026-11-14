@@ -182,6 +182,18 @@
             transition: all 0.2s;
         }
         .btn-chip-sil:hover { background: #dc2626; color: #fff; }
+        .btn-chip-kargo {
+            background: #14532d;
+            color: #bbf7d0;
+            border: 1px solid #166534;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-chip-kargo:hover { background: #166534; color: #fff; }
 
         .modal {
             display: none;
@@ -895,6 +907,31 @@
             <input type="password" id="txtYeniSifre" placeholder="Yeni şifreniz (En az 6 karakter)">
             <button onclick="sifreKaydet()" class="btn btn-yellow" style="width:100%; margin-top:5px;">Şifreyi Güncelle</button>
         </div>
+    </div>
+</div>
+
+<!-- KARGO MODAL -->
+<div id="kargoModal" class="modal">
+    <div class="modal-content">
+        <h3 style="color: var(--accent-gold); margin-bottom: 8px; font-size: 16px;">🚚 Kargo</h3>
+        <input type="hidden" id="kargoUrunId">
+        <div id="kargoUrunOzet" style="font-size:12px; color:#94a3b8; margin-bottom:10px;"></div>
+        <label style="font-size:12px; font-weight:bold;">Kargo Firması</label>
+        <select id="kargoFirmasi" style="font-weight:bold;">
+            <option value="Yurtiçi Kargo">Yurtiçi Kargo</option>
+            <option value="Aras Kargo">Aras Kargo</option>
+            <option value="MNG Kargo">MNG Kargo</option>
+            <option value="Kolay Gelsin">Kolay Gelsin</option>
+            <option value="HepsiJET">HepsiJET</option>
+            <option value="PTT Kargo">PTT Kargo</option>
+        </select>
+        <label style="font-size:12px; font-weight:bold;">Takip Kodu</label>
+        <input type="text" id="kargoTakipNo" placeholder="İsteğe bağlı">
+        <div style="font-size:11px; color:#94a3b8; margin:4px 0 10px;">Geliver API bağlıysa boş bırakın, otomatik barkod kesilir.</div>
+        <button type="button" class="btn btn-green" style="width:100%;" onclick="kargoKaydet()">Kargoyu Oluştur / Kaydet</button>
+        <a id="kargoBarkodLink" href="#" target="_blank" rel="noopener" class="btn btn-blue" style="display:none; width:100%; margin-top:8px; text-decoration:none; text-align:center;">Barkod / Etiket Aç</a>
+        <div id="kargoDurum" style="font-size:12px; margin-top:8px; color:#d6c089;"></div>
+        <button type="button" class="btn btn-red" style="width:100%; margin-top:8px;" onclick="modalKapat('kargoModal')">Kapat</button>
     </div>
 </div>
 
@@ -2238,6 +2275,7 @@
                 let tablo = document.getElementById('musteriDosyalariTablo');
                 tablo.innerHTML = "";
                 let genelCiro = 0;
+                kargoUrunleri = {};
 
                 if(data.gruplanmis_dosyalar.length === 0) {
                     tablo.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Bu dükkanda henüz satılan ürün yok.</td></tr>';
@@ -2246,10 +2284,23 @@
                         genelCiro += parseFloat(dosya.toplam_tutar || 0);
                         let urunlerHtml = '<div class="urun-chip-container">';
                         dosya.urunler.forEach(u => {
+                            kargoUrunleri[String(u.urun_id)] = {
+                                lot: u.lot,
+                                ad: u.urun_adi || "",
+                                firma: u.kargo_firmasi || "Yurtiçi Kargo",
+                                takip: u.kargo_takip_no || "",
+                                barkod: u.kargo_barkod_url || ""
+                            };
+                            const takipNotu = u.kargo_takip_no
+                                ? `<small style="display:block; color:#94a3b8;">Kargo: ${u.kargo_firmasi || ""} · ${u.kargo_takip_no}</small>`
+                                : "";
                             urunlerHtml += `
                                 <div class="urun-chip">
-                                    <span><b>Lot #${u.lot}</b> - ${u.urun_adi} <span style="color:#34d399; font-weight:bold;">(${u.fiyat} TL)</span></span>
-                                    <button class="btn-chip-sil" onclick="tekilUrunuIptalEt(${u.urun_id}, '${dosya.musteri_adi}', '${encodeURIComponent(u.urun_adi)}')">✕ İptal Et</button>
+                                    <span><b>Lot #${u.lot}</b> - ${u.urun_adi} <span style="color:#34d399; font-weight:bold;">(${u.fiyat} TL)</span>${takipNotu}</span>
+                                    <span style="display:flex; gap:4px;">
+                                        <button type="button" class="btn-chip-kargo" onclick="kargoModalAc(${u.urun_id})">🚚 Kargo</button>
+                                        <button class="btn-chip-sil" onclick="tekilUrunuIptalEt(${u.urun_id}, '${dosya.musteri_adi}', '${encodeURIComponent(u.urun_adi)}')">✕ İptal Et</button>
+                                    </span>
                                 </div>
                             `;
                         });
@@ -2283,6 +2334,64 @@
         })
         .catch(() => {})
         .finally(() => { yukleniyorMu = false; });
+    }
+
+    let kargoUrunleri = {};
+
+    function kargoModalAc(urunId) {
+        playClickSound();
+        const kayit = kargoUrunleri[String(urunId)] || {};
+        document.getElementById('kargoUrunId').value = urunId;
+        document.getElementById('kargoUrunOzet').textContent = "Lot #" + (kayit.lot || "") + " " + (kayit.ad || "");
+        const firma = document.getElementById('kargoFirmasi');
+        const bilinen = Array.from(firma.options).some(opt => opt.value === kayit.firma);
+        firma.value = bilinen ? kayit.firma : "Yurtiçi Kargo";
+        document.getElementById('kargoTakipNo').value = kayit.takip || "";
+        const link = document.getElementById('kargoBarkodLink');
+        if (kayit.barkod) {
+            link.href = kayit.barkod;
+            link.style.display = "block";
+        } else {
+            link.style.display = "none";
+            link.href = "#";
+        }
+        document.getElementById('kargoDurum').textContent = "";
+        document.getElementById('kargoModal').style.display = "flex";
+    }
+
+    function kargoKaydet() {
+        playClickSound();
+        const urunId = document.getElementById('kargoUrunId').value;
+        const durum = document.getElementById('kargoDurum');
+        durum.textContent = "Kaydediliyor...";
+        fetch('/admin/kargo-olustur', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                urun_id: urunId,
+                kargo_firmasi: document.getElementById('kargoFirmasi').value,
+                takip_no: document.getElementById('kargoTakipNo').value
+            })
+        }).then(r => r.json()).then(data => {
+            if (!data.success) {
+                durum.textContent = data.mesaj || "Kargo kaydı yapılamadı.";
+                return;
+            }
+            durum.textContent = data.mesaj || "Kargo kaydedildi.";
+            const kayit = kargoUrunleri[String(urunId)] || {};
+            kayit.firma = data.kargo_firmasi || kayit.firma;
+            kayit.takip = data.takip_no || "";
+            kayit.barkod = data.kargo_barkod_url || "";
+            kargoUrunleri[String(urunId)] = kayit;
+            const link = document.getElementById('kargoBarkodLink');
+            if (kayit.barkod) {
+                link.href = kayit.barkod;
+                link.style.display = "block";
+            }
+            veriCekAdmin();
+        }).catch(() => {
+            durum.textContent = "Kargo isteği tamamlanamadı.";
+        });
     }
 
     function tekilUrunuIptalEt(urunId, musteriAdi, urunAdiEncoded) {
