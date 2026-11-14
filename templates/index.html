@@ -2884,10 +2884,8 @@
         setTimeout(dinle, 800);
     }
 
-    socket.on("ses_yedek_konus", function (data) {
-        if (!data || data.dukkan !== aktifDukkan || !data.metin) return;
-        if (data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
-        turkceSesle(data.metin);
+    socket.on("ses_yedek_konus", function () {
+        return;
     });
 
     socket.on("ses_kes", function (data) {
@@ -2965,6 +2963,7 @@
             anonsSiradaki();
             return;
         }
+        calanSesiDurdur();
         anonsMesgul = true;
         const audio = new Audio(kaynak);
         currentAudio = audio;
@@ -2986,14 +2985,28 @@
         if (oynat && typeof oynat.catch === "function") {
             oynat.catch(function (e) {
                 console.log("Ses oynatma engeli:", e);
-                if (data && data.metin) turkceSesle(data.metin);
                 if (typeof audio.onended === "function") audio.onended();
             });
         }
     }
 
+    function bekleyenAnonslariSadelestir(data) {
+        if (data && (data.tur === "satis" || data.tur === "zafer")) return;
+        anonsKuyrugu = anonsKuyrugu.filter(function (oge) {
+            return oge && (oge.tur === "satis" || oge.tur === "zafer");
+        });
+    }
+
     function anonsuCal(data) {
-        if (data && (data.tur === "anons" || data.tur === "pey") && !data.zorunlu) {
+        if (!data) return;
+        if (data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
+        const imza = String(data.nesil || data.audio_url || "");
+        const simdi = Date.now();
+        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
+        sonSesImza = imza;
+        sonSesAni = simdi;
+        sesBaglaminiAc();
+        if ((data.tur === "anons" || data.tur === "pey") && !data.zorunlu) {
             anonsKuyrugu = anonsKuyrugu.filter(function (oge) {
                 return !oge || (oge.tur !== "anons" && oge.tur !== "pey");
             });
@@ -3002,24 +3015,25 @@
                 anonsMesgul = false;
             }
         }
-        if (data && data.zorunlu) {
+        if (data.zorunlu) {
             anonsKuyrugu = [];
             calanSesiDurdur();
             anonsMesgul = false;
         } else if (window.moderatorKonusuyor) {
+            bekleyenAnonslariSadelestir(data);
             anonsKuyrugu.push(data);
             return;
         }
-        if (data && data.nesil && Number(data.nesil) < Number(sesNesil || 0)) return;
-        sesBaglaminiAc();
-        const imza = String((data && (data.nesil || data.audio_url || "")) || "");
-        const simdi = Date.now();
-        if (imza && imza === sonSesImza && simdi - sonSesAni < 2000) return;
-        sonSesImza = imza;
-        sonSesAni = simdi;
-        if (anonsMesgul && !(data && data.zorunlu)) {
-            anonsKuyrugu.push(data);
-            return;
+        if (anonsMesgul && !data.zorunlu) {
+            bekleyenAnonslariSadelestir(data);
+            const tebrik = currentAudio && (currentAudio.dataset.tur === "satis" || currentAudio.dataset.tur === "zafer");
+            if (!tebrik) {
+                calanSesiDurdur();
+                anonsMesgul = false;
+            } else {
+                anonsKuyrugu.push(data);
+                return;
+            }
         }
         anonsBaslat(data);
     }

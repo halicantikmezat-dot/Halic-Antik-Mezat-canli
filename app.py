@@ -278,18 +278,28 @@ _ses_kuyruk_kilit = threading.Lock()
 
 def _openai_mp3(istemci, model, ses, soylenen):
     """Okunan metin şablondur. tts-1-hd yönerge alanını sesli okuduğu için talimat girdiye yazılmaz."""
-    hizli = istemci.with_options(timeout=4.0)
+    hizli = istemci.with_options(timeout=5.0)
     ortak = {"model": model, "voice": ses, "input": soylenen, "response_format": "mp3"}
     if model not in ("tts-1", "tts-1-hd"):
         ortak["instructions"] = 'language="tr". ' + TURKCE_DIREKTIF
-    try:
-        yanit = hizli.audio.speech.create(**ortak, extra_body={"language": "tr"})
-    except Exception:
-        ortak.pop("instructions", None)
-        yanit = hizli.audio.speech.create(**ortak)
-    if hasattr(yanit, "read"):
-        return yanit.read()
-    return bytes(getattr(yanit, "content", b"") or b"")
+    son_hata = None
+    for deneme in range(2):
+        govde = dict(ortak)
+        if deneme:
+            govde.pop("instructions", None)
+        try:
+            yanit = hizli.audio.speech.create(**govde, extra_body={"language": "tr"})
+            if hasattr(yanit, "read"):
+                veri = yanit.read()
+            else:
+                veri = bytes(getattr(yanit, "content", b"") or b"")
+            if veri:
+                return veri
+        except Exception as hata:
+            son_hata = hata
+    if son_hata:
+        raise son_hata
+    return b""
 
 
 def _ses_modeli():
@@ -429,16 +439,6 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False):
         socketio.start_background_task(_ses_kuyrugunu_bosalt, dukkan, benim)
 
 
-def _tarayiciya_turkce_yedek(dukkan, oge):
-    """Sunucu sesi yoksa tarayıcı yalnızca tr-TR yedeği okur."""
-    socketio.emit("ses_yedek_konus", {
-        "dukkan": dukkan,
-        "nesil": oge.get("nesil"),
-        "tur": oge.get("tur") or "anons",
-        "metin": oge.get("metin") or "",
-    }, room=dukkan)
-
-
 def _ses_kuyrugunu_bosalt(dukkan, benim):
     while True:
         with _ses_kuyruk_kilit:
@@ -451,8 +451,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             oge = kayit["ogeler"].pop(0)
         istemci = _openai_ses_istemcisi()
         if istemci is None:
-            print("[SES] OPENAI_API_KEY yok; Türkçe yedek anons devrede.")
-            _tarayiciya_turkce_yedek(dukkan, oge)
+            print("[SES] OPENAI_API_KEY yok; anons sessiz geçildi.")
             continue
         model, ses = _ses_modeli()
         try:
@@ -465,7 +464,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             if not kayit or kayit.get("isleyici") != benim:
                 return
             if not veri:
-                _tarayiciya_turkce_yedek(dukkan, oge)
+                print("[SES] OpenAI yanıt vermedi; güncel anonsa geçiliyor.")
                 continue
         adres = _mp3_kaydet(veri, oge["nesil"])
         socketio.emit("ses_oynat", {
