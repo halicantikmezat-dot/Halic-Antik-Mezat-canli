@@ -3069,6 +3069,7 @@ def durum_getir():
         })
     except Exception as e:
         db.session.rollback()
+        print("DURUM_GETIR_HATA:", e)
         return jsonify({"error": str(e), "urunler": []}), 200
     finally:
         db.session.remove()
@@ -7812,12 +7813,34 @@ def izleyici_sayisini_yayinla():
         )
 
 
+_veritabani_onarim_kilit = threading.Lock()
+_veritabani_onarim_basladi = False
+
+
+def veritabani_onarimini_bir_kez_baslat():
+    """Modül yüklenince bir kez. Hata uygulamayı durdurmaz."""
+    global _veritabani_onarim_basladi
+    with _veritabani_onarim_kilit:
+        if _veritabani_onarim_basladi:
+            return
+        _veritabani_onarim_basladi = True
+
+    def _calistir():
+        try:
+            veritabani_tablolari_onar()
+        except Exception as hata:
+            print(f"Veritabanı onarımı tamamlanamadı: {hata}")
+
+    threading.Thread(
+        target=_calistir,
+        daemon=True,
+        name="halic-db-onarim",
+    ).start()
+
+
 def _arkaplan_agir_baslangic():
     """Model, veritabanı onarımı ve ses hazırlığı dinlemeyi kilitlemesin."""
-    try:
-        veritabani_tablolari_onar()
-    except Exception as hata:
-        print(f"Arka plan veritabanı onarımı: {hata}")
+    veritabani_onarimini_bir_kez_baslat()
     if getattr(Config, "OPENAI_API_KEY", ""):
         print(f"Canlı ses akışı hazır: OpenAI {Config.OPENAI_TTS_VOICE}.")
     else:
@@ -7832,6 +7855,8 @@ try:
     app.register_blueprint(pazaryeri_bp, url_prefix="/admin/pazaryeri")
 except Exception:
     pass
+
+veritabani_onarimini_bir_kez_baslat()
 
 # ==========================================
 # SUNUCUYU BAŞLATMA
