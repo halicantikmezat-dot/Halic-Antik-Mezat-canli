@@ -18,6 +18,7 @@
     <h1>Haliç Antik Mezat — Kurallar ve Sözleşme</h1>
     <p>Dört taraflı mezat şartnamesi. Yazılar büyük punto ve açık renkle yazılmıştır.</p>
 
+    <div id="kuralSayfa">
     <h2>1. İşletmeci Sorumluluğu</h2>
     <p>Haliç Antik Mezat, 6563 sayılı kanun kapsamında Aracı Hizmet Sağlayıcıdır; ürünlerin mülkiyeti satıcıya/tedarikçiye aittir.</p>
 
@@ -29,8 +30,28 @@
 
     <h2>4. Güvenli Havuz Sistemi</h2>
     <p>Alıcının ödediği bedel, ürün teslim edilip alıcı onay verene kadar Haliç Antik Mezat havuz hesabında güvende tutulur.</p>
+    </div>
 
     <p><a href="/">Canlı mezata dön</a></p>
 </main>
+<script>
+    function kuralMetniKacis(deger) {
+        return String(deger == null ? "" : deger)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+    fetch("/icerik-maddeleri?tur=kural")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            var maddeler = (data && data.maddeler) || [];
+            var kutu = document.getElementById("kuralSayfa");
+            if (!kutu || !maddeler.length) return;
+            kutu.innerHTML = maddeler.map(function (madde) {
+                return "<h2>" + kuralMetniKacis(madde.baslik) + "</h2><p>" + kuralMetniKacis(madde.metin) + "</p>";
+            }).join("");
+        })
+        .catch(function () {});
+</script>
 </body>
 </html>

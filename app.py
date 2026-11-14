@@ -1700,6 +1700,102 @@ class Ayar(db.Model):
     deger = db.Column(db.Text, nullable=False, default="")
 
 
+class IcerikMaddesi(db.Model):
+    """Nasıl Kullanılır adımları ve kurallar. Yönetici panelinden düzenlenir."""
+    __tablename__ = "icerik_maddesi"
+    id = db.Column(db.Integer, primary_key=True)
+    tur = db.Column(db.String(30), nullable=False, index=True)
+    sira = db.Column(db.Integer, nullable=False, default=1)
+    baslik = db.Column(db.String(200), nullable=False, default="")
+    metin = db.Column(db.Text, nullable=False, default="")
+
+
+_VARSAYILAN_REHBER = (
+    (
+        "1) Dükkan Seçimi",
+        "Üst menüden Antika, Gümüş, Bijuteri, Saat/Tesbih veya diğer dükkanlar arasında tek dokunuşla geçiş yapın.",
+    ),
+    (
+        "2) Canlı Mezatta Pey Verme",
+        "Sahnedeki ürüne +%10, +%25 hızlı artış butonlarıyla veya kendi belirlediğiniz tutarla anında teklif verin.",
+    ),
+    (
+        "3) Hemen Al & Sepet",
+        "Süre bitimini beklemeden ürünü Hemen Al ile doğrudan kazanabilir veya Vitrin sayfasından ürünleri kıyaslayıp sepetinize ekleyebilirsiniz.",
+    ),
+    (
+        "4) Ses & Müzik Kontrolü",
+        "Sağ üst ve sahne kontrollerinden canlı sunucu anlatımını açabilir, dilerseniz arka plan müziğini değiştirebilirsiniz.",
+    ),
+    (
+        "5) Güvenli Ödeme & Kargo",
+        "Kazandığınız veya sepete eklediğiniz ürünler için sipariş formunu doldurun; ekibimiz WhatsApp üzerinden onay ve kargo takip kodunu iletir.",
+    ),
+)
+
+_VARSAYILAN_KURALLAR = (
+    (
+        "1. İşletmeci Sorumluluğu",
+        "Haliç Antik Mezat, 6563 sayılı kanun kapsamında Aracı Hizmet Sağlayıcıdır; ürünlerin mülkiyeti satıcıya/tedarikçiye aittir.",
+    ),
+    (
+        "2. Tedarikçi Taahhüdü ve Cezai Şart",
+        "Yayına ürün veren tedarikçi, ürünü mezat bitimine kadar rezerve etmekle yükümlüdür. Ürünü haricen satan, teslim etmeyen, kırık veya fotoğraftakinden farklı gönderen tedarikçiye son satış tutarı üzerinden %20 cezai şart fatura edilir ve sistemden süresiz men edilir.",
+    ),
+    (
+        "3. Kargo ve Hasar Güvencesi",
+        "Tedarikçi ürünü kargo taşımacılığına uygun darbe emici korumayla paketlemek zorundadır. Alıcı, kargo teslim anında paketi açarken kesintisiz video kaydı almakla yükümlüdür; videosuz hasar bildirimleri işleme alınmaz.",
+    ),
+    (
+        "4. Güvenli Havuz Sistemi",
+        "Alıcının ödediği bedel, ürün teslim edilip alıcı onay verene kadar Haliç Antik Mezat havuz hesabında güvende tutulur.",
+    ),
+)
+
+
+def icerik_maddesi_sozlugu(satir):
+    return {
+        "id": satir.id,
+        "tur": satir.tur,
+        "sira": satir.sira,
+        "baslik": satir.baslik or "",
+        "metin": satir.metin or "",
+    }
+
+
+_icerik_kilit = threading.Lock()
+
+
+def icerik_maddelerini_hazirla():
+    with _icerik_kilit:
+        IcerikMaddesi.__table__.create(bind=db.engine, checkfirst=True)
+        if IcerikMaddesi.query.count() > 0:
+            return
+        for sira, (baslik, metin) in enumerate(_VARSAYILAN_REHBER, start=1):
+            db.session.add(IcerikMaddesi(tur="rehber", sira=sira, baslik=baslik, metin=metin))
+        for sira, (baslik, metin) in enumerate(_VARSAYILAN_KURALLAR, start=1):
+            db.session.add(IcerikMaddesi(tur="kural", sira=sira, baslik=baslik, metin=metin))
+        db.session.commit()
+
+
+def icerik_maddelerini_oku(tur):
+    try:
+        icerik_maddelerini_hazirla()
+        satirlar = (
+            IcerikMaddesi.query.filter_by(tur=tur)
+            .order_by(IcerikMaddesi.sira.asc(), IcerikMaddesi.id.asc())
+            .all()
+        )
+        return [icerik_maddesi_sozlugu(satir) for satir in satirlar]
+    except Exception:
+        db.session.rollback()
+        yedek = _VARSAYILAN_REHBER if tur == "rehber" else _VARSAYILAN_KURALLAR
+        return [
+            {"id": 0, "tur": tur, "sira": sira, "baslik": baslik, "metin": metin}
+            for sira, (baslik, metin) in enumerate(yedek, start=1)
+        ]
+
+
 def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
     if not kazanan_adi or kazanan_adi in ["Yok", "None", "-", ""]:
         return
@@ -2807,6 +2903,13 @@ def veritabani_tablolari_onar():
         finally:
             db.session.remove()
         try:
+            icerik_maddelerini_hazirla()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        try:
             urun_vitrin_indekslerini_hazirla()
         except Exception:
             try:
@@ -2869,6 +2972,249 @@ def vitrin():
 @app.route("/kurallar")
 def kurallar_sayfasi():
     return render_template("kurallar.html")
+
+
+@app.route("/icerik-maddeleri", methods=["GET"])
+def icerik_maddeleri():
+    tur = (request.args.get("tur") or "kural").strip()
+    if tur not in ("rehber", "kural"):
+        tur = "kural"
+    try:
+        return jsonify({"success": True, "tur": tur, "maddeler": icerik_maddelerini_oku(tur)})
+    finally:
+        db.session.remove()
+
+
+@app.route("/urun-incele/<int:urun_id>", methods=["GET"])
+def urun_incele(urun_id):
+    try:
+        urun = db.session.get(Urun, urun_id)
+        if not urun or urun.silindi_mi:
+            return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
+        en_yuksek = (
+            OnTeklif.query.filter_by(urun_id=urun.id)
+            .order_by(OnTeklif.teklif.desc())
+            .first()
+        )
+        paket = urun.to_dict()
+        if en_yuksek:
+            paket["on_teklif"] = {
+                "tutar": float(en_yuksek.teklif or 0),
+                "musteri_adi": en_yuksek.musteri_adi or "",
+            }
+        else:
+            paket["on_teklif"] = None
+        return jsonify({"success": True, "urun": paket})
+    finally:
+        db.session.remove()
+
+
+def _uye_satiri(kullanici):
+    return {
+        "id": kullanici.id,
+        "ad_soyad": kullanici.ad_soyad or "",
+        "telefon": kullanici.telefon or "",
+        "email": kullanici.email or "",
+        "adres": kullanici.adres or "",
+        "durum": kullanici.durum or "",
+    }
+
+
+@app.route("/admin/uyeler", methods=["GET"])
+@admin_required
+def admin_uyeler():
+    try:
+        kayitlar = (
+            Kullanici.query.filter(Kullanici.silindi_mi.is_(False))
+            .order_by(Kullanici.id.desc())
+            .limit(400)
+            .all()
+        )
+        return jsonify({"success": True, "uyeler": [_uye_satiri(k) for k in kayitlar]})
+    finally:
+        db.session.remove()
+
+
+@app.route("/admin/uye-kaydet", methods=["POST"])
+@admin_required
+def admin_uye_kaydet():
+    veri = request.json or {}
+    ad = (veri.get("ad_soyad") or veri.get("ad") or "").strip()
+    tel = (veri.get("telefon") or veri.get("tel") or "").strip()
+    mail = (veri.get("email") or veri.get("mail") or "").strip()
+    adres = (veri.get("adres") or "").strip()
+    if not ad or not tel:
+        return jsonify({"success": False, "mesaj": "Ad soyad ve telefon zorunludur."})
+    try:
+        kayit_id = int(veri.get("id") or 0)
+    except (TypeError, ValueError):
+        kayit_id = 0
+    try:
+        cakisan = Kullanici.query.filter(
+            Kullanici.silindi_mi.is_(False),
+            Kullanici.id != kayit_id,
+            Kullanici.telefon == tel,
+        ).first()
+        if cakisan:
+            return jsonify({"success": False, "mesaj": "Bu telefon başka bir üyede kayıtlı."})
+        if mail:
+            posta = Kullanici.query.filter(
+                Kullanici.silindi_mi.is_(False),
+                Kullanici.id != kayit_id,
+                func.lower(Kullanici.email) == mail.lower(),
+            ).first()
+            if posta:
+                return jsonify({"success": False, "mesaj": "Bu e-posta başka bir üyede kayıtlı."})
+        if kayit_id:
+            kullanici = db.session.get(Kullanici, kayit_id)
+            if not kullanici or kullanici.silindi_mi:
+                return jsonify({"success": False, "mesaj": "Üye bulunamadı."})
+        else:
+            kullanici = Kullanici(
+                ad_soyad=ad,
+                telefon=tel,
+                email=mail,
+                adres=adres,
+                onayli_mi=True,
+                is_verified=True,
+                durum="onayli",
+                sozlesme_onay=True,
+                puan=100.0,
+            )
+            db.session.add(kullanici)
+        kullanici.ad_soyad = ad
+        kullanici.telefon = tel
+        kullanici.email = mail
+        kullanici.adres = adres
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "mesaj": "Üye kaydedildi.",
+            "uye": _uye_satiri(kullanici),
+        })
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)}), 500
+    finally:
+        db.session.remove()
+
+
+@app.route("/admin/icerik-maddeleri", methods=["GET"])
+@admin_required
+def admin_icerik_maddeleri():
+    try:
+        return jsonify({
+            "success": True,
+            "rehber": icerik_maddelerini_oku("rehber"),
+            "kural": icerik_maddelerini_oku("kural"),
+        })
+    finally:
+        db.session.remove()
+
+
+@app.route("/admin/icerik-madde-kaydet", methods=["POST"])
+@admin_required
+def admin_icerik_madde_kaydet():
+    veri = request.json or {}
+    tur = (veri.get("tur") or "").strip()
+    baslik = (veri.get("baslik") or "").strip()
+    metin = (veri.get("metin") or "").strip()
+    if tur not in ("rehber", "kural"):
+        return jsonify({"success": False, "mesaj": "Geçersiz içerik türü."})
+    if not baslik or not metin:
+        return jsonify({"success": False, "mesaj": "Başlık ve metin zorunludur."})
+    try:
+        kayit_id = int(veri.get("id") or 0)
+    except (TypeError, ValueError):
+        kayit_id = 0
+    try:
+        icerik_maddelerini_hazirla()
+        if kayit_id:
+            satir = db.session.get(IcerikMaddesi, kayit_id)
+            if not satir or satir.tur != tur:
+                return jsonify({"success": False, "mesaj": "Madde bulunamadı."})
+        else:
+            son = (
+                IcerikMaddesi.query.filter_by(tur=tur)
+                .order_by(IcerikMaddesi.sira.desc())
+                .first()
+            )
+            satir = IcerikMaddesi(tur=tur, sira=(son.sira + 1) if son else 1)
+            db.session.add(satir)
+        satir.baslik = baslik[:200]
+        satir.metin = metin
+        db.session.commit()
+        return jsonify({"success": True, "madde": icerik_maddesi_sozlugu(satir)})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)}), 500
+    finally:
+        db.session.remove()
+
+
+@app.route("/admin/icerik-madde-sil", methods=["POST"])
+@admin_required
+def admin_icerik_madde_sil():
+    veri = request.json or {}
+    try:
+        kayit_id = int(veri.get("id") or 0)
+    except (TypeError, ValueError):
+        kayit_id = 0
+    try:
+        satir = db.session.get(IcerikMaddesi, kayit_id) if kayit_id else None
+        if not satir:
+            return jsonify({"success": False, "mesaj": "Madde bulunamadı."})
+        tur = satir.tur
+        db.session.delete(satir)
+        db.session.commit()
+        kalan = (
+            IcerikMaddesi.query.filter_by(tur=tur)
+            .order_by(IcerikMaddesi.sira.asc(), IcerikMaddesi.id.asc())
+            .all()
+        )
+        for sira, kayit in enumerate(kalan, start=1):
+            kayit.sira = sira
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)}), 500
+    finally:
+        db.session.remove()
+
+
+@app.route("/admin/icerik-madde-sirala", methods=["POST"])
+@admin_required
+def admin_icerik_madde_sirala():
+    veri = request.json or {}
+    tur = (veri.get("tur") or "").strip()
+    try:
+        kayit_id = int(veri.get("id") or 0)
+        yon = int(veri.get("yon") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "mesaj": "Sıra değiştirilemedi."})
+    if tur not in ("rehber", "kural") or yon not in (-1, 1):
+        return jsonify({"success": False, "mesaj": "Sıra değiştirilemedi."})
+    try:
+        satirlar = (
+            IcerikMaddesi.query.filter_by(tur=tur)
+            .order_by(IcerikMaddesi.sira.asc(), IcerikMaddesi.id.asc())
+            .all()
+        )
+        yer = next((i for i, satir in enumerate(satirlar) if satir.id == kayit_id), -1)
+        hedef = yer + yon
+        if yer < 0 or hedef < 0 or hedef >= len(satirlar):
+            return jsonify({"success": True, "maddeler": [icerik_maddesi_sozlugu(s) for s in satirlar]})
+        satirlar[yer], satirlar[hedef] = satirlar[hedef], satirlar[yer]
+        for sira, satir in enumerate(satirlar, start=1):
+            satir.sira = sira
+        db.session.commit()
+        return jsonify({"success": True, "maddeler": [icerik_maddesi_sozlugu(s) for s in satirlar]})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)}), 500
+    finally:
+        db.session.remove()
 
 
 @app.route("/ahmet-tanitim-geri", methods=["POST"])
@@ -5510,11 +5856,15 @@ def sahneye_al():
         db.session.add(urun)
         db.session.commit()
         oda["lot_kapanis"] = ""
+        oda["satildi"] = False
         oda["satis_tebrik_bekleniyor"] = False
         oda["karar_pey_geldi"] = False
+        oda["sayac_aktif"] = False
+        oda["sayac_kalan"] = 180
+        oda["durum"]["durum"] = "Bekliyor"
+        oda["durum"]["sure_bitis"] = 0
         oda["son_hareket"] = time.time()
         oda["son_sessizlik"] = 0
-        gorev = _pazarligi_hazirla(oda, urun)
 
     takipciler = UrunTakip.query.filter_by(urun_id=urun.id).all()
     urun_paket = urun.to_dict()
@@ -5555,7 +5905,6 @@ def sahneye_al():
         },
     )
 
-    socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik")
     socketio.emit(
         "sayac_guncelle",
         {
@@ -5564,7 +5913,8 @@ def sahneye_al():
             "kalan_sure": 180,
             "toplam": 180,
             "sayac_gorunsun": True,
-            "asama": "pazarlik",
+            "sayac_aktif": False,
+            "asama": "bekliyor",
         },
         room=dukkan,
     )
@@ -7538,6 +7888,7 @@ def handle_disconnect():
         aktif_izleyiciler.discard(request.sid)
         izleyici_adlari.pop(request.sid, None)
         soketten_kullanici_kopar(request.sid)
+        _sahne_izleyicisi_sil(request.sid)
         izleyici_sayisini_yayinla()
     finally:
         db.session.remove()
@@ -7889,6 +8240,11 @@ def handle_join_dukkan(data):
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
         izleyici_adlari[request.sid] = ad
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
+        try:
+            kayit_no = int(veri.get("kullanici_id")) if veri.get("kullanici_id") not in (None, "", "null") else None
+        except (TypeError, ValueError):
+            kayit_no = None
+        _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
         join_room(dukkan)
         izleyici_sayisini_yayinla()
         emit(
@@ -7907,6 +8263,146 @@ def handle_join_dukkan(data):
 def handle_leave_dukkan(data):
     dukkan = dukkan_dogrula((data or {}).get("dukkan", "gumus"))
     leave_room(dukkan)
+    with _ozel_kilit:
+        if _sid_dukkan.get(request.sid) == dukkan:
+            _sid_dukkan.pop(request.sid, None)
+            (_dukkan_izleyici.get(dukkan) or {}).pop(request.sid, None)
+    _ozel_odayi_kapat(request.sid)
+
+
+_ozel_kilit = threading.Lock()
+_dukkan_izleyici = {}
+_sid_dukkan = {}
+_ozel_davet = {}
+_ozel_oda = {}
+
+
+def _sahne_izleyicisi_yaz(sid, dukkan, ad, kullanici_id):
+    with _ozel_kilit:
+        eski = _sid_dukkan.get(sid)
+        if eski and eski != dukkan:
+            (_dukkan_izleyici.get(eski) or {}).pop(sid, None)
+        _sid_dukkan[sid] = dukkan
+        _dukkan_izleyici.setdefault(dukkan, {})[sid] = {
+            "ad": str(ad or "Misafir")[:40],
+            "kullanici_id": kullanici_id,
+        }
+
+
+def _ozel_odayi_kapat(sid):
+    kapanan = []
+    with _ozel_kilit:
+        for oda_id, oda in list(_ozel_oda.items()):
+            if sid in oda.get("uyeler", ()):
+                kapanan.append((oda_id, set(oda["uyeler"])))
+                _ozel_oda.pop(oda_id, None)
+        for davet_id, davet in list(_ozel_davet.items()):
+            if sid in (davet.get("kimden"), davet.get("kime")):
+                _ozel_davet.pop(davet_id, None)
+    for oda_id, uyeler in kapanan:
+        for diger in uyeler:
+            if diger == sid:
+                continue
+            socketio.emit(
+                "ozel_sohbet_kapandi",
+                {"oda_id": oda_id, "mesaj": "Karşı taraf sahneden ayrıldı."},
+                room=diger,
+            )
+
+
+def _sahne_izleyicisi_sil(sid):
+    with _ozel_kilit:
+        dukkan = _sid_dukkan.pop(sid, None)
+        if dukkan:
+            (_dukkan_izleyici.get(dukkan) or {}).pop(sid, None)
+    _ozel_odayi_kapat(sid)
+
+
+@socketio.on("ozel_sohbet_liste")
+def ozel_sohbet_liste(veri=None):
+    dukkan = _sid_dukkan.get(request.sid) or dukkan_dogrula((veri or {}).get("dukkan"))
+    with _ozel_kilit:
+        kayitlar = [
+            {"sid": sid, "ad": (bilgi.get("ad") or "İzleyici")}
+            for sid, bilgi in (_dukkan_izleyici.get(dukkan) or {}).items()
+            if sid != request.sid
+        ]
+    emit("ozel_sohbet_liste", {"dukkan": dukkan, "izleyiciler": kayitlar})
+
+
+@socketio.on("ozel_sohbet_davet")
+def ozel_sohbet_davet(veri):
+    hedef = str((veri or {}).get("hedef_sid") or "")
+    ben = request.sid
+    with _ozel_kilit:
+        dukkan = _sid_dukkan.get(ben)
+        if not dukkan or _sid_dukkan.get(hedef) != dukkan or hedef == ben:
+            emit("ozel_sohbet_hata", {"mesaj": "Bu izleyici artık bu sahnede değil."})
+            return
+        davet_id = uuid.uuid4().hex[:12]
+        _ozel_davet[davet_id] = {"kimden": ben, "kime": hedef, "dukkan": dukkan}
+        ad = (_dukkan_izleyici.get(dukkan) or {}).get(ben, {}).get("ad") or "İzleyici"
+    socketio.emit(
+        "ozel_sohbet_davet",
+        {"davet_id": davet_id, "ad": ad},
+        room=hedef,
+    )
+    emit("ozel_sohbet_bilgi", {"mesaj": "Sohbet daveti gönderildi."})
+
+
+@socketio.on("ozel_sohbet_yanit")
+def ozel_sohbet_yanit(veri):
+    davet_id = str((veri or {}).get("davet_id") or "")
+    with _ozel_kilit:
+        davet = _ozel_davet.get(davet_id)
+        if not davet or davet.get("kime") != request.sid:
+            return
+        _ozel_davet.pop(davet_id, None)
+        if not (veri or {}).get("kabul"):
+            kimden = davet["kimden"]
+            socketio.emit("ozel_sohbet_bilgi", {"mesaj": "Sohbet daveti reddedildi."}, room=kimden)
+            return
+        if _sid_dukkan.get(davet["kimden"]) != davet["dukkan"] or _sid_dukkan.get(davet["kime"]) != davet["dukkan"]:
+            emit("ozel_sohbet_hata", {"mesaj": "Davet artık geçerli değil."})
+            return
+        oda_id = uuid.uuid4().hex[:12]
+        _ozel_oda[oda_id] = {"uyeler": {davet["kimden"], davet["kime"]}, "dukkan": davet["dukkan"]}
+        dukkan = davet["dukkan"]
+        ad_kimden = (_dukkan_izleyici.get(dukkan) or {}).get(davet["kimden"], {}).get("ad") or "İzleyici"
+        ad_kime = (_dukkan_izleyici.get(dukkan) or {}).get(davet["kime"], {}).get("ad") or "İzleyici"
+        kimden = davet["kimden"]
+        kime = davet["kime"]
+    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kime}, room=kimden)
+    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kimden}, room=kime)
+
+
+@socketio.on("ozel_sohbet_mesaj")
+def ozel_sohbet_mesaj(veri):
+    oda_id = str((veri or {}).get("oda_id") or "")
+    metin = str((veri or {}).get("metin") or "").strip()[:500]
+    if not metin:
+        return
+    if metin_uygunsuz_mu(metin):
+        emit("ozel_sohbet_hata", {"mesaj": "Mesaj iletilemedi."})
+        return
+    with _ozel_kilit:
+        oda = _ozel_oda.get(oda_id)
+        if not oda or request.sid not in oda.get("uyeler", ()):
+            return
+        dukkan = oda.get("dukkan") or _sid_dukkan.get(request.sid)
+        ad = (_dukkan_izleyici.get(dukkan) or {}).get(request.sid, {}).get("ad") or "İzleyici"
+        uyeler = set(oda["uyeler"])
+    for sid in uyeler:
+        socketio.emit(
+            "ozel_sohbet_mesaj",
+            {
+                "oda_id": oda_id,
+                "ad": ad,
+                "metin": metin,
+                "benim": sid == request.sid,
+            },
+            room=sid,
+        )
 
 
 @socketio.on("anons_bitti")
@@ -7937,9 +8433,22 @@ def rehber_ses_iste(veri):
         adim = int((veri or {}).get("adim") or 1)
     except (TypeError, ValueError):
         adim = 1
-    if adim < 1 or adim > len(REHBER_ADIMLARI):
+    try:
+        maddeler = icerik_maddelerini_oku("rehber")
+    finally:
+        db.session.remove()
+    if not maddeler:
+        maddeler = [
+            {"baslik": "", "metin": metin} for metin in REHBER_ADIMLARI
+        ]
+    if adim < 1:
         adim = 1
-    metin = ses_metnini_temizle(REHBER_ADIMLARI[adim - 1])
+    if adim > len(maddeler):
+        adim = len(maddeler)
+    kayit = maddeler[adim - 1]
+    metin = ses_metnini_temizle(
+        ((kayit.get("baslik") or "") + ". " + (kayit.get("metin") or "")).strip(" .")
+    )
     sid = request.sid
 
     def uret():

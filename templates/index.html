@@ -1420,7 +1420,7 @@
     </div>
 
     <div class="header sade-header">
-        <button type="button" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Menüyü aç">☰</button>
+        <button type="button" id="btnGenelMenu" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Menüyü aç">☰</button>
         <div class="logo-box">
             <h2>HALİÇ ANTİK</h2>
             <div class="header-lokasyon-rozet">
@@ -1431,6 +1431,7 @@
         <div class="header-actions">
             <button type="button" class="btn-yeni-ust" onclick="yeniSlaytiAc()" aria-label="Yeni eklenen ürünler">🔥 Yeni</button>
             <button type="button" class="btn-yeni-ust" onclick="nasilKullanilirAc()" style="background:#d4af37; color:#111;" aria-label="Nasıl kullanılır">🎙️ Nasıl Kullanılır?</button>
+            <button type="button" class="btn-yeni-ust" onclick="ozelSohbetAc()" aria-label="Özel sohbet">💬 Sohbet</button>
             <button type="button" id="btnCanliMuzikToggle" onclick="muzikMenusuAcKapa(event)" class="btn-muzik-ust" aria-label="Müzik menüsü" aria-expanded="false" aria-controls="muzikMenu">🎵 Müzik</button>
             <div id="muzikMenu" class="muzik-menu" hidden>
                 <div class="muzik-menu-baslik">Müzik İstasyonları</div>
@@ -1547,14 +1548,14 @@
         </div>
 
         <button type="button" class="cekmece-tutamac" onclick="toggleAltCekmece()">
-            <span></span>Sohbet / Eleştiri
+            <span></span>Eleştiri / Katalog
         </button>
         <div id="altCekmece">
             <div class="cekmece-sekmeler">
-                <button type="button" onclick="cekmeceSekmeAc('sohbet')">Sohbet</button>
                 <button type="button" onclick="cekmeceSekmeAc('elestiri')">Eleştiri</button>
                 <button type="button" onclick="cekmeceSekmeAc('katalog')">Katalog</button>
                 <button type="button" onclick="kurallariAc()">Kurallar</button>
+                <button type="button" onclick="altCekmeceKapat()" aria-label="Çekmeceyi kapat">✕ Kapat</button>
             </div>
         <div class="chat-drawer" id="chatDrawer">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
@@ -1685,6 +1686,24 @@
 </div>
 
 <!-- MODALLAR -->
+<div id="ozelSohbetModal" class="modal" onclick="if(event.target===this) ozelSohbetKapat()">
+    <div class="modal-content" style="text-align:left; max-width:420px;" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+            <h3 id="ozelSohbetBaslik" style="color:#fef08a; font-size:16px; margin:0;">💬 Sahnedeki izleyiciler</h3>
+            <button type="button" onclick="ozelSohbetKapat()" aria-label="Sohbeti kapat" style="background:#7f1d1d; color:#fff; border:none; border-radius:8px; padding:6px 10px; font-weight:800; cursor:pointer;">✕ Kapat</button>
+        </div>
+        <div id="ozelSohbetListe" style="max-height:46vh; overflow-y:auto;"></div>
+        <div id="ozelSohbetPencere" hidden>
+            <div id="ozelSohbetAkis" style="max-height:42vh; overflow-y:auto; background:#080c13; border:1px solid #334155; border-radius:8px; padding:8px; margin-bottom:8px;"></div>
+            <div style="display:flex; gap:6px;">
+                <input type="text" id="ozelSohbetGirdi" placeholder="Özel mesaj" style="margin:0; flex:1;" onkeydown="if(event.key==='Enter'){ ozelSohbetGonder(); }">
+                <button type="button" class="btn-bid btn-action-green" style="width:auto; padding:8px 12px;" onclick="ozelSohbetGonder()">Gönder</button>
+            </div>
+        </div>
+        <p id="ozelSohbetDurum" style="font-size:13px; color:#e2e8f0; margin:8px 0 0;"></p>
+    </div>
+</div>
+
 <div id="izleyiciModal" class="modal" onclick="if(event.target===this) this.style.display='none'">
     <div class="modal-content" style="text-align:left; background:rgba(15,21,30,0.82); backdrop-filter:blur(12px);">
         <h3 style="color:var(--accent-gold); font-size:14px; margin-bottom:8px;">Yayını izleyenler</h3>
@@ -1712,7 +1731,7 @@
             <h2 style="color:#fef08a; margin:0; font-size:18px; font-weight:800;">Haliç Antik — Kurallar ve Sözleşme</h2>
             <button type="button" onclick="kurallariKapat()" aria-label="Kurallar penceresini kapat" style="background:#881337; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">✕</button>
         </div>
-        <div style="max-height:62vh; overflow-y:auto; padding-right:6px;">
+        <div id="kuralMaddeleri" style="max-height:62vh; overflow-y:auto; padding-right:6px;">
             <h3>1. İşletmeci Sorumluluğu</h3>
             <p>Haliç Antik Mezat, 6563 sayılı kanun kapsamında Aracı Hizmet Sağlayıcıdır; ürünlerin mülkiyeti satıcıya/tedarikçiye aittir.</p>
             <h3>2. Tedarikçi Taahhüdü ve Cezai Şart</h3>
@@ -2174,9 +2193,26 @@
         if (acik) dukkanMenuYukle();
     }
 
+    let menuGeriDon = false;
+
     function menuIslem(fn) {
-        genelMenuAcKapa();
+        menuGeriDon = true;
+        const menu = document.getElementById('genelMenu');
+        const perde = document.getElementById('menuPerde');
+        if (menu) menu.classList.remove('acik');
+        if (perde) perde.hidden = true;
         if (typeof fn === 'function') fn();
+    }
+
+    function menuGeriGetir() {
+        if (!menuGeriDon) return false;
+        menuGeriDon = false;
+        const menu = document.getElementById('genelMenu');
+        const perde = document.getElementById('menuPerde');
+        if (menu) menu.classList.add('acik');
+        if (perde) perde.hidden = false;
+        if (typeof dukkanMenuYukle === 'function') dukkanMenuYukle();
+        return true;
     }
 
     function kurumsalIzleyiciAc() {
@@ -2198,6 +2234,7 @@
     function kurumsalIzleyiciKapat() {
         const kutu = document.getElementById('kurumsalIzleyiciModal');
         if (kutu) kutu.style.display = 'none';
+        menuGeriGetir();
     }
 
     let dinlemeAcik = false;
@@ -2537,7 +2574,14 @@
             kutu.classList.remove('acik');
             return;
         }
-        cekmeceSekmeAc('sohbet');
+        cekmeceSekmeAc('elestiri');
+    }
+
+    function altCekmeceKapat() {
+        playUserClickSound();
+        const kutu = document.getElementById('altCekmece');
+        if (kutu) kutu.classList.remove('acik');
+        menuGeriGetir();
     }
 
     function toggleChatDrawer() {
@@ -3629,7 +3673,11 @@
         kutu.style.zIndex = '4000';
         kutu.style.display = 'flex';
     }
-    function kurallariKapat() { playUserClickSound(); document.getElementById('modalKurallar').style.display = 'none'; }
+    function kurallariKapat() {
+        playUserClickSound();
+        document.getElementById('modalKurallar').style.display = 'none';
+        menuGeriGetir();
+    }
 
     function formatFiyat(tlTutari) {
         let t = parseFloat(tlTutari) || 0;
@@ -3743,7 +3791,10 @@
             kategori: u.kategori || "Genel",
             durum: u.durum || "",
             guncel_fiyat: u.guncel_fiyat != null ? u.guncel_fiyat : fiyat,
-            tanitim_yazisi: u.tanitim_yazisi || ""
+            tanitim_yazisi: u.tanitim_yazisi || "",
+            fotograflar: fotolar,
+            video: u.video || "",
+            ses: u.ses || ""
         };
     }
 
@@ -3801,22 +3852,66 @@
         }
     }
 
+    function incelemeOnTeklifiniYaz(urun) {
+        const on = urun && urun.on_teklif;
+        const tutar = on ? Number(on.tutar || on.teklif || 0) : Number((urun && (urun.guncel_fiyat || urun.fiyat)) || 0);
+        const bid = document.getElementById('currentBid');
+        if (bid) bid.innerText = Math.round(tutar || 0).toLocaleString('tr-TR');
+        const acilis = document.getElementById('cornerAcilisFiyat');
+        if (acilis) acilis.innerText = formatFiyat((urun && urun.fiyat) || 0);
+        const hemen = document.getElementById('cornerHemenAlFiyat');
+        if (hemen) hemen.innerText = formatFiyat((urun && (urun.hemen_al_fiyat || urun.hemen_al_fiyati)) || 0);
+        const anons = document.getElementById('lotAnonsMetni');
+        if (anons) {
+            anons.textContent = on
+                ? ('Ön teklif: ' + formatFiyat(on.tutar || on.teklif || 0) + (on.musteri_adi ? ' — ' + on.musteri_adi : ''))
+                : ('Henüz ön teklif yok. Açılış: ' + formatFiyat((urun && urun.fiyat) || 0));
+        }
+        const kart = document.getElementById('bilgiKarti');
+        if (kart) kart.hidden = false;
+        const tanitim = document.getElementById('tanitimMetni');
+        if (tanitim) tanitim.innerText = baslikTekrariTemizle((urun && urun.tanitim_yazisi) || 'Açıklama girilmemiş.');
+    }
+
+    function katalogCekmecesiniKapat() {
+        const kutu = document.getElementById('altCekmece');
+        if (kutu) kutu.classList.remove('acik');
+        const katalog = document.getElementById('catalogDrawer');
+        if (katalog) katalog.style.display = 'none';
+    }
+
     function urunIncele(urunId) {
         const secilen = sonBulunanUrunler.find(u => String(u.id) === String(urunId));
         if (!secilen) return;
+        menuGeriDon = false;
+        katalogCekmecesiniKapat();
         const eskiId = aktifSahneUrunId;
         const eskiSatildi = sahnedekiUrunSatildiMi;
         const eskiHemen = aktifHemenAlStatik;
         incelemeAcik = true;
         sonYuklenenSahneMedyaUrl = null;
-        sahneyiGuncelle(secilen, "İnceleme", secilen.guncel_fiyat || secilen.fiyat, "Önizleme", "inceleme");
-        aktifSahneUrunId = eskiId;
-        sahnedekiUrunSatildiMi = eskiSatildi;
-        aktifHemenAlStatik = eskiHemen;
-        const serit = document.getElementById('incelemeSeridi');
-        if (serit) serit.hidden = false;
-        const kart = document.getElementById('bilgiKarti');
-        if (kart) kart.hidden = false;
+        sahneMedyaImza = "";
+        const sahneyeBas = function (urun) {
+            sahneyiGuncelle(urun, "İnceleme", (urun.on_teklif && urun.on_teklif.tutar) || urun.guncel_fiyat || urun.fiyat, "Önizleme", "inceleme");
+            aktifSahneUrunId = eskiId;
+            sahnedekiUrunSatildiMi = eskiSatildi;
+            aktifHemenAlStatik = eskiHemen;
+            incelemeOnTeklifiniYaz(urun);
+            const serit = document.getElementById('incelemeSeridi');
+            if (serit) serit.hidden = false;
+        };
+        sahneyeBas(secilen);
+        fetch('/urun-incele/' + encodeURIComponent(urunId))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.urun) return;
+                const tam = data.urun;
+                if (!Array.isArray(tam.fotograflar)) tam.fotograflar = secilen.fotograflar || [];
+                sonYuklenenSahneMedyaUrl = null;
+                sahneMedyaImza = "";
+                sahneyeBas(tam);
+            })
+            .catch(function () {});
         const menu = document.getElementById('genelMenu');
         const perde = document.getElementById('menuPerde');
         if (menu) menu.classList.remove('acik');
@@ -3866,7 +3961,7 @@
         document.getElementById('catalogDrawer').style.display = 'none';
         secilenArsivUrunId = null;
         document.getElementById('secilenUrunOnizleme').style.display = 'none';
-        canliDurumuGetirHafif();
+        if (!menuGeriGetir() && !incelemeAcik) canliDurumuGetirHafif();
     }
 
     function toggleAudio() {
@@ -4153,6 +4248,19 @@
             const cockpit = document.getElementById('mezatSayaci');
             const dial = document.getElementById('futuristicDial');
             const statusTitle = document.getElementById('timerStatusTitle');
+
+            if (data.asama === 'bekliyor') {
+                serbestArtis = false;
+                sahnedekiUrunSatildiMi = false;
+                if (digits) {
+                    digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+                    digits.innerText = '3:00';
+                }
+                if (dial) dial.style.strokeDashoffset = 0;
+                if (cockpit) cockpit.classList.remove('urgent');
+                if (statusTitle) statusTitle.innerText = 'BEKLİYOR';
+                return;
+            }
 
             if (data.asama === 'pazarlik') {
                 serbestArtis = true;
@@ -5245,7 +5353,11 @@
     function closeModal(id) {
         playUserClickSound();
         if (id === 'rehberModal') rehberKilavuzSesiniKapat();
-        document.getElementById(id).style.display = 'none';
+        const kutu = document.getElementById(id);
+        if (kutu) kutu.style.display = 'none';
+        if (id === 'sepetModal' || id === 'gecmisModal' || id === 'profileModal' || id === 'authRegisterModal' || id === 'feedbackModal' || id === 'posModal') {
+            menuGeriGetir();
+        }
     }
 
     function sesliDinle() {
@@ -5302,22 +5414,32 @@
     function rehberVurgula() {
         rehberVurguyuTemizle();
         const harita = {
-            1: ['linkVitrin', 'stageWrapper'],
-            2: ['k_sozlesme'],
-            3: ['btnYuzdeOn', 'btnIzleyiciSes', 'btnHemenAl'],
-            4: ['btnPosFooter']
+            1: ['btnGenelMenu', 'stageWrapper'],
+            2: ['btnYuzdeOn', 'btnSerbestPey'],
+            3: ['btnHemenAl', 'sepetAdet'],
+            4: ['btnCanliMuzikToggle', 'btnDinleKisa'],
+            5: ['btnPosFooter', 'sepetAdet']
         };
         (harita[rehberAdim] || []).forEach(function (id) {
             const el = document.getElementById(id);
             if (el) el.classList.add('rehber-vurgu');
         });
         document.querySelectorAll('#rehberAdimlar [data-rehber]').forEach(function (li) {
-            li.classList.toggle('rehber-vurgu', li.getAttribute('data-rehber') === String(rehberAdim));
+            const secili = li.getAttribute('data-rehber') === String(rehberAdim);
+            li.classList.toggle('rehber-vurgu', secili);
+            if (secili && li.scrollIntoView) li.scrollIntoView({ block: 'nearest' });
         });
-        if (rehberAdim === 2) {
-            const kayit = document.getElementById('authRegisterModal');
-            if (kayit) kayit.style.display = 'flex';
-        }
+    }
+    function rehberAdimSayisi() {
+        const adet = document.querySelectorAll('#rehberAdimlar [data-rehber]').length;
+        return adet > 0 ? adet : 5;
+    }
+    function kayitliZiyaretciMi() {
+        if (kullaniciId) return true;
+        const id = localStorage.getItem('halic_antik_id')
+            || localStorage.getItem('kullanici_id')
+            || localStorage.getItem('musteri_id');
+        return !!(id && id !== 'null' && id !== 'undefined');
     }
     function nasilKullanilirAc() {
         playUserClickSound();
@@ -5340,13 +5462,22 @@
         if (durum) durum.textContent = 'Adım ' + rehberAdim + ' sesi hazırlanıyor...';
     }
     function rehberSonraki() {
-        rehberAdim = rehberAdim >= 4 ? 1 : rehberAdim + 1;
+        const adet = rehberAdimSayisi();
+        rehberAdim = rehberAdim >= adet ? 1 : rehberAdim + 1;
         rehberVurgula();
         rehberAdiminiOynat();
     }
     function rehberKapat() {
+        const menuden = menuGeriDon;
         rehberVurguyuTemizle();
-        closeModal('rehberModal');
+        const kutu = document.getElementById('rehberModal');
+        if (kutu) kutu.style.display = 'none';
+        rehberKilavuzSesiniKapat();
+        if (menuden) menuGeriGetir();
+        if (!kayitliZiyaretciMi()) {
+            const kayit = document.getElementById('authRegisterModal');
+            if (kayit) kayit.style.display = 'flex';
+        }
     }
 
     const REHBER_VIDEO_URL = "";
@@ -5476,6 +5607,181 @@
         alan.innerHTML = '<div style="background:#1e293b; color:#fef08a; border:1px solid #334155; border-radius:10px; padding:10px 12px; font-size:14px; line-height:1.45;">🎥 Video Rehber Yakında Eklenecek — Şimdilik Sesli Dinleyebilir veya Aşağıdaki 5 Adımı İnceleyebilirsiniz</div>';
     }
     rehberVideoAlaniniKur();
+
+    function icerikMaddeleriniCiz(hedefId, maddeler) {
+        const kutu = document.getElementById(hedefId);
+        if (!kutu || !maddeler || !maddeler.length) return;
+        if (hedefId === 'rehberAdimlar') {
+            kutu.innerHTML = maddeler.map(function (m, i) {
+                return '<article data-rehber="' + (i + 1) + '" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px 12px;">'
+                    + '<b style="color:#fef08a; font-size:15px;">' + escapeHtml(m.baslik || '') + '</b>'
+                    + '<p style="margin:4px 0 0; font-size:14px; line-height:1.45; color:#f8fafc;">' + escapeHtml(m.metin || '') + '</p></article>';
+            }).join('');
+            return;
+        }
+        kutu.innerHTML = maddeler.map(function (m) {
+            return '<h3>' + escapeHtml(m.baslik || '') + '</h3><p>' + escapeHtml(m.metin || '') + '</p>';
+        }).join('');
+    }
+
+    function icerikKaynaklariniYukle() {
+        fetch('/icerik-maddeleri?tur=rehber').then(function (r) { return r.json(); }).then(function (data) {
+            if (data && data.maddeler && data.maddeler.length) icerikMaddeleriniCiz('rehberAdimlar', data.maddeler);
+        }).catch(function () {});
+        fetch('/icerik-maddeleri?tur=kural').then(function (r) { return r.json(); }).then(function (data) {
+            if (data && data.maddeler && data.maddeler.length) icerikMaddeleriniCiz('kuralMaddeleri', data.maddeler);
+        }).catch(function () {});
+    }
+    icerikKaynaklariniYukle();
+
+    let ozelSohbetOda = '';
+
+    function ozelSohbetDurumYaz(metin) {
+        const el = document.getElementById('ozelSohbetDurum');
+        if (el) el.textContent = metin || '';
+    }
+
+    function ozelSohbetAc() {
+        playUserClickSound();
+        menuGeriDon = false;
+        ozelSohbetOda = '';
+        const pencere = document.getElementById('ozelSohbetPencere');
+        const liste = document.getElementById('ozelSohbetListe');
+        const baslik = document.getElementById('ozelSohbetBaslik');
+        if (pencere) pencere.hidden = true;
+        if (liste) {
+            liste.hidden = false;
+            liste.innerHTML = '<p style="color:#cbd5e1;">İzleyiciler yükleniyor...</p>';
+        }
+        if (baslik) baslik.textContent = '💬 Sahnedeki izleyiciler';
+        document.getElementById('ozelSohbetModal').style.display = 'flex';
+        socket.emit('ozel_sohbet_liste', { dukkan: aktifDukkan });
+        ozelSohbetDurumYaz('Bu sahnedeki çevrimiçi izleyiciler.');
+    }
+
+    function ozelSohbetKapat() {
+        playUserClickSound();
+        const kutu = document.getElementById('ozelSohbetModal');
+        if (kutu) kutu.style.display = 'none';
+    }
+
+    function ozelSohbetDavet(sid) {
+        socket.emit('ozel_sohbet_davet', { hedef_sid: sid });
+    }
+
+    function ozelSohbetYanit(davetId, kabul) {
+        socket.emit('ozel_sohbet_yanit', { davet_id: davetId, kabul: !!kabul });
+        if (!kabul) ozelSohbetDurumYaz('Davet reddedildi.');
+    }
+
+    function ozelSohbetGonder() {
+        const girdi = document.getElementById('ozelSohbetGirdi');
+        const metin = ((girdi && girdi.value) || '').trim();
+        if (!metin || !ozelSohbetOda) return;
+        socket.emit('ozel_sohbet_mesaj', { oda_id: ozelSohbetOda, metin: metin });
+        girdi.value = '';
+    }
+
+    function ozelSohbetSatir(ad, metin, benim) {
+        const akis = document.getElementById('ozelSohbetAkis');
+        if (!akis) return;
+        const satir = document.createElement('div');
+        satir.style.margin = '0 0 6px';
+        satir.style.textAlign = benim ? 'right' : 'left';
+        satir.innerHTML = '<b>' + escapeHtml(ad || '') + ':</b> ' + escapeHtml(metin || '');
+        akis.appendChild(satir);
+        akis.scrollTop = akis.scrollHeight;
+    }
+
+    socket.on('ozel_sohbet_liste', function (data) {
+        const liste = document.getElementById('ozelSohbetListe');
+        if (!liste || ozelSohbetOda) return;
+        const kisiler = (data && data.izleyiciler) || [];
+        liste.innerHTML = '';
+        if (!kisiler.length) {
+            liste.innerHTML = '<p style="color:#cbd5e1;">Bu sahnede başka çevrimiçi izleyici yok.</p>';
+            return;
+        }
+        kisiler.forEach(function (kisi) {
+            const satir = document.createElement('div');
+            satir.style.cssText = 'display:flex; justify-content:space-between; gap:8px; align-items:center; padding:8px 0; border-bottom:1px solid #334155;';
+            const ad = document.createElement('span');
+            ad.textContent = kisi.ad || 'İzleyici';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-bid btn-action-blue';
+            btn.style.width = 'auto';
+            btn.style.padding = '6px 10px';
+            btn.textContent = 'Davet et';
+            btn.onclick = function () { ozelSohbetDavet(kisi.sid); };
+            satir.appendChild(ad);
+            satir.appendChild(btn);
+            liste.appendChild(satir);
+        });
+    });
+
+    socket.on('ozel_sohbet_davet', function (data) {
+        if (!data) return;
+        const modal = document.getElementById('ozelSohbetModal');
+        const liste = document.getElementById('ozelSohbetListe');
+        if (modal) modal.style.display = 'flex';
+        if (liste) liste.hidden = false;
+        ozelSohbetDurumYaz((data.ad || 'Bir izleyici') + ' özel sohbet daveti gönderdi.');
+        const kutu = document.createElement('div');
+        kutu.style.marginTop = '8px';
+        const yazi = document.createElement('p');
+        yazi.textContent = (data.ad || 'Bir izleyici') + ' sizinle konuşmak istiyor.';
+        const kabul = document.createElement('button');
+        kabul.type = 'button';
+        kabul.className = 'btn-bid btn-action-green';
+        kabul.textContent = 'Kabul et';
+        kabul.onclick = function () { ozelSohbetYanit(data.davet_id, true); kutu.remove(); };
+        const ret = document.createElement('button');
+        ret.type = 'button';
+        ret.className = 'btn-bid';
+        ret.style.background = '#475569';
+        ret.style.color = '#fff';
+        ret.textContent = 'Reddet';
+        ret.onclick = function () { ozelSohbetYanit(data.davet_id, false); kutu.remove(); };
+        kutu.appendChild(yazi);
+        kutu.appendChild(kabul);
+        kutu.appendChild(ret);
+        if (liste) liste.prepend(kutu);
+    });
+
+    socket.on('ozel_sohbet_acildi', function (data) {
+        ozelSohbetOda = (data && data.oda_id) || '';
+        const liste = document.getElementById('ozelSohbetListe');
+        const pencere = document.getElementById('ozelSohbetPencere');
+        const akis = document.getElementById('ozelSohbetAkis');
+        const baslik = document.getElementById('ozelSohbetBaslik');
+        if (liste) liste.hidden = true;
+        if (pencere) pencere.hidden = false;
+        if (akis) akis.innerHTML = '';
+        if (baslik) baslik.textContent = '💬 ' + ((data && data.karsi_ad) || 'Özel sohbet');
+        const modal = document.getElementById('ozelSohbetModal');
+        if (modal) modal.style.display = 'flex';
+        ozelSohbetDurumYaz('Özel sohbet açıldı.');
+    });
+
+    socket.on('ozel_sohbet_mesaj', function (data) {
+        if (!data || data.oda_id !== ozelSohbetOda) return;
+        ozelSohbetSatir(data.ad, data.metin, !!data.benim);
+    });
+
+    socket.on('ozel_sohbet_bilgi', function (data) {
+        ozelSohbetDurumYaz((data && data.mesaj) || '');
+    });
+
+    socket.on('ozel_sohbet_hata', function (data) {
+        ozelSohbetDurumYaz((data && data.mesaj) || 'Sohbet iletilemedi.');
+    });
+
+    socket.on('ozel_sohbet_kapandi', function (data) {
+        if (data && data.oda_id && ozelSohbetOda && data.oda_id !== ozelSohbetOda) return;
+        ozelSohbetOda = '';
+        ozelSohbetDurumYaz((data && data.mesaj) || 'Sohbet kapandı.');
+    });
 
     var ytApiEtiketiEklendi = false;
     var muzikBekleyenIslem = null;
@@ -6137,6 +6443,7 @@
         }
         var perde = document.getElementById("yeniSlayt");
         if (perde) perde.hidden = true;
+        menuGeriGetir();
     }
 
     function yeniSlaytiAc() {

@@ -650,6 +650,41 @@
             </table>
         </div>
     </div>
+
+    <div class="card">
+        <div class="card-title">👥 Üye / Müşteri Yönetimi</div>
+        <div class="grid-2">
+            <div>
+                <input type="hidden" id="uyeKayitId" value="">
+                <input type="text" id="uyeAd" placeholder="Ad Soyad">
+                <input type="text" id="uyeTel" placeholder="Telefon">
+                <input type="email" id="uyeMail" placeholder="E-posta">
+                <textarea id="uyeAdres" rows="2" placeholder="Adres"></textarea>
+                <button type="button" class="btn btn-green" onclick="uyeKaydet()">Kaydet</button>
+                <button type="button" class="btn btn-blue" onclick="uyeFormunuTemizle()">Temizle</button>
+            </div>
+            <div id="uyeYonetimListesi" class="item-list">Üyeler yükleniyor...</div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-title">🎙️ Nasıl Kullanılır? Rehber Maddeleri</div>
+            <input type="hidden" id="rehberMaddeId" value="">
+            <input type="text" id="rehberMaddeBaslik" placeholder="Adım başlığı">
+            <textarea id="rehberMaddeMetin" rows="3" placeholder="Adım metni"></textarea>
+            <button type="button" class="btn btn-green" onclick="icerikMaddeKaydet('rehber')">Maddeyi Kaydet</button>
+            <div id="rehberMaddeListesi" class="item-list" style="margin-top:8px;"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">📜 Kurallar ve Sözleşme Maddeleri</div>
+            <input type="hidden" id="kuralMaddeId" value="">
+            <input type="text" id="kuralMaddeBaslik" placeholder="Madde başlığı">
+            <textarea id="kuralMaddeMetin" rows="3" placeholder="Madde metni"></textarea>
+            <button type="button" class="btn btn-green" onclick="icerikMaddeKaydet('kural')">Maddeyi Kaydet</button>
+            <div id="kuralMaddeListesi" class="item-list" style="margin-top:8px;"></div>
+        </div>
+    </div>
 </div>
 
 <!-- AI ÜRÜN STÜDYOSU -->
@@ -3309,6 +3344,169 @@
             studyoDosyaEkle(e.dataTransfer && e.dataTransfer.files);
         });
     })();
+
+    function htmlKacis(deger) {
+        return String(deger == null ? '' : deger)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function uyeFormunuTemizle() {
+        document.getElementById('uyeKayitId').value = '';
+        document.getElementById('uyeAd').value = '';
+        document.getElementById('uyeTel').value = '';
+        document.getElementById('uyeMail').value = '';
+        document.getElementById('uyeAdres').value = '';
+    }
+
+    function uyeDuzenle(id) {
+        const kayit = (window.uyeKayitlari || []).find(function (u) { return String(u.id) === String(id); });
+        if (!kayit) return;
+        document.getElementById('uyeKayitId').value = kayit.id;
+        document.getElementById('uyeAd').value = kayit.ad_soyad || '';
+        document.getElementById('uyeTel').value = kayit.telefon || '';
+        document.getElementById('uyeMail').value = kayit.email || '';
+        document.getElementById('uyeAdres').value = kayit.adres || '';
+    }
+
+    function uyeleriYukle() {
+        const kutu = document.getElementById('uyeYonetimListesi');
+        if (!kutu) return;
+        fetch('/admin/uyeler').then(function (r) { return r.json(); }).then(function (data) {
+            const uyeler = (data && data.uyeler) || [];
+            window.uyeKayitlari = uyeler;
+            if (!uyeler.length) {
+                kutu.innerHTML = '<div style="color:#94a3b8;">Kayıtlı üye yok.</div>';
+                return;
+            }
+            kutu.innerHTML = uyeler.map(function (u) {
+                return '<div class="item-row"><span><b>' + htmlKacis(u.ad_soyad) + '</b><br><small>'
+                    + htmlKacis(u.telefon) + ' · ' + htmlKacis(u.email || '-') + '</small></span><div class="actions">'
+                    + '<button class="btn btn-yellow btn-sm" onclick="uyeDuzenle(' + Number(u.id) + ')">Düzenle</button>'
+                    + '<button class="btn btn-red btn-sm" onclick="uyeYonetimSil(' + Number(u.id) + ')">Sil</button></div></div>';
+            }).join('');
+        }).catch(function () {
+            kutu.innerHTML = '<div style="color:#f87171;">Üyeler alınamadı.</div>';
+        });
+    }
+
+    function uyeKaydet() {
+        const govde = {
+            id: document.getElementById('uyeKayitId').value,
+            ad_soyad: document.getElementById('uyeAd').value.trim(),
+            telefon: document.getElementById('uyeTel').value.trim(),
+            email: document.getElementById('uyeMail').value.trim(),
+            adres: document.getElementById('uyeAdres').value.trim()
+        };
+        fetch('/admin/uye-kaydet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(govde)
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            alert((data && data.mesaj) || 'Kaydedildi.');
+            if (data && data.success) {
+                uyeFormunuTemizle();
+                uyeleriYukle();
+                if (typeof veriCekAdmin === 'function') veriCekAdmin();
+            }
+        }).catch(function () { alert('Üye kaydedilemedi.'); });
+    }
+
+    function uyeYonetimSil(id) {
+        if (!confirm('Bu üyeyi silmek istiyor musunuz?')) return;
+        fetch('/musteri-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kullanici_id: id })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            alert((data && data.mesaj) || 'Silindi.');
+            uyeleriYukle();
+            if (typeof veriCekAdmin === 'function') veriCekAdmin();
+        }).catch(function () { alert('Üye silinemedi.'); });
+    }
+
+    function icerikMaddeFormunuDoldur(tur, id) {
+        const havuz = tur === 'rehber' ? (window.rehberMaddeleri || []) : (window.kuralMaddeleri || []);
+        const kayit = havuz.find(function (m) { return String(m.id) === String(id); });
+        if (!kayit) return;
+        const onek = tur === 'rehber' ? 'rehber' : 'kural';
+        document.getElementById(onek + 'MaddeId').value = kayit.id;
+        document.getElementById(onek + 'MaddeBaslik').value = kayit.baslik || '';
+        document.getElementById(onek + 'MaddeMetin').value = kayit.metin || '';
+    }
+
+    function icerikListesiniCiz(tur, maddeler) {
+        const kutu = document.getElementById(tur === 'rehber' ? 'rehberMaddeListesi' : 'kuralMaddeListesi');
+        if (!kutu) return;
+        if (tur === 'rehber') window.rehberMaddeleri = maddeler;
+        else window.kuralMaddeleri = maddeler;
+        if (!maddeler.length) {
+            kutu.innerHTML = '<div style="color:#94a3b8;">Madde yok.</div>';
+            return;
+        }
+        kutu.innerHTML = maddeler.map(function (m, index) {
+            return '<div class="item-row"><span><b>' + (index + 1) + '.</b> ' + htmlKacis(m.baslik) + '</span><div class="actions">'
+                + '<button class="btn btn-blue btn-sm" onclick="icerikMaddeTasi(\'' + tur + '\',' + Number(m.id) + ',-1)">↑</button>'
+                + '<button class="btn btn-blue btn-sm" onclick="icerikMaddeTasi(\'' + tur + '\',' + Number(m.id) + ',1)">↓</button>'
+                + '<button class="btn btn-yellow btn-sm" onclick="icerikMaddeFormunuDoldur(\'' + tur + '\',' + Number(m.id) + ')">Düzenle</button>'
+                + '<button class="btn btn-red btn-sm" onclick="icerikMaddeSil(' + Number(m.id) + ')">Sil</button></div></div>';
+        }).join('');
+    }
+
+    function icerikPanelleriniYukle() {
+        fetch('/admin/icerik-maddeleri').then(function (r) { return r.json(); }).then(function (data) {
+            icerikListesiniCiz('rehber', (data && data.rehber) || []);
+            icerikListesiniCiz('kural', (data && data.kural) || []);
+        }).catch(function () {});
+    }
+
+    function icerikMaddeKaydet(tur) {
+        const onek = tur === 'rehber' ? 'rehber' : 'kural';
+        fetch('/admin/icerik-madde-kaydet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tur: tur,
+                id: document.getElementById(onek + 'MaddeId').value,
+                baslik: document.getElementById(onek + 'MaddeBaslik').value.trim(),
+                metin: document.getElementById(onek + 'MaddeMetin').value.trim()
+            })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            alert((data && data.mesaj) || (data && data.success ? 'Kaydedildi.' : 'Kaydedilemedi.'));
+            if (!data || !data.success) return;
+            document.getElementById(onek + 'MaddeId').value = '';
+            document.getElementById(onek + 'MaddeBaslik').value = '';
+            document.getElementById(onek + 'MaddeMetin').value = '';
+            icerikPanelleriniYukle();
+        }).catch(function () { alert('Madde kaydedilemedi.'); });
+    }
+
+    function icerikMaddeSil(id) {
+        if (!confirm('Bu maddeyi silmek istiyor musunuz?')) return;
+        fetch('/admin/icerik-madde-sil', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id })
+        }).then(function (r) { return r.json(); }).then(function () {
+            icerikPanelleriniYukle();
+        }).catch(function () { alert('Madde silinemedi.'); });
+    }
+
+    function icerikMaddeTasi(tur, id, yon) {
+        fetch('/admin/icerik-madde-sirala', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tur: tur, id: id, yon: yon })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (data && data.maddeler) icerikListesiniCiz(tur, data.maddeler);
+            else icerikPanelleriniYukle();
+        }).catch(function () {});
+    }
+
+    uyeleriYukle();
+    icerikPanelleriniYukle();
 </script>
 </body>
 </html>
