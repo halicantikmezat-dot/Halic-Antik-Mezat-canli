@@ -2939,7 +2939,30 @@ def serve_uploads(filename):
 @app.route("/")
 def izleyici_index():
     dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
-    return render_template("index.html", secili_dukkan=dukkan, dukkanlar=DUKKANLAR)
+    oda = odalar.get(dukkan) or {}
+    durum = oda.get("durum") or {}
+    ilk_sahne = {
+        "durum": durum.get("durum") or "Bekliyor",
+        "pey": durum.get("pey") or 0,
+        "kazanan": durum.get("kazanan") or "Yok",
+        "aktif_urun": None,
+    }
+    try:
+        urun_id = oda.get("aktif_urun_id")
+        if urun_id:
+            urun = db.session.get(Urun, urun_id)
+            if urun and not urun.silindi_mi:
+                ilk_sahne["aktif_urun"] = urun.to_dict()
+    except Exception:
+        db.session.rollback()
+    finally:
+        db.session.remove()
+    return render_template(
+        "index.html",
+        secili_dukkan=dukkan,
+        dukkanlar=DUKKANLAR,
+        ilk_sahne=ilk_sahne,
+    )
 
 
 @app.route("/favicon.ico")
@@ -8782,7 +8805,12 @@ def veritabani_onarimini_bir_kez_baslat():
         except Exception as hata:
             print(f"Veritabanı onarımı tamamlanamadı: {hata}")
 
-    threading.Thread(
+    try:
+        from gevent.monkey import get_original
+        IsParcasi = get_original("threading", "Thread")
+    except Exception:
+        IsParcasi = threading.Thread
+    IsParcasi(
         target=_calistir,
         daemon=True,
         name="halic-db-onarim",

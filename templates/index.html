@@ -68,31 +68,33 @@
 
         .header {
             background: #080c13;
-            padding: 6px 8px;
+            padding: 4px 4px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid var(--accent-gold);
-            gap: 4px;
+            gap: 2px;
             border-radius: 4px;
         }
         .logo-box { 
             display: flex; 
             align-items: center; 
-            gap: 5px; 
+            gap: 3px; 
             flex-wrap: nowrap;
-            overflow: hidden;
+            overflow: visible;
+            min-width: 0;
         }
         .logo-box h2 { 
-            font-size: 11px; 
+            font-size: 10px; 
             color: var(--accent-gold); 
             text-transform: uppercase; 
-            letter-spacing: 0.5px; 
+            letter-spacing: 0; 
             font-weight: 800; 
             white-space: nowrap; 
             margin: 0; 
-            overflow: hidden; 
-            text-overflow: ellipsis; 
+            overflow: visible; 
+            text-overflow: clip;
+            flex-shrink: 0;
         }
 
         .header-lokasyon-rozet {
@@ -101,9 +103,9 @@
             gap: 3px;
             background: rgba(15, 21, 29, 0.95);
             border: 1px solid rgba(212, 175, 55, 0.55);
-            padding: 1px 4px;
+            padding: 1px 3px;
             border-radius: 10px;
-            font-size: 8px;
+            font-size: 7px;
             font-weight: 700;
             color: #f1f5f9;
             white-space: nowrap;
@@ -122,7 +124,7 @@
             100% { opacity: 0.3; transform: scale(0.85); }
         }
 
-        .header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .header-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
         .currency-select {
             background: #0f151d;
             color: var(--accent-gold);
@@ -944,13 +946,34 @@
             display: flex !important;
             margin: 0;
             border-radius: 0;
-            padding: 6px;
+            padding: 6px 22px;
             gap: 6px;
             background: rgba(8, 12, 19, 0.82);
             z-index: 40;
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
         }
+        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; }
+        .dukkan-serit-ok {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 20px;
+            border: none;
+            background: rgba(8, 12, 19, 0.78);
+            color: #fef08a;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 2;
+            padding: 0;
+        }
+        .dukkan-serit-ok.sol { left: 0; }
+        .dukkan-serit-ok.sag { right: 0; }
         .shop-nav-btn { font-size: 12px; padding: 7px 10px; border-radius: 999px; }
-        .sade-header { align-items: center; gap: 8px; background: rgba(8, 12, 19, 0.55); }
+        .sade-header { align-items: center; gap: 4px; background: rgba(8, 12, 19, 0.55); }
         .btn-menu, .btn-muzik-ust, .live-badge {
             border: 1px solid rgba(255,255,255,0.28);
             background: rgba(0,0,0,0.35);
@@ -959,10 +982,10 @@
             cursor: pointer;
             backdrop-filter: blur(8px);
         }
-        .btn-menu { width: 36px; height: 36px; font-size: 18px; flex-shrink: 0; }
-        .btn-muzik-ust { padding: 6px 10px; font-size: 11px; font-weight: 800; }
+        .btn-menu { width: 30px; height: 30px; font-size: 16px; flex-shrink: 0; }
+        .btn-muzik-ust { padding: 4px 6px; font-size: 10px; font-weight: 800; }
         .btn-yeni-ust {
-            padding: 6px 8px;
+            padding: 4px 6px;
             font-size: 11px;
             font-weight: 800;
             border-radius: 999px;
@@ -1432,7 +1455,7 @@
     <div class="header sade-header">
         <button type="button" id="btnGenelMenu" class="btn-menu" onclick="genelMenuAcKapa()" aria-label="Menüyü aç">☰</button>
         <div class="logo-box">
-            <h2>HALİÇ ANTİK</h2>
+            <h2>HALİÇ ANTİK CANLI</h2>
             <div class="header-lokasyon-rozet">
                 <span class="header-rozet-pulse"></span>
                 <span id="aktifDukkanRozet">GÜMÜŞ</span>
@@ -1455,7 +1478,11 @@
             <button type="button" class="live-badge" onclick="izleyiciListesiniAc()" aria-label="Canlı izleyici listesi">🟢 <span id="onlineCount">0</span> Canlı</button>
         </div>
     </div>
-    <nav class="shop-nav-bar" id="shopNavBar" aria-label="Dükkanlar"></nav>
+    <div class="dukkan-serit-kutu" id="dukkanMenu">
+        <button type="button" class="dukkan-serit-ok sol" id="dukkanSeritSol" aria-label="Dükkanları sola kaydır">‹</button>
+        <nav class="shop-nav-bar" id="shopNavBar" aria-label="Dükkanlar"></nav>
+        <button type="button" class="dukkan-serit-ok sag" id="dukkanSeritSag" aria-label="Dükkanları sağa kaydır">›</button>
+    </div>
     <div id="menuPerde" class="menu-perde" hidden onclick="genelMenuAcKapa()"></div>
     <aside id="genelMenu" class="genel-menu" aria-label="Genel Menü">
         <button type="button" class="menu-oge" onclick="genelMenuAcKapa()" aria-label="Menüyü kapat">✕ Kapat</button>
@@ -1517,7 +1544,13 @@
     <div id="mezatAlani">
         <div class="stage-wrapper" id="stageWrapper">
             <div class="stage-media-box" id="medyaKapsayici">
+                {% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun and ilk_sahne.aktif_urun.fotograflar %}
+                <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;object-fit:contain;">
+                {% elif ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}
+                <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">LOT #{{ ilk_sahne.aktif_urun.lot }} - {{ ilk_sahne.aktif_urun.ad }}</p>
+                {% else %}
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>
+                {% endif %}
             </div>
             <div id="sahneBeklemeRozeti" class="sahne-bekleme" style="display:none;">Yeni ürün sahneye bekleniyor...</div>
             
@@ -1525,7 +1558,7 @@
             <span id="cornerIzleyici" hidden>0</span>
             <span id="cornerHemenAlFiyat" hidden>0</span>
             <div class="lot-galeri-satiri">
-                <div class="lot-rozet" id="cornerLotNo">LOT #000</div>
+                <div class="lot-rozet" id="cornerLotNo">{% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}LOT #{{ ilk_sahne.aktif_urun.lot }}{% else %}LOT #000{% endif %}</div>
                 <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
             </div>
             <div id="bilgiKarti" class="bilgi-karti" hidden>
@@ -1926,6 +1959,7 @@
     </div>
 </div>
 
+<script type="application/json" id="ilkSahneVerisi">{{ (ilk_sahne if ilk_sahne is defined else none)|tojson }}</script>
 <script>
     // === ŞİRKET VE BANKA BİLGİLERİ ŞABLONU (BURADAN DÜZENLEYİN) ===
     const KURUMSAL_BILGILER = {
@@ -6524,6 +6558,36 @@
             if (Math.abs(yatay) < 48 || Math.abs(yatay) < Math.abs(dikey)) return;
             yeniSlaytGit(yatay < 0 ? 1 : -1, true);
         }, { passive: true });
+    })();
+
+    (function dukkanSeridiKaydir() {
+        var serit = document.getElementById("shopNavBar");
+        if (!serit) return;
+        var adim = 160;
+        var sol = document.getElementById("dukkanSeritSol");
+        var sag = document.getElementById("dukkanSeritSag");
+        if (sol) sol.addEventListener("click", function () {
+            serit.scrollBy({ left: -adim, behavior: "smooth" });
+        });
+        if (sag) sag.addEventListener("click", function () {
+            serit.scrollBy({ left: adim, behavior: "smooth" });
+        });
+        serit.addEventListener("wheel", function (e) {
+            var yatay = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+            if (!yatay) return;
+            serit.scrollLeft += yatay;
+            e.preventDefault();
+        }, { passive: false });
+    })();
+
+    (function ilkSahneyiBas() {
+        var ham = document.getElementById("ilkSahneVerisi");
+        if (!ham || typeof sahneyiGuncelle !== "function") return;
+        var paket;
+        try { paket = JSON.parse(ham.textContent || ""); } catch (e) { return; }
+        if (!paket || !paket.aktif_urun) return;
+        var pey = parseFloat(paket.pey || paket.aktif_urun.guncel_fiyat || paket.aktif_urun.fiyat || 0);
+        sahneyiGuncelle(paket.aktif_urun, paket.durum, pey, paket.kazanan);
     })();
 </script>
 </body>
