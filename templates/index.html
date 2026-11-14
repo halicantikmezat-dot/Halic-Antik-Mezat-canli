@@ -954,12 +954,16 @@
             flex-wrap: nowrap;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
+            min-height: 44px;
+            flex-shrink: 0;
         }
-        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; }
+        .dukkan-serit-kutu { position: relative; display: flex; align-items: stretch; z-index: 40; min-height: 44px; flex-shrink: 0; }
         .dukkan-serit-ok {
             position: absolute;
             top: 0;
             bottom: 0;
+            min-height: 44px;
+            flex-shrink: 0;
             width: 20px;
             border: none;
             background: rgba(8, 12, 19, 0.78);
@@ -1458,7 +1462,7 @@
             <h2>HALİÇ ANTİK CANLI</h2>
             <div class="header-lokasyon-rozet">
                 <span class="header-rozet-pulse"></span>
-                <span id="aktifDukkanRozet">GÜMÜŞ</span>
+                <span id="aktifDukkanRozet" data-dukkan="{{ secili_dukkan if secili_dukkan is defined else '' }}">{% if secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar %}{{ dukkanlar[secili_dukkan].ad }}{% else %}GÜMÜŞ{% endif %}</span>
             </div>
         </div>
         <div class="header-actions">
@@ -2080,7 +2084,10 @@
     });
 
     const urlParams = new URLSearchParams(window.location.search);
-    let aktifDukkan = urlParams.get('dukkan') || 'gumus';
+    const rozetDukkan = document.getElementById('aktifDukkanRozet');
+    const sunucuDukkan = (rozetDukkan ? (rozetDukkan.getAttribute('data-dukkan') || '') : '').trim().toLowerCase();
+    const urlDukkan = (urlParams.get('dukkan') || '').trim().toLowerCase();
+    let aktifDukkan = urlDukkan || sunucuDukkan || 'gumus';
     let dukkanlar = {};
 
     let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "", kullaniciMail = "";

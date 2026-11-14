@@ -1,5 +1,5 @@
 from gevent import monkey
-monkey.patch_all(thread=False, ssl=False)
+monkey.patch_all()
 
 import azure.cognitiveservices.speech as speechsdk
 import base64
@@ -8805,16 +8805,7 @@ def veritabani_onarimini_bir_kez_baslat():
         except Exception as hata:
             print(f"Veritabanı onarımı tamamlanamadı: {hata}")
 
-    try:
-        from gevent.monkey import get_original
-        IsParcasi = get_original("threading", "Thread")
-    except Exception:
-        IsParcasi = threading.Thread
-    IsParcasi(
-        target=_calistir,
-        daemon=True,
-        name="halic-db-onarim",
-    ).start()
+    socketio.start_background_task(_calistir)
 
 
 def _arkaplan_agir_baslangic():
@@ -8838,17 +8829,15 @@ except Exception:
     pass
 
 veritabani_onarimini_bir_kez_baslat()
-threading.Thread(target=_sessizlik_dongusu, daemon=True, name="sessizlik-savar").start()
+socketio.sleep(0.05)
+socketio.start_background_task(_sessizlik_dongusu)
 
 # ==========================================
 # SUNUCUYU BAŞLATMA
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    threading.Thread(
-        target=_arkaplan_agir_baslangic,
-        daemon=True,
-        name="halic-baslangic",
-    ).start()
+    socketio.start_background_task(_arkaplan_agir_baslangic)
+    socketio.sleep(0.05)
     print(f"🚀 Haliç Antik Çok Dükkanlı Mezat Portalı http://127.0.0.1:{port} adresinde başlatılıyor...")
     socketio.run(app, host="0.0.0.0", port=port, debug=True, use_reloader=False)
