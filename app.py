@@ -276,6 +276,48 @@ _ses_kuyruk = {}
 _ses_kuyruk_kilit = threading.Lock()
 
 
+def _elevenlabs_mp3(text: str) -> bytes | None:
+    """Canlı mezat sunucusu. Flash model, sıcak ve vurgulu ses ayarı."""
+    metin = str(text or "").strip()
+    anahtar = (getattr(Config, "ELEVENLABS_API_KEY", "") or "").strip()
+    if not metin or not anahtar:
+        return None
+    voice_id = (getattr(Config, "ELEVENLABS_VOICE_ID", "") or "EXAVITQu4vr4xnSDxMaL").strip()
+    model_id = (getattr(Config, "ELEVENLABS_MODEL_ID", "") or "eleven_flash_v2_5").strip()
+    url = (
+        "https://api.elevenlabs.io/v1/text-to-speech/"
+        f"{voice_id}?output_format=mp3_44100_128"
+    )
+    try:
+        yanit = requests.post(
+            url,
+            headers={
+                "xi-api-key": anahtar,
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg",
+            },
+            json={
+                "text": metin,
+                "model_id": model_id,
+                "voice_settings": {
+                    "stability": 0.45,
+                    "similarity_boost": 0.80,
+                    "style": 0.35,
+                    "use_speaker_boost": True,
+                },
+            },
+            timeout=12,
+        )
+        if yanit.status_code != 200 or not yanit.content:
+            ozet = (yanit.text or "").replace("\n", " ")[:240]
+            print(f"[SES HATA] ElevenLabs HTTP {yanit.status_code}: {ozet}", flush=True)
+            return None
+        return yanit.content
+    except Exception as hata:
+        print(f"[SES HATA] ElevenLabs: {hata}", flush=True)
+        return None
+
+
 def _openai_mp3(istemci, model, ses, soylenen):
     """Okunan metin şablondur. tts-1-hd yönerge alanını sesli okuduğu için talimat girdiye yazılmaz."""
     hizli = istemci.with_options(timeout=5.0)
@@ -336,6 +378,57 @@ def _ses_modeli():
         model = "tts-1-hd"
     ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
     return model, ses
+
+
+def _tts_uret(metin):
+    """MP3 üretir. Sıra: ElevenLabs, OpenAI, Edge. (bayt, motor) döner."""
+    soylenen = str(metin or "").strip()
+    if not soylenen:
+        return None, ""
+    if (getattr(Config, "ELEVENLABS_API_KEY", "") or "").strip():
+        veri = _elevenlabs_mp3(soylenen)
+        if veri:
+            return veri, "elevenlabs"
+    istemci = _openai_ses_istemcisi()
+    if istemci is None:
+        print("[SES] OPENAI_API_KEY yok; Edge TTS deneniyor.", flush=True)
+    else:
+        model, ses = _ses_modeli()
+        try:
+            veri = _openai_mp3(istemci, model, ses, soylenen)
+        except Exception as hata:
+            print(f"[SES HATA] OpenAI akış: {hata}", flush=True)
+            veri = None
+        if veri:
+            return veri, "openai"
+    veri = _edge_tts_mp3(soylenen)
+    if veri:
+        return veri, "edge"
+    return None, ""
+
+
+@app.route("/api/tts", methods=["POST"])
+def api_tts():
+    """Canlı mezat sesi. Yanıt başlığında üreten motor yazar."""
+    govde = request.get_json(silent=True) or {}
+    ham = (
+        govde.get("text")
+        or govde.get("metin")
+        or request.form.get("text")
+        or request.form.get("metin")
+        or ""
+    )
+    temiz = ses_metnini_temizle(ham)
+    if not temiz:
+        return jsonify({"success": False, "mesaj": "Metin boş."}), 400
+    mp3, motor = _tts_uret(temiz)
+    if not mp3 or motor not in ("elevenlabs", "openai", "edge"):
+        return jsonify({"success": False, "mesaj": "Ses üretilemedi."}), 503
+    yanit = Response(mp3, mimetype="audio/mpeg")
+    yanit.headers["X-TTS-Engine"] = motor
+    yanit.headers["Access-Control-Expose-Headers"] = "X-TTS-Engine"
+    yanit.headers["Cache-Control"] = "no-store"
+    return yanit
 
 
 def _sahne_sesini_kes(dukkan):
@@ -477,27 +570,13 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
                 kayit["calisiyor"] = False
                 return
             oge = kayit["ogeler"].pop(0)
-        istemci = _openai_ses_istemcisi()
-        model, ses = _ses_modeli()
-        kaynak = "openai"
-        veri = None
-        if istemci is None:
-            print("[SES] OPENAI_API_KEY yok; Edge TTS deneniyor.", flush=True)
-        else:
-            try:
-                veri = _openai_mp3(istemci, model, ses, oge["metin"])
-            except Exception as hata:
-                print(f"[SES HATA] OpenAI akış: {hata}", flush=True)
-                veri = None
-        if not veri:
-            veri = _edge_tts_mp3(oge["metin"])
-            kaynak = "edge"
+        veri, kaynak = _tts_uret(oge["metin"])
         with _ses_kuyruk_kilit:
             kayit = _ses_kuyruk.get(dukkan)
             if not kayit or kayit.get("isleyici") != benim:
                 return
             if not veri:
-                print("[SES] OpenAI yanıt vermedi; güncel anonsa geçiliyor.", flush=True)
+                print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
                 continue
         adres = _mp3_kaydet(veri, oge["nesil"])
         socketio.emit("ses_oynat", {
@@ -507,8 +586,9 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             "zorunlu": bool(oge.get("zorunlu")),
             "audio_url": adres,
             "metin": oge["metin"],
+            "motor": kaynak,
         })
-        print(f"[SES] anons yayında, {len(oge['metin'])} karakter, model {model}, ses {ses}, kaynak {kaynak}", flush=True)
+        print(f"[SES] anons yayında, {len(oge['metin'])} karakter, motor {kaynak}", flush=True)
 
 
 def _satis_disi_sadelestir(metin, tur):
@@ -7627,19 +7707,7 @@ def rehber_ses_iste(veri):
     sid = request.sid
 
     def uret():
-        istemci = _openai_ses_istemcisi()
-        mp3 = None
-        if istemci is None:
-            print("[REHBER SES] OpenAI istemcisi yok; Edge TTS deneniyor.", flush=True)
-        else:
-            model, ses = _ses_modeli()
-            try:
-                mp3 = _openai_mp3(istemci, model, ses, metin)
-            except Exception as hata:
-                print(f"[REHBER SES] {hata}", flush=True)
-                mp3 = None
-        if not mp3:
-            mp3 = _edge_tts_mp3(metin)
+        mp3, motor = _tts_uret(metin)
         if not mp3:
             socketio.emit("rehber_ses", {
                 "adim": adim,
@@ -7650,6 +7718,7 @@ def rehber_ses_iste(veri):
         socketio.emit("rehber_ses", {
             "adim": adim,
             "audio_url": adres,
+            "motor": motor,
         }, room=sid)
 
     socketio.start_background_task(uret)
@@ -7884,10 +7953,12 @@ def veritabani_onarimini_bir_kez_baslat():
 def _arkaplan_agir_baslangic():
     """Model, veritabanı onarımı ve ses hazırlığı dinlemeyi kilitlemesin."""
     veritabani_onarimini_bir_kez_baslat()
-    if getattr(Config, "OPENAI_API_KEY", ""):
+    if getattr(Config, "ELEVENLABS_API_KEY", ""):
+        print(f"Canlı ses akışı hazır: ElevenLabs {Config.ELEVENLABS_MODEL_ID}.")
+    elif getattr(Config, "OPENAI_API_KEY", ""):
         print(f"Canlı ses akışı hazır: OpenAI {Config.OPENAI_TTS_VOICE}.")
     else:
-        print("[SES] OPENAI_API_KEY tanımlı değil.")
+        print("[SES] ElevenLabs ve OpenAI anahtarı yok; Edge TTS yedek.")
 
 # ==========================================
 # PAZARYERİ VE TEDARİKÇİ MODÜLÜ BAĞLANTISI

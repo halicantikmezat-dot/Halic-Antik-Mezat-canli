@@ -66,6 +66,11 @@ class Config:
     OPENAI_TTS_MODEL = _env("OPENAI_TTS_MODEL") or "tts-1-hd"
     OPENAI_TTS_VOICE = _env("OPENAI_TTS_VOICE") or "nova"
 
+    # ElevenLabs öncelikli mezat sunucusu. Anahtar yalnızca ortamdan okunur.
+    ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL").strip()
+    ELEVENLABS_MODEL_ID = os.getenv("ELEVENLABS_MODEL_ID", "eleven_flash_v2_5").strip()
+
     # BizimHesap API. Anahtarlar yalnızca ortamdan okunur.
     BIZIMHESAP_TOKEN = os.environ.get("BIZIMHESAP_TOKEN") or ""
     BIZIMHESAP_APP_ID = os.environ.get("BIZIMHESAP_APP_ID") or ""
