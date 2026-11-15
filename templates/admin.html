@@ -464,6 +464,7 @@
                 <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">Sahnede aktif ürün yok</span></p>
                 <p style="margin-top: 4px;"><b>Anlık Fiyat:</b> <span id="aktifFiyat" style="color: #34d399; font-weight: bold;">0 TL</span></p>
                 <p style="margin-top: 4px;"><b>Son Pey Veren:</b> <span id="aktifKazanan" style="color: var(--accent-gold); font-weight: bold;">Yok</span></p>
+                <p style="margin-top: 4px;"><b>Son Gelen Pey:</b> <span id="sonGelenPey" style="color: #f8fafc; font-weight: bold;">—</span></p>
                 <p style="margin-top: 4px;"><b>Durum:</b> <span id="aktifDurum">Bekliyor</span></p>
             </div>
 
@@ -482,7 +483,10 @@
         <div class="card" style="display: flex; flex-direction: column;">
             <div class="card-title">
                 <span>🔴 Canlı Akış ve Mezat Sunucusu</span>
-                <div style="display:flex; align-items:center; gap:6px;">
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <select id="rejiHedefDukkan" aria-label="Hedef dükkan" title="Gizli reji ve patron yayınının gideceği dükkan" style="background:#0f141c; color:#fef08a; border:1px solid #d4af37; border-radius:6px; padding:6px 8px; font-size:12px; font-weight:800; max-width:220px;">
+                        <option value="tumu">Tüm Dükkanlar (Toplu Yayın)</option>
+                    </select>
                     <button id="btnBasKonus" class="btn-bas-konus" title="Basılı tutulan ses izleyiciye gitmez, bırakınca gizli reji emri olur">
                         🎙️ Bas-Konuş (Gizli Reji)
                     </button>
@@ -1250,6 +1254,19 @@
             const shopBar = document.getElementById('shopBar');
             shopBar.innerHTML = '';
 
+            const rejiSecim = document.getElementById('rejiHedefDukkan');
+            if (rejiSecim) {
+                const onceki = rejiSecim.value || 'tumu';
+                rejiSecim.innerHTML = '<option value="tumu">Tüm Dükkanlar (Toplu Yayın)</option>';
+                for (const [kod, d] of Object.entries(dukkanlar)) {
+                    const opt = document.createElement('option');
+                    opt.value = kod;
+                    opt.textContent = d.ad || kod;
+                    rejiSecim.appendChild(opt);
+                }
+                rejiSecim.value = [...rejiSecim.options].some(function (o) { return o.value === onceki; }) ? onceki : 'tumu';
+            }
+
             for (const [kod, d] of Object.entries(dukkanlar)) {
                 const btn = document.createElement('div');
                 btn.className = `shop-tab ${kod === seciliDukkan ? 'active' : ''}`;
@@ -1291,8 +1308,41 @@
         document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
 
-        veriCekAdmin();
+        veriCekAdmin(true);
         adminUrunAra();
+    }
+
+    function dukkanEtiketi(kod) {
+        const ad = (dukkanlar[kod] && dukkanlar[kod].ad) || kod || "";
+        return "[" + String(ad).toUpperCase() + "]";
+    }
+
+    function rejiHedefKodu() {
+        const secim = document.getElementById("rejiHedefDukkan");
+        const deger = secim ? String(secim.value || "").trim().toLowerCase() : "";
+        return deger || "tumu";
+    }
+
+    function adminAkisaSatirEkle(baslik, metin) {
+        const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
+        if (!sohbetKutusu) return;
+        const bosUyari = document.getElementById("sohbetBosUyarisi");
+        if (bosUyari) bosUyari.remove();
+        toplamYorumSayisi++;
+        const sayac = document.getElementById("yorumSayaci");
+        if (sayac) sayac.innerText = toplamYorumSayisi + " Mesaj";
+        const satir = document.createElement("div");
+        satir.style.cssText = "background:#18202c; border-left:3px solid #34d399; padding:6px 10px; border-radius:4px; font-size:11px;";
+        const ust = document.createElement("div");
+        ust.style.cssText = "font-weight:bold; color:#34d399; margin-bottom:2px;";
+        ust.textContent = baslik;
+        const govde = document.createElement("div");
+        govde.style.cssText = "color:#f8fafc; font-size:12px; word-break:break-word;";
+        govde.textContent = metin;
+        satir.appendChild(ust);
+        satir.appendChild(govde);
+        sohbetKutusu.appendChild(satir);
+        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     }
 
     // Gizli reji bas-konuş izleyiciye gitmez. Patron yayını hem salona hem sunucuya gider.
@@ -1382,7 +1432,7 @@
                 const virgul = sonuc.indexOf(",");
                 const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
                 if (!base64Data) return;
-                const oda = (typeof seciliDukkan !== "undefined" && seciliDukkan) || "gumus";
+                const oda = rejiHedefKodu();
                 if (!base64Data || base64Data.length < 80) {
                     rejiLogYaz("[Gizli Reji] Kayıt boş veya çok kısa. Mikrofonu basılı tutup net konuşun, sonra bırakın.");
                     return;
@@ -1453,7 +1503,7 @@
             if (!sonuc || !sonuc.isFinal) return;
             const metin = String((sonuc[0] && sonuc[0].transcript) || "").trim();
             if (metin.length < 2) return;
-            socket.emit("patron_yayin_metni", { dukkan: seciliDukkan, metin: metin });
+            socket.emit("patron_yayin_metni", { dukkan: rejiHedefKodu(), metin: metin });
         };
         patronTaniyici.onend = function () {
             if (!patronYayinda || !patronTaniyici) return;
@@ -1486,7 +1536,7 @@
                 if (!b64 || !patronYayinda) return;
                 moderatorSira += 1;
                 socket.emit("moderator_ses_parcasi", {
-                    dukkan: seciliDukkan,
+                    dukkan: rejiHedefKodu(),
                     parca: b64,
                     mime: rec.mimeType || mime || "audio/webm",
                     seq: moderatorSira,
@@ -1579,10 +1629,11 @@
         const yeniSatir = document.createElement("div");
         yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
 
+        const dukkanOnEk = data.dukkan ? dukkanEtiketi(data.dukkan) + " " : "";
         yeniSatir.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                 <span style="font-weight: bold; color: ${platformRenk};">
-                    ${logoSvg} [${platformAd}] ${data.kullanici}
+                    ${logoSvg} ${dukkanOnEk}[${platformAd}] ${data.kullanici}
                 </span>
                 <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
             </div>
@@ -2047,19 +2098,34 @@
 
     socket.on('yeni_sahne_urunu', function(urun) {
         if (urun && urun.dukkan === seciliDukkan) {
-            document.getElementById('aktifUrunAdi').innerText = `LOT #${urun.lot} - ${urun.ad}`;
-            document.getElementById('aktifFiyat').innerText = `${urun.fiyat} TL`;
-            document.getElementById('aktifKazanan').innerText = "Yok";
+            document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(urun.dukkan) + ` LOT #${urun.lot} - ${urun.ad}`;
+            document.getElementById('aktifFiyat').innerText = `${urun.guncel_fiyat || urun.fiyat} TL`;
+            document.getElementById('aktifKazanan').innerText = urun.kazanan || "Yok";
             const durumKutusu = document.getElementById('aktifDurum');
             durumKutusu.classList.remove('satildi-yazi');
-            durumKutusu.innerText = "Bekliyor";
+            durumKutusu.innerText = urun.durum || "Bekliyor";
         }
     });
 
+    let sonAdminPeyImza = "";
     socket.on('pey_guncellendi', function(data) {
-        if(data && data.dukkan === seciliDukkan) {
-            if(data.pey !== undefined) document.getElementById('aktifFiyat').innerText = `${data.pey} TL`;
-            if(data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
+        if (!data || !data.dukkan) return;
+        const imza = [data.dukkan, data.urun_id, data.pey, data.kazanan].join("|");
+        if (imza === sonAdminPeyImza) return;
+        sonAdminPeyImza = imza;
+        const etiket = data.dukkan_etiket || dukkanEtiketi(data.dukkan);
+        const kazanan = data.kazanan || data.ad || "Yok";
+        const gercekPey = kazanan && String(kazanan).toLowerCase() !== "yok";
+        const sonSatir = document.getElementById("sonGelenPey");
+        if (sonSatir && gercekPey) {
+            sonSatir.textContent = etiket + " " + kazanan + " — " + data.pey + " TL";
+        }
+        if (gercekPey) {
+            adminAkisaSatirEkle(etiket + " Pey", kazanan + " — " + data.pey + " TL");
+        }
+        if (data.dukkan === seciliDukkan) {
+            if (data.pey !== undefined) document.getElementById('aktifFiyat').innerText = data.pey + " TL";
+            if (data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = (gercekPey ? etiket + " " : "") + (data.kazanan || "Yok");
         }
     });
 
@@ -2307,18 +2373,27 @@
         document.getElementById('modalUrunOnizle').style.display = 'flex';
     }
 
-    function veriCekAdmin() {
-        if (yukleniyorMu) return Promise.resolve();
+    let veriIstekNo = 0;
+    function veriCekAdmin(zorla) {
+        if (yukleniyorMu && !zorla) return Promise.resolve();
         yukleniyorMu = true;
         sonVeriCekmeZamani = Date.now();
+        const istek = ++veriIstekNo;
+        const istenenDukkan = seciliDukkan;
 
-        return fetch(`/durum-getir?dukkan=${seciliDukkan}`)
+        return fetch(`/durum-getir?dukkan=${istenenDukkan}`)
         .then(res => res.json())
         .then(data => {
+            if (istek !== veriIstekNo || istenenDukkan !== seciliDukkan) return;
             if(data.aktif_urun) {
-                document.getElementById('aktifUrunAdi').innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
+                document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(istenenDukkan) + ` LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
                 document.getElementById('aktifFiyat').innerText = `${data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat} TL`;
-                document.getElementById('aktifKazanan').innerText = data.kazanan || "Yok";
+                const kazananYazi = data.kazanan || "Yok";
+                document.getElementById('aktifKazanan').innerText = kazananYazi;
+                const sonSatir = document.getElementById("sonGelenPey");
+                if (sonSatir && String(kazananYazi).toLowerCase() !== "yok") {
+                    sonSatir.textContent = dukkanEtiketi(istenenDukkan) + " " + kazananYazi + " — " + (data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat) + " TL";
+                }
                 document.getElementById('aktifDurum').innerText = data.durum;
             } else {
                 document.getElementById('aktifUrunAdi').innerText = "Sahnede aktif ürün yok";
@@ -2459,7 +2534,7 @@
             }
         })
         .catch(() => {})
-        .finally(() => { yukleniyorMu = false; });
+        .finally(() => { if (istek === veriIstekNo) yukleniyorMu = false; });
     }
 
     let kargoUrunleri = {};

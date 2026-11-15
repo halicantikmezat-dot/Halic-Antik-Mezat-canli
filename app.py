@@ -997,6 +997,27 @@ def ahmet_pey_anonsu(kullanici, tutar, urun_adi="", onceki=None):
     return ahmet_pey_cumlesi("", kullanici, tutar, urun_adi)
 
 
+def _dukkan_etiketi(dukkan):
+    ad = (DUKKANLAR.get(dukkan) or {}).get("ad") or str(dukkan or "")
+    return "[" + ad.upper() + "]"
+
+
+def _reji_hedef_listesi(ham):
+    kod = str(ham or "").strip().lower()
+    if kod in ("tumu", "hepsi", "tum", "*"):
+        return list(DUKKANLAR.keys())
+    return [dukkan_dogrula(kod or "gumus")]
+
+
+def _pey_duyur(dukkan, paket):
+    """Pey hem dükkan sahnesine hem yönetici odasına gider."""
+    govde = dict(paket or {})
+    govde["dukkan"] = dukkan
+    govde["dukkan_etiket"] = _dukkan_etiketi(dukkan)
+    socketio.emit("pey_guncellendi", govde, room=dukkan)
+    socketio.emit("pey_guncellendi", govde, room="admin_room")
+
+
 def ahmet_usta_ekranda_yaz(dukkan, metin):
     socketio.emit(
         "yeni_canli_yorum",
@@ -2139,16 +2160,14 @@ def _fiyati_acilisa_cek(dukkan, oda):
     oda["mevat_asama"] = "karar"
     oda["gizli_pazarlik_aktif"] = False
     oda["gizli_taban_fiyat"] = None
-    socketio.emit(
-        "pey_guncellendi",
+    _pey_duyur(
+        dukkan,
         {
-            "dukkan": dukkan,
             "urun_id": urun_id,
             "pey": acilis,
             "kazanan": "Yok",
             "kazanan_id": None,
         },
-        room=dukkan,
     )
     duyuru = "Pazarlık bitti, son karar süresi başladı"
     socketio.emit(
@@ -2193,16 +2212,14 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         db.session.commit()
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
 
-    socketio.emit(
-        "pey_guncellendi",
+    _pey_duyur(
+        dukkan,
         {
-            "dukkan": dukkan,
             "urun_id": getattr(urun, "id", biten_id),
             "pey": float(tutar),
             "kazanan": etiket_ad,
             "kazanan_id": kullanici_id,
         },
-        room=dukkan,
     )
     socketio.emit(
         "urun_satildi_erken",
@@ -4147,7 +4164,7 @@ def chat_mesaj_gonder():
                         "kazanan": etiket_ad,
                         "kazanan_id": kullanici_id,
                     }
-                    socketio.emit("pey_guncellendi", guncelleme, room=dukkan)
+                    _pey_duyur(dukkan, guncelleme)
                     if (
                         oda.get("mevat_asama") == "karar"
                         and oda["sayac_aktif"]
@@ -4858,16 +4875,14 @@ def pey_ver():
 
                 urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
 
-                socketio.emit(
-                    "pey_guncellendi",
+                _pey_duyur(
+                    dukkan,
                     {
-                        "dukkan": dukkan,
                         "urun_id": urun.id,
                         "pey": hemen_al_fiyat,
                         "kazanan": etiket_ad,
                         "kazanan_id": kullanici.id,
                     },
-                    room=dukkan,
                 )
                 socketio.emit(
                     "sayac_bitti",
@@ -5021,10 +5036,9 @@ def pey_ver():
                 platform = (veri.get("platform") or "Web").strip()
                 if platform not in ("Web", "TikTok", "Instagram"):
                     platform = "Web"
-                socketio.emit(
-                    "pey_guncellendi",
+                _pey_duyur(
+                    dukkan,
                     {
-                        "dukkan": dukkan,
                         "urun_id": urun.id,
                         "pey": miktar,
                         "kazanan": etiket_ad,
@@ -5032,7 +5046,6 @@ def pey_ver():
                         "platform": platform,
                         "ad": kullanici.ad_soyad,
                     },
-                    room=dukkan,
                 )
                 _nabiz_dokun(dukkan)
                 return jsonify({
@@ -6168,16 +6181,14 @@ def son_peyi_iptal_et():
             db.session.add(urun)
             db.session.commit()
 
-        socketio.emit(
-            "pey_guncellendi",
+        _pey_duyur(
+            dukkan,
             {
-                "dukkan": dukkan,
                 "urun_id": oda["aktif_urun_id"],
                 "pey": oda["durum"]["pey"],
                 "kazanan": oda["durum"]["kazanan"],
                 "kazanan_id": oda["durum"].get("kazanan_id"),
             },
-            room=dukkan,
         )
     return jsonify({"success": True})
 
@@ -6222,16 +6233,14 @@ def tek_urun_iptal_et():
                 oda["durum"]["pey"] = float(urun.acilis_fiyati or 0)
                 oda["durum"]["kazanan"] = "Yok"
                 oda["durum"]["kazanan_id"] = None
-                socketio.emit(
-                    "pey_guncellendi",
+                _pey_duyur(
+                    dukkan,
                     {
-                        "dukkan": dukkan,
                         "urun_id": urun.id,
                         "pey": oda["durum"]["pey"],
                         "kazanan": "Yok",
                         "kazanan_id": None,
                     },
-                    room=dukkan,
                 )
 
         return jsonify({
@@ -8124,7 +8133,7 @@ def _reji_admin_yaz(sid, mesaj):
     socketio.emit("reji_geri_bildirim", paket, room=hedef)
 
 
-def _reji_emrini_uygula(dukkan, metin, sid=None):
+def _reji_emrini_uygula(dukkan, metin, sid=None, bildir=True):
     """Gizli reji: GPT yanıtı sohbete yazılmaz, ElevenLabs ile seslenir."""
     with app.app_context():
         try:
@@ -8157,13 +8166,15 @@ def _reji_emrini_uygula(dukkan, metin, sid=None):
                 yanit = ""
             yanit = _patron_papaganini_sil(yanit)
             if not yanit or yanit.casefold() == komut.casefold():
-                _reji_admin_yaz(
-                    sid,
-                    "[Gizli Reji] Komut duyuldu ama sunucu yanıtı üretilemedi. Biraz daha net tekrar deneyin.",
-                )
+                if bildir:
+                    _reji_admin_yaz(
+                        sid,
+                        "[Gizli Reji] Komut duyuldu ama sunucu yanıtı üretilemedi. Biraz daha net tekrar deneyin.",
+                    )
                 return
             ahmet_ses_akisi(dukkan, yanit, tur="anons", kesinti=False, gizli=True)
-            _reji_admin_yaz(sid, "[Gizli Reji Komutu İletildi] " + komut)
+            if bildir:
+                _reji_admin_yaz(sid, "[Gizli Reji Komutu İletildi] " + _dukkan_etiketi(dukkan) + " " + komut)
         finally:
             db.session.remove()
 
@@ -8210,10 +8221,17 @@ def _patron_sesini_isle(dukkan, ses_b64, uzanti, gizli=True, sid=None):
                 )
             return
         print(f"[PATRON SESİ METNE ÇEVRİLDİ]: '{metin}'")
+        hedefler = dukkan if isinstance(dukkan, (list, tuple)) else [dukkan]
         if gizli:
-            _reji_emrini_uygula(dukkan, metin, sid)
+            for kod in hedefler:
+                socketio.start_background_task(
+                    _reji_emrini_uygula, kod, metin, sid, len(hedefler) == 1,
+                )
+            if len(hedefler) > 1:
+                _reji_admin_yaz(sid, "[Gizli Reji] Tüm dükkanlara iletildi: " + metin)
             return
-        _patron_emrini_uygula(dukkan, metin)
+        for kod in hedefler:
+            socketio.start_background_task(_patron_emrini_uygula, kod, metin)
     except Exception as hata:
         print(f"[PATRON SESİ] Ses anlaşılmadı: {hata}")
         if gizli:
@@ -8242,10 +8260,10 @@ def _reji_ses_komutunu_al(veri):
         return
     mime = str(veri.get("mime") or "audio/webm")
     uzanti = "wav" if "wav" in mime else "webm"
-    dukkan = dukkan_dogrula(veri.get("room") or veri.get("dukkan") or "gumus")
+    hedefler = _reji_hedef_listesi(veri.get("room") or veri.get("dukkan") or "gumus")
     gizli = bool(veri.get("gizli", True))
     socketio.start_background_task(
-        _patron_sesini_isle, dukkan, ses, uzanti, gizli, request.sid,
+        _patron_sesini_isle, hedefler, ses, uzanti, gizli, request.sid,
     )
 
 
@@ -8277,8 +8295,8 @@ def patron_yayin_metni(veri):
         metin = ses_metnini_temizle(veri.get("metin"))
         if len(metin) < 2:
             return
-        dukkan = dukkan_dogrula(veri.get("dukkan") or veri.get("room") or "gumus")
-        _patron_yayinina_cevap(dukkan, metin)
+        for dukkan in _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus"):
+            _patron_yayinina_cevap(dukkan, metin)
     finally:
         db.session.remove()
 
@@ -8293,7 +8311,6 @@ def moderator_ses_parcasi(veri):
         parca = str(veri.get("parca") or "")
         if not parca or len(parca) > 400000:
             return
-        dukkan = dukkan_dogrula(veri.get("dukkan") or "gumus")
         try:
             sira = int(veri.get("seq") if veri.get("seq") is not None else (veri.get("sira") or 0))
         except (TypeError, ValueError):
@@ -8304,20 +8321,22 @@ def moderator_ses_parcasi(veri):
             ornek_hizi = 16000
         if ornek_hizi < 8000 or ornek_hizi > 48000:
             ornek_hizi = 16000
-        emit(
-            "izleyici_moderator_sesi",
-            {
-                "dukkan": dukkan,
-                "parca": parca,
-                "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
-                "rate": ornek_hizi,
-                "seq": sira,
-                "sira": sira,
-            },
-            to=dukkan,
-            broadcast=True,
-            include_self=False,
-        )
+        mime = str(veri.get("mime") or "audio/webm;codecs=opus")[:80]
+        for dukkan in _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus"):
+            emit(
+                "izleyici_moderator_sesi",
+                {
+                    "dukkan": dukkan,
+                    "parca": parca,
+                    "mime": mime,
+                    "rate": ornek_hizi,
+                    "seq": sira,
+                    "sira": sira,
+                },
+                to=dukkan,
+                broadcast=True,
+                include_self=False,
+            )
     finally:
         db.session.remove()
 
@@ -8801,8 +8820,10 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
             room=dukkan,
         )
     socketio.emit("yeni_sahne_urunu", urun_paket, room=dukkan)
+    if urun_paket:
+        socketio.emit("yeni_sahne_urunu", urun_paket, room="admin_room")
     if pey_paket:
-        socketio.emit("pey_guncellendi", pey_paket, room=dukkan)
+        _pey_duyur(dukkan, pey_paket)
     _dukkan_canli_yayinla()
 
 
