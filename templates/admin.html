@@ -111,6 +111,27 @@
         .btn-blue { background: #1e3a8a; color: #fff; }
         .btn-purple { background: #4c1d95; color: #fff; }
         .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
+        .btn-kilavuz { background: #111111; color: #d4af37; border: 1.5px solid #d4af37; }
+        #modalOperasyon .modal-content { max-width: 640px; text-align: left; -webkit-overflow-scrolling: touch; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+        .fon-perde {
+            background:
+                repeating-linear-gradient(90deg, rgba(92, 18, 32, 0.55) 0 12px, rgba(12, 6, 8, 0.15) 12px 22px),
+                linear-gradient(180deg, #241016 0%, #0c0a0d 100%);
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+        }
+        .talimat-rozet { display: inline-block; max-width: 100%; font-size: 12px; font-weight: 800; line-height: 1.35; padding: 5px 8px; border-radius: 6px; margin-bottom: 6px; }
+        .rozet-altin { background: #d4af37; color: #111111; }
+        .rozet-mor { background: #6d28d9; color: #ffffff; }
+        .rozet-turkuaz { background: #0d9488; color: #ffffff; }
+        .rozet-mavi { background: #1e293b; color: #38bdf8; border: 1.5px solid #38bdf8; }
+        .rozet-yesil { background: #1b4d3e; color: #ffffff; }
+        .fon-perde p { margin: 0; font-size: 13px; line-height: 1.45; color: #f8fafc; }
+        .davet-kart { background: #10080c; border: 1px solid #d4af37; border-radius: 12px; padding: 10px 12px; color: #f8fafc; font-size: 13px; line-height: 1.45; user-select: text; -webkit-user-select: text; overflow-wrap: anywhere; word-break: break-word; }
+        .davet-kart a { color: #fde68a; }
+        .davet-kart p { margin: 0 0 4px; }
 
         .item-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
         .item-row {
@@ -375,6 +396,7 @@
             <button onclick="copKutusunuAc()" class="btn btn-red btn-sm">🗑️ Çöp Kutusu (<span id="copSayisi">0</span>)</button>
             <button onclick="sifreDegistirModalAc()" class="btn btn-yellow btn-sm">🔑 Şifre Değiştir</button>
             <button type="button" onclick="kurumsalAdminAc()" class="btn btn-yellow btn-sm">🏛️ Kurumsal &amp; Banka</button>
+            <button type="button" onclick="operasyonKilavuzuAc()" class="btn btn-sm btn-kilavuz">📖 Operasyon Kılavuzu</button>
             <button onclick="adminCikisYap()" class="btn btn-sm" style="background:#334155; color:#fff;">Çıkış</button>
         </div>
     </div>
@@ -688,6 +710,74 @@
             <button type="button" class="btn btn-green" onclick="icerikMaddeKaydet('kural')">Maddeyi Kaydet</button>
             <div id="kuralMaddeListesi" class="item-list" style="margin-top:8px;"></div>
         </div>
+    </div>
+</div>
+
+<div id="modalOperasyon" class="modal" onclick="if(event.target===this) modalKapat('modalOperasyon')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h3 style="color:#d4af37; margin:0 0 10px; font-size:16px;">📖 Operasyon Kılavuzu</h3>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-altin">🔐 2FA GÜVENLİK &amp; DÜKKAN SEÇİMİ</span>
+            <p><a href="https://halicantikcanli.com/admin" target="_blank" rel="noopener noreferrer" style="color:#fde68a;">https://halicantikcanli.com/admin</a> ve <a href="https://www.halicantikcanli.com/admin" target="_blank" rel="noopener noreferrer" style="color:#fde68a;">https://www.halicantikcanli.com/admin</a> girişi şifre + Authenticator 2FA korumalıdır. Üst dükkan bandından seçilen her salon kendi bağımsız sahnesini, sayacını ve müşteri akışını izole yönetir.</p>
+        </article>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-mor">✨ AI ÜRÜN STÜDYOSU &amp; MANUEL EKLEME</span>
+            <p>Fotoğraf/videodan yapay zeka ile otomatik başlık, malzeme, şecere ve fiyat çıkarıp tek tıkla kataloğa aktarın veya Manuel Tek Ürün Ekle ile en fazla 10 medya yükleyin (<b>%XX</b> gizli eşik otomatik hesaplanır).</p>
+        </article>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-turkuaz">🤝 TEDARİKÇİ &amp; ÜRÜN ALIM SÖZLEŞMESİ</span>
+            <p>Tedarikçi &amp; Kargo (<a href="https://halicantikcanli.com/admin/pazaryeri/" target="_blank" rel="noopener noreferrer" style="color:#fde68a;">https://halicantikcanli.com/admin/pazaryeri/</a> · <a href="https://www.halicantikcanli.com/admin/pazaryeri/" target="_blank" rel="noopener noreferrer" style="color:#fde68a;">https://www.halicantikcanli.com/admin/pazaryeri/</a>) modülünden komisyon oranlarını tanımlayın; Ürün Alım Sözleşmesi ile emanet alınan eserlerin resmi kaydını oluşturun.</p>
+        </article>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-altin">🤖 7/24 OTONOM MEZAT &amp; SAHNE KONTROLÜ</span>
+            <p>Tek dükkanda Başlat veya Tümünde Otonomu Başlat ile 13 salonu aynı anda otomatik yayına sokun. Manuel kontrolde 3 Dk Başlat, 60 Sn Karar, +15 Sn Uzat, Son Peyi İptal Et ve Satışı Bitir butonlarını kullanın.</p>
+        </article>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-mavi">🎙️ GİZLİ REJİ &amp; PATRON YAYINDA</span>
+            <p>Hedef listesinden tek dükkan veya "Tüm Dükkanlar (Toplu Yayın)" seçerek Bas-Konuş (Gizli Reji) ile yapay zeka sunucusuna talimat verin ya da Patron Yayında ile canlı seslenin. TikTok köprüsü canlı yorumları otomatik salona aktarır.</p>
+        </article>
+        <article class="fon-perde">
+            <span class="talimat-rozet rozet-yesil">🚚 KARGO &amp; WHATSAPP OTOMASYONU</span>
+            <p>Satılan ürünleri Tedarikçi &amp; Kargo tablosundan takip edin; takip kodu girip tek tıkla Alıcıya Bildir ve Satıcıya Bildir WhatsApp mesajlarını gönderin.</p>
+        </article>
+        <button type="button" class="btn btn-yellow" style="width:100%; margin-top:4px;" onclick="davetKartiKopyala()">📋 Davet &amp; Teşekkür Kartını Kopyala</button>
+        <button type="button" class="btn" style="width:100%; margin-top:6px; background:#128C7E; color:#fff;" onclick="davetKartiWhatsapp()">📲 WhatsApp'ta Paylaş</button>
+        <p id="davetKartiDurum" style="font-size:12px; color:#fde68a; min-height:16px; margin-top:6px;"></p>
+        <div id="davetKarti" class="davet-kart">
+            <p>🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 13 MEZAT SALONU CEBİNİZDE! ✨</p>
+            <p>Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 13 Salonlu, 7/24 Yapay Zeka &amp; Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.</p>
+            <p>🌐 Ana Giriş (Tüm Tarayıcı &amp; Cihazlar): <a href="https://halicantikcanli.com/" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/</a></p>
+            <p>🌐 Alternatif Giriş (www): <a href="https://www.halicantikcanli.com/" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/</a></p>
+            <p>🏪 Doğrudan Salon Bağlantıları:</p>
+            <p>• Antika: <a href="https://halicantikcanli.com/?dukkan=antika" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=antika</a></p>
+            <p>• Gümüş: <a href="https://halicantikcanli.com/?dukkan=gumus" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=gumus</a></p>
+            <p>• Bakır / Pirinç: <a href="https://halicantikcanli.com/?dukkan=bakir" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=bakir</a></p>
+            <p>• Porselen / Seramik: <a href="https://halicantikcanli.com/?dukkan=porselen" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=porselen</a></p>
+            <p>• Bijuteri: <a href="https://halicantikcanli.com/?dukkan=bijuteri" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=bijuteri</a></p>
+            <p>• Tasarım: <a href="https://halicantikcanli.com/?dukkan=tasarim" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=tasarim</a></p>
+            <p>• Model Araba: <a href="https://halicantikcanli.com/?dukkan=modelaraba" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=modelaraba</a></p>
+            <p>• Elektrik / Elektronik: <a href="https://halicantikcanli.com/?dukkan=elektronik" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=elektronik</a></p>
+            <p>• Hırdavat &amp; Nalbur: <a href="https://halicantikcanli.com/?dukkan=hirdavat" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=hirdavat</a></p>
+            <p>• Kozmetik: <a href="https://halicantikcanli.com/?dukkan=kozmetik" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=kozmetik</a></p>
+            <p>• Karma &amp; Toplu: <a href="https://halicantikcanli.com/?dukkan=karma" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=karma</a></p>
+            <p>• Toptan: <a href="https://halicantikcanli.com/?dukkan=toptan" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=toptan</a></p>
+            <p>• Diğer - Her Şey: <a href="https://halicantikcanli.com/?dukkan=diger" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=diger</a></p>
+            <p>🌐 www Salon Bağlantıları:</p>
+            <p>• Antika: <a href="https://www.halicantikcanli.com/?dukkan=antika" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=antika</a></p>
+            <p>• Gümüş: <a href="https://www.halicantikcanli.com/?dukkan=gumus" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=gumus</a></p>
+            <p>• Bakır / Pirinç: <a href="https://www.halicantikcanli.com/?dukkan=bakir" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=bakir</a></p>
+            <p>• Porselen / Seramik: <a href="https://www.halicantikcanli.com/?dukkan=porselen" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=porselen</a></p>
+            <p>• Bijuteri: <a href="https://www.halicantikcanli.com/?dukkan=bijuteri" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=bijuteri</a></p>
+            <p>• Tasarım: <a href="https://www.halicantikcanli.com/?dukkan=tasarim" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=tasarim</a></p>
+            <p>• Model Araba: <a href="https://www.halicantikcanli.com/?dukkan=modelaraba" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=modelaraba</a></p>
+            <p>• Elektrik / Elektronik: <a href="https://www.halicantikcanli.com/?dukkan=elektronik" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=elektronik</a></p>
+            <p>• Hırdavat &amp; Nalbur: <a href="https://www.halicantikcanli.com/?dukkan=hirdavat" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=hirdavat</a></p>
+            <p>• Kozmetik: <a href="https://www.halicantikcanli.com/?dukkan=kozmetik" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=kozmetik</a></p>
+            <p>• Karma &amp; Toplu: <a href="https://www.halicantikcanli.com/?dukkan=karma" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=karma</a></p>
+            <p>• Toptan: <a href="https://www.halicantikcanli.com/?dukkan=toptan" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=toptan</a></p>
+            <p>• Diğer - Her Şey: <a href="https://www.halicantikcanli.com/?dukkan=diger" target="_blank" rel="noopener noreferrer">https://www.halicantikcanli.com/?dukkan=diger</a></p>
+        </div>
+        <button type="button" onclick="modalKapat('modalOperasyon')" class="btn btn-red" style="width:100%; margin-top:8px;">Kapat</button>
     </div>
 </div>
 
@@ -3137,6 +3227,89 @@
     function modalKapat(id) {
         playClickSound();
         document.getElementById(id).style.display = 'none';
+    }
+
+    var DAVET_KARTI_METNI = [
+        "🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 13 MEZAT SALONU CEBİNİZDE! ✨",
+        "Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 13 Salonlu, 7/24 Yapay Zeka & Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.",
+        "🌐 Ana Giriş (Tüm Tarayıcı & Cihazlar): https://halicantikcanli.com/",
+        "🌐 Alternatif Giriş (www): https://www.halicantikcanli.com/",
+        "🏪 Doğrudan Salon Bağlantıları:",
+        "• Antika: https://halicantikcanli.com/?dukkan=antika",
+        "• Gümüş: https://halicantikcanli.com/?dukkan=gumus",
+        "• Bakır / Pirinç: https://halicantikcanli.com/?dukkan=bakir",
+        "• Porselen / Seramik: https://halicantikcanli.com/?dukkan=porselen",
+        "• Bijuteri: https://halicantikcanli.com/?dukkan=bijuteri",
+        "• Tasarım: https://halicantikcanli.com/?dukkan=tasarim",
+        "• Model Araba: https://halicantikcanli.com/?dukkan=modelaraba",
+        "• Elektrik / Elektronik: https://halicantikcanli.com/?dukkan=elektronik",
+        "• Hırdavat & Nalbur: https://halicantikcanli.com/?dukkan=hirdavat",
+        "• Kozmetik: https://halicantikcanli.com/?dukkan=kozmetik",
+        "• Karma & Toplu: https://halicantikcanli.com/?dukkan=karma",
+        "• Toptan: https://halicantikcanli.com/?dukkan=toptan",
+        "• Diğer - Her Şey: https://halicantikcanli.com/?dukkan=diger",
+        "🌐 www Salon Bağlantıları:",
+        "• Antika: https://www.halicantikcanli.com/?dukkan=antika",
+        "• Gümüş: https://www.halicantikcanli.com/?dukkan=gumus",
+        "• Bakır / Pirinç: https://www.halicantikcanli.com/?dukkan=bakir",
+        "• Porselen / Seramik: https://www.halicantikcanli.com/?dukkan=porselen",
+        "• Bijuteri: https://www.halicantikcanli.com/?dukkan=bijuteri",
+        "• Tasarım: https://www.halicantikcanli.com/?dukkan=tasarim",
+        "• Model Araba: https://www.halicantikcanli.com/?dukkan=modelaraba",
+        "• Elektrik / Elektronik: https://www.halicantikcanli.com/?dukkan=elektronik",
+        "• Hırdavat & Nalbur: https://www.halicantikcanli.com/?dukkan=hirdavat",
+        "• Kozmetik: https://www.halicantikcanli.com/?dukkan=kozmetik",
+        "• Karma & Toplu: https://www.halicantikcanli.com/?dukkan=karma",
+        "• Toptan: https://www.halicantikcanli.com/?dukkan=toptan",
+        "• Diğer - Her Şey: https://www.halicantikcanli.com/?dukkan=diger"
+    ].join("\n");
+
+    function operasyonKilavuzuAc() {
+        playClickSound();
+        var kutu = document.getElementById("modalOperasyon");
+        if (kutu) kutu.style.display = "flex";
+    }
+
+    function davetKartiKopyala() {
+        playClickSound();
+        var metin = DAVET_KARTI_METNI;
+        var durum = document.getElementById("davetKartiDurum");
+        var oldu = false;
+        var alan = document.createElement("textarea");
+        alan.value = metin;
+        alan.setAttribute("readonly", "");
+        alan.style.position = "fixed";
+        alan.style.top = "0";
+        alan.style.left = "0";
+        alan.style.width = "1px";
+        alan.style.height = "1px";
+        alan.style.opacity = "0";
+        alan.style.fontSize = "16px";
+        document.body.appendChild(alan);
+        alan.focus();
+        alan.select();
+        try { alan.setSelectionRange(0, metin.length); } catch (e) {}
+        try { oldu = document.execCommand("copy"); } catch (e) { oldu = false; }
+        document.body.removeChild(alan);
+        var yaz = function (yazi) { if (durum) durum.textContent = yazi; };
+        if (oldu) {
+            yaz("Kart kopyalandı. Bağlantılar tam https adresidir.");
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(function () {
+                yaz("Kart kopyalandı. Bağlantılar tam https adresidir.");
+            }).catch(function () {
+                yaz("Kopyalanamadı. Kart metnini basılı tutup seçin.");
+            });
+            return;
+        }
+        yaz("Kopyalanamadı. Kart metnini basılı tutup seçin.");
+    }
+
+    function davetKartiWhatsapp() {
+        playClickSound();
+        window.open("https://wa.me/?text=" + encodeURIComponent(DAVET_KARTI_METNI), "_blank");
     }
 
     let studyoDosyalar = [];

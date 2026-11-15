@@ -1758,7 +1758,7 @@ class IcerikMaddesi(db.Model):
     metin = db.Column(db.Text, nullable=False, default="")
 
 
-_VARSAYILAN_REHBER = (
+_ESKI_VARSAYILAN_REHBER = (
     (
         "1) Dükkan Seçimi",
         "Üst menüden Antika, Gümüş, Bijuteri, Saat/Tesbih veya diğer dükkanlar arasında tek dokunuşla geçiş yapın.",
@@ -1778,6 +1778,33 @@ _VARSAYILAN_REHBER = (
     (
         "5) Güvenli Ödeme & Kargo",
         "Kazandığınız veya sepete eklediğiniz ürünler için sipariş formunu doldurun; ekibimiz WhatsApp üzerinden onay ve kargo takip kodunu iletir.",
+    ),
+)
+
+_VARSAYILAN_REHBER = (
+    (
+        "🏛️ 13 CANLI SALON",
+        "Üst şeritten veya ☰ Menü > Dükkanlar üzerinden 13 salona sayfa yenilemeden anında geçin (CANLI rozetli salonlarda aktif yayın vardır).",
+    ),
+    (
+        "🎵 SES & 4 İSTASYON RADYO",
+        "Ekrana bir kez dokunarak yapay zeka sunucusunu dinleyin. Sağ üst 🎵 Müzik panelinden Taş Plak, Türk Sanat Müziği, Akustik veya Dinlendirici Fon seçin; anons sırasında müzik otomatik kısılır.",
+    ),
+    (
+        "🟢 +%10 ARTIR",
+        "Rekabet anında hesap yapmadan güncel fiyata tek dokunuşla %10 ekleyerek teklif verin (ilk teklifte e-posta doğrulamalı 30 saniyelik hızlı kayıt yapılır).",
+    ),
+    (
+        "🔵 SERBEST PEY & %XX GİZLİ EŞİK",
+        'İlk 2 dakikalık PAZARLIK turunda bütçenize özel teklif yazın. Hemen Al değerinin %XX gizli eşiğini yakalayan ilk koleksiyoner "Tam 12\'den Vurdunuz" sürpriziyle eseri anında kazanır!',
+    ),
+    (
+        "⚡ HEMEN AL & SON 60 SN",
+        "Süreyi beklemeden Hemen Al ile eseri kapatın. Son 60 saniye karar turunda fiyat açılışa döner ve %10 artış zorunlu olur; son 10 saniyede gelen her pey süreyi +15 saniye uzatır.",
+    ),
+    (
+        "🛒 SEPET, VİTRİN & ÖN TEKLİF",
+        "Kazandığınız eserler Sepet'inize düşer (%20 KDV + 150 TL sabit kargo; IBAN Kopyala veya 3D Secure POS ile ödeyin). Vitrin ve Katalog'dan ürün kıyaslayabilir, Ön Teklif bırakabilir, Eleştiri Odası'ndan doğrudan yönetime yazabilirsiniz.",
     ),
 )
 
@@ -1817,12 +1844,25 @@ _icerik_kilit = threading.Lock()
 def icerik_maddelerini_hazirla():
     with _icerik_kilit:
         IcerikMaddesi.__table__.create(bind=db.engine, checkfirst=True)
-        if IcerikMaddesi.query.count() > 0:
+        if IcerikMaddesi.query.count() == 0:
+            for sira, (baslik, metin) in enumerate(_VARSAYILAN_REHBER, start=1):
+                db.session.add(IcerikMaddesi(tur="rehber", sira=sira, baslik=baslik, metin=metin))
+            for sira, (baslik, metin) in enumerate(_VARSAYILAN_KURALLAR, start=1):
+                db.session.add(IcerikMaddesi(tur="kural", sira=sira, baslik=baslik, metin=metin))
+            db.session.commit()
             return
+        rehber = (
+            IcerikMaddesi.query.filter_by(tur="rehber")
+            .order_by(IcerikMaddesi.sira.asc(), IcerikMaddesi.id.asc())
+            .all()
+        )
+        mevcut = [(satir.baslik or "", satir.metin or "") for satir in rehber]
+        if mevcut != list(_ESKI_VARSAYILAN_REHBER):
+            return
+        for satir in rehber:
+            db.session.delete(satir)
         for sira, (baslik, metin) in enumerate(_VARSAYILAN_REHBER, start=1):
             db.session.add(IcerikMaddesi(tur="rehber", sira=sira, baslik=baslik, metin=metin))
-        for sira, (baslik, metin) in enumerate(_VARSAYILAN_KURALLAR, start=1):
-            db.session.add(IcerikMaddesi(tur="kural", sira=sira, baslik=baslik, metin=metin))
         db.session.commit()
 
 
