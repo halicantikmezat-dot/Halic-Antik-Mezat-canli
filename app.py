@@ -469,6 +469,8 @@ def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
     if oda is not None:
         oda["aktif_urun_id"] = None
         oda["durum"]["durum"] = "bosta"
+        if neden != "satildi":
+            oda.pop("son_satis", None)
     if sesi_kes:
         _sahne_sesini_kes(dukkan)
     mesaj = (
@@ -486,6 +488,30 @@ def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
         },
         room=dukkan,
     )
+    _dukkan_canli_yayinla()
+
+
+def _son_satisi_yaz(oda, kazanan, fiyat, urun_id=None):
+    ad = str(kazanan or "").strip()
+    if not ad or ad.lower() in ("yok", "kimse", "none", "-", ""):
+        return
+    try:
+        tutar = float(fiyat or 0)
+    except (TypeError, ValueError):
+        tutar = 0
+    oda["son_satis"] = {"kazanan": ad, "fiyat": tutar, "urun_id": urun_id}
+
+
+def _dukkan_canli_haritasi():
+    cikti = {}
+    for kod, oda in odalar.items():
+        sahne = str((oda.get("durum") or {}).get("durum") or "")
+        cikti[kod] = bool(oda.get("aktif_urun_id")) and sahne != "Satıldı"
+    return cikti
+
+
+def _dukkan_canli_yayinla():
+    socketio.emit("dukkan_canli_durumu", {"dukkanlar": _dukkan_canli_haritasi()})
 
 
 def _satis_kapanisini_isaretle(dukkan, oda):
@@ -2155,6 +2181,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
     _satis_kapanisini_isaretle(dukkan, oda)
     biten_id = oda.get("aktif_urun_id")
     oda["aktif_urun_id"] = None
+    _son_satisi_yaz(oda, etiket_ad, tutar, biten_id)
 
     if urun is not None:
         urun.durum = "Satıldı"
@@ -2387,6 +2414,12 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                                 oda["durum"]["kazanan_id"],
                             )
                             oda["durum"]["durum"] = "Satıldı"
+                            _son_satisi_yaz(
+                                oda,
+                                oda["durum"]["kazanan"],
+                                oda["durum"]["pey"],
+                                biten_urun_id,
+                            )
                         else:
                             urun.durum = "Pas" if oda.get("mevat_asama") == "karar" else "Aktif"
                             urun.kazanan_adi = "Yok"
@@ -3546,6 +3579,7 @@ def canli_durum():
                 if (aktif_urun_obj and not aktif_urun_obj.silindi_mi)
                 else None
             ),
+            "son_satis": None if oda.get("aktif_urun_id") else oda.get("son_satis"),
         })
     finally:
         db.session.remove()
@@ -4808,6 +4842,7 @@ def pey_ver():
                 _satis_kapanisini_isaretle(dukkan, oda)
                 biten_id = oda["aktif_urun_id"]
                 oda["aktif_urun_id"] = None
+                _son_satisi_yaz(oda, etiket_ad, hemen_al_fiyat, biten_id)
 
                 yeni_teklif = Teklif(
                     dukkan_kodu=dukkan,
@@ -6027,6 +6062,7 @@ def satis_bitir():
         oda["durum"]["sure_bitis"] = 0
         biten_urun_id = oda["aktif_urun_id"]
         oda["aktif_urun_id"] = None
+        _son_satisi_yaz(oda, oda["durum"].get("kazanan"), oda["durum"].get("pey"), biten_urun_id)
 
         satis_lot = ""
         satis_ad = "Eser"
@@ -8754,6 +8790,9 @@ izleyici_adlari = {}
 
 def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False):
     """Sahne değişimini ilgili dükkân odasına bir kez duyurur."""
+    oda = odalar.get(dukkan)
+    if oda is not None and urun_paket:
+        oda.pop("son_satis", None)
     if yeni_urun:
         _sahne_sesini_kes(dukkan)
         socketio.emit(
@@ -8764,6 +8803,7 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
     socketio.emit("yeni_sahne_urunu", urun_paket, room=dukkan)
     if pey_paket:
         socketio.emit("pey_guncellendi", pey_paket, room=dukkan)
+    _dukkan_canli_yayinla()
 
 
 def izleyici_sayisini_yayinla():

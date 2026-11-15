@@ -2242,14 +2242,26 @@
                     if (!d.canli) siniflar.push('dukkan-sonuk');
                     btn.className = siniflar.join(' ');
                     btn.href = `/?dukkan=${encodeURIComponent(kod)}`;
+                    btn.setAttribute('data-dukkan', kod);
                     btn.innerHTML = escapeHtml(d.ad) + (d.canli ? ' <span class="canli-rozet"><span class="canli-nokta"></span> CANLI</span>' : '');
+                    btn.addEventListener('click', function (e) {
+                        if (e.defaultPrevented) return;
+                        e.preventDefault();
+                        dukkanDegistir(kod);
+                    });
                     navBar.appendChild(btn);
                 }
                 if (serit) {
                     const gecis = document.createElement('a');
                     gecis.className = 'shop-nav-btn' + (kod === aktifDukkan ? ' active' : '');
                     gecis.href = `/?dukkan=${encodeURIComponent(kod)}`;
+                    gecis.setAttribute('data-dukkan', kod);
                     gecis.innerHTML = escapeHtml(d.ad) + (d.canli ? ' <span class="canli-nokta"></span>' : '');
+                    gecis.addEventListener('click', function (e) {
+                        if (e.defaultPrevented) return;
+                        e.preventDefault();
+                        dukkanDegistir(kod);
+                    });
                     serit.appendChild(gecis);
                 }
             }
@@ -2258,6 +2270,53 @@
             document.getElementById('aktifDukkanRozet').innerText = ad.toUpperCase();
             document.getElementById('linkVitrin').href = `/vitrin?dukkan=${encodeURIComponent(aktifDukkan)}`;
         } catch(e) {}
+    }
+
+    function dukkanCanliIsaretle(harita) {
+        if (!harita) return;
+        Object.keys(harita).forEach(function (kod) {
+            const canli = !!harita[kod];
+            if (dukkanlar[kod]) dukkanlar[kod].canli = canli;
+            document.querySelectorAll('[data-dukkan="' + kod + '"]').forEach(function (el) {
+                el.classList.toggle('dukkan-sonuk', !canli && !el.classList.contains('shop-nav-btn'));
+                const nokta = el.querySelector('.canli-nokta');
+                const rozet = el.querySelector('.canli-rozet');
+                if (canli && !nokta) {
+                    if (el.classList.contains('shop-nav-btn')) {
+                        el.insertAdjacentHTML('beforeend', ' <span class="canli-nokta"></span>');
+                    } else {
+                        el.insertAdjacentHTML('beforeend', ' <span class="canli-rozet"><span class="canli-nokta"></span> CANLI</span>');
+                    }
+                } else if (!canli) {
+                    if (rozet) rozet.remove();
+                    else if (nokta) nokta.remove();
+                }
+            });
+        });
+    }
+
+    function dukkanDegistir(kod) {
+        kod = String(kod || '').trim().toLowerCase();
+        if (!kod || kod === aktifDukkan) return;
+        socket.emit('leave_dukkan', { dukkan: aktifDukkan });
+        aktifDukkan = kod;
+        const adres = new URL(window.location.href);
+        adres.searchParams.set('dukkan', kod);
+        history.replaceState({}, '', adres.pathname + adres.search);
+        const ad = dukkanlar[kod] ? dukkanlar[kod].ad : kod;
+        const rozet = document.getElementById('aktifDukkanRozet');
+        if (rozet) {
+            rozet.innerText = String(ad).toUpperCase();
+            rozet.setAttribute('data-dukkan', kod);
+        }
+        const vitrin = document.getElementById('linkVitrin');
+        if (vitrin) vitrin.href = '/vitrin?dukkan=' + encodeURIComponent(kod);
+        document.querySelectorAll('#shopNavBar a, #menuDukkanlar a').forEach(function (el) {
+            el.classList.toggle('active', el.getAttribute('data-dukkan') === kod);
+        });
+        satildiDamgasiniGizle();
+        odayaKatil();
+        canliDurumuGetirHafif();
     }
 
     function odayaKatil() {
@@ -4083,6 +4142,11 @@
 
             if (!secilenArsivUrunId) {
                 sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
+                if (!data.aktif_urun && data.son_satis && data.son_satis.kazanan) {
+                    satildiDamgasiniGoster(data.son_satis.kazanan);
+                } else if (!data.aktif_urun) {
+                    satildiDamgasiniGizle();
+                }
             }
         }).catch(e=>{});
     }
@@ -4175,6 +4239,11 @@
     socket.on('sahne_bosta', function (data) {
         if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
         sahneyiBosalt(data && data.mesaj, !!(data && data.sesi_koru));
+        if (!data || data.neden !== 'satildi') satildiDamgasiniGizle();
+    });
+
+    socket.on('dukkan_canli_durumu', function (data) {
+        dukkanCanliIsaretle(data && data.dukkanlar);
     });
 
     socket.on('pey_guncellendi', function(data) {
@@ -4275,6 +4344,20 @@
         setTimeout(function () { alan.innerHTML = ""; }, 3400);
     }
 
+    function satildiDamgasiniGoster(ad) {
+        const muhur = document.getElementById("zaferMuhur");
+        const muhurAd = document.getElementById("zaferMuhurAd");
+        const isim = String(ad || "").trim();
+        if (!muhur || !isim || isim.toLowerCase() === "yok") return;
+        if (muhurAd) muhurAd.textContent = isim;
+        muhur.classList.add("acik");
+    }
+
+    function satildiDamgasiniGizle() {
+        const muhur = document.getElementById("zaferMuhur");
+        if (muhur) muhur.classList.remove("acik");
+    }
+
     function zaferKutlamasiniAc(data) {
         const ad = (data && data.kazanan) ? String(data.kazanan) : "Misafir";
         const fiyat = Math.round(parseFloat((data && data.fiyat) || 0) || 0).toLocaleString("tr-TR");
@@ -4286,7 +4369,7 @@
         if (alt) alt.textContent = "Tebrikler Sayın " + ad + ", Pazarlık Gizli Eşiğini Yakaladınız!";
         if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL ile Eser Sizin Oldu!";
         if (muhurAd) muhurAd.textContent = ad;
-        if (muhur) muhur.classList.remove("acik");
+        if (muhur) muhur.classList.add("acik");
         if (kart) kart.classList.add("acik");
         window.zaferMuzikKilit = true;
         muzigiKis();
@@ -4295,7 +4378,6 @@
         clearTimeout(window.zaferMuzikZaman);
         window.zaferKartZaman = setTimeout(function () {
             if (kart) kart.classList.remove("acik");
-            if (muhur) muhur.classList.add("acik");
         }, 4500);
         window.zaferMuzikZaman = setTimeout(function () {
             window.zaferMuzikKilit = false;
@@ -4420,6 +4502,7 @@
                     soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
                     soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(data.kazanan)}</span> (${formatFiyat(data.fiyat || 0)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
                     if (statusTitle) statusTitle.innerText = "🔨 SATILDI!";
+                    satildiDamgasiniGoster(data.kazanan);
                 } else {
                     soldBanner.style.background = 'linear-gradient(90deg, #334155, #475569, #334155)';
                     soldBanner.innerHTML = `⚠️ BU ÜRÜN PAS GEÇİLDİ (Teklif Gelmedi)<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
@@ -4525,6 +4608,7 @@
 
         if (durum === "Satıldı" || urunObj.durum === "Satıldı") {
             sahnedekiUrunSatildiMi = true;
+            satildiDamgasiniGoster(kazananKisi);
             soldBanner.style.display = 'block';
             soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
             soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(kazananKisi || 'Alıcı')}</span> (${formatFiyat(aktifPey)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
@@ -4537,6 +4621,7 @@
             }
         } else {
             sahnedekiUrunSatildiMi = false;
+            satildiDamgasiniGizle();
             pazarlikPopupKapat();
             soldBanner.style.display = 'none';
             document.getElementById('currentBid').innerText = Math.round(aktifPey).toLocaleString('tr-TR');
@@ -6649,15 +6734,16 @@
             kaydi = false;
             basX = e.clientX;
             basScroll = serit.scrollLeft;
-            if (serit.setPointerCapture) serit.setPointerCapture(e.pointerId);
         });
         serit.addEventListener("pointermove", function (e) {
             if (!surukleniyor || e.pointerType === "touch") return;
             var dx = e.clientX - basX;
-            if (Math.abs(dx) > 6) {
-                kaydi = true;
-                tiklamaEngel = true;
-                serit.classList.add("kaydiriliyor");
+            if (Math.abs(dx) <= 6) return;
+            kaydi = true;
+            tiklamaEngel = true;
+            serit.classList.add("kaydiriliyor");
+            if (serit.setPointerCapture) {
+                try { serit.setPointerCapture(e.pointerId); } catch (err) {}
             }
             serit.scrollLeft = basScroll - dx;
         });
