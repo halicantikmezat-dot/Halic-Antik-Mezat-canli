@@ -465,7 +465,10 @@
                 </div>
                 <ul id="xmlKuralListesi" style="list-style:none; padding:0; margin:8px 0 0;"></ul>
             </details>
-            <button type="button" class="btn btn-red btn-sm" style="margin-top:10px;" onclick="xmlUrunleriniTemizle()">Sadece Eski XML Ürünlerini Temizle (Kendi Ürünlerim Korunur)</button>
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+                <button type="button" class="btn btn-red btn-sm" onclick="xmlUrunleriniTemizle()">Sadece Eski XML Ürünlerini Temizle (Kendi Ürünlerim Korunur)</button>
+                <button type="button" class="btn btn-red btn-sm" onclick="dukkanKatalogTemizle()">Seçili Dükkandaki Tüm Aktif Ürünleri Çöp Kutusuna Al</button>
+            </div>
 
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 11px; color: #94a3b8;">Mevcut Kataloğa KDV & Kâr Ekle:</span>
@@ -2987,6 +2990,33 @@
         })
         .catch(function () {
             if (durum) durum.innerText = "Temizlik isteği tamamlanamadı.";
+        });
+    }
+
+    function dukkanKatalogTemizle() {
+        playClickSound();
+        const kod = typeof seciliDukkan === "string" ? seciliDukkan : "";
+        const ad = (typeof dukkanlar !== "undefined" && dukkanlar[kod] && dukkanlar[kod].ad) ? dukkanlar[kod].ad : (kod || "seçili dükkan");
+        if (!confirm(ad + " dükkanındaki satılmamış aktif ürünlerin tümü çöp kutusuna alınsın mı? Satılmış kayıtlar ve diğer dükkanlar durur.")) return;
+        const durum = document.getElementById("topluDurum");
+        if (durum) durum.innerText = ad + " kataloğu temizleniyor...";
+        fetch("/api/dukkan-katalog-temizle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dukkan_id: kod })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (durum) durum.innerText = data.mesaj || "";
+            alert(data.mesaj || (data.success ? "Temizlendi." : "Temizlik yapılamadı."));
+            if (data.success) {
+                veriCekAdmin();
+                adminUrunAra();
+                dukkanlariYukleAdmin();
+            }
+        })
+        .catch(function () {
+            if (durum) durum.innerText = "Dükkan temizliği tamamlanamadı.";
         });
     }
 

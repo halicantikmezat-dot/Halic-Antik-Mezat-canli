@@ -8453,20 +8453,76 @@ def xml_urunleri_temizle():
         url = str(veri.get("xml_url") or "").strip()
         if not kayitlar or url:
             if url:
-                def _temizlik_adi(metin):
-                    return str(metin or "").strip().casefold().replace("i\u0307", "i")
+                _KOD_ETIKETLERI = {
+                    "kod", "sku", "barkod", "barcode", "barkodno", "barkod_no",
+                    "urun_kodu", "urunkodu", "stok_kodu", "stokkodu", "stokkod",
+                    "product_code", "productcode", "product_sku", "stock_code",
+                    "stockcode", "item_code", "itemcode", "gtin", "mpn",
+                    "model", "model_kodu", "modelkodu",
+                }
 
-                def _temizlik_eslesir(xml_ad, db_ad):
-                    if not xml_ad or not db_ad:
+                def _temizlik_adi(metin):
+                    s = str(metin or "").strip().casefold().replace("i\u0307", "i")
+                    s = s.translate(str.maketrans({
+                        "ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c",
+                        "â": "a", "î": "i", "û": "u",
+                    }))
+                    return re.sub(r"\s+", " ", s).strip()
+
+                def _temizlik_kod(metin):
+                    return re.sub(r"[^a-z0-9]", "", _temizlik_adi(metin))
+
+                def _temizlik_eslesir(xml_ad, db_ad, kodlar):
+                    if xml_ad and db_ad:
+                        if xml_ad == db_ad:
+                            return True
+                        if len(xml_ad) >= 3 and (db_ad.startswith(xml_ad) or xml_ad in db_ad):
+                            return True
+                    if not db_ad or not kodlar:
                         return False
-                    if xml_ad == db_ad:
-                        return True
-                    if len(xml_ad) < 3:
-                        return False
-                    return db_ad.startswith(xml_ad) or xml_ad in db_ad
+                    sik_db = _temizlik_kod(db_ad)
+                    for kod in kodlar:
+                        if len(kod) < 4:
+                            continue
+                        if db_ad.endswith(kod) or (sik_db and sik_db.endswith(kod)):
+                            return True
+                    return False
+
+                def _xml_kodlari_topla(ham_kaynak):
+                    import xml.etree.ElementTree as ET
+
+                    if isinstance(ham_kaynak, (bytes, bytearray)):
+                        metin = ham_kaynak.decode("utf-8-sig", errors="replace")
+                    else:
+                        metin = str(ham_kaynak or "")
+                    bulunan_kodlar = []
+                    gorulen_kod = set()
+
+                    def _kod_ekle(ham_kod):
+                        kod = _temizlik_kod(ham_kod)
+                        if len(kod) < 4 or kod in gorulen_kod:
+                            return
+                        gorulen_kod.add(kod)
+                        bulunan_kodlar.append(kod)
+
+                    try:
+                        kok = ET.fromstring(metin)
+                    except Exception:
+                        kok = None
+                    if kok is not None:
+                        for eleman in kok.iter():
+                            etiket = _xml_yerel_ad(eleman.tag).replace("-", "_")
+                            if etiket in _KOD_ETIKETLERI:
+                                _kod_ekle(" ".join(eleman.itertext()))
+                            for ozellik, deger in eleman.attrib.items():
+                                ad = _xml_yerel_ad(ozellik).replace("-", "_")
+                                if ad in _KOD_ETIKETLERI:
+                                    _kod_ekle(deger)
+                    return bulunan_kodlar
 
                 ham = _xml_kaynagi_indir(url)
                 bulunan = _xml_kaynagi_coz(ham, ".xml")
+                kodlar = _xml_kodlari_topla(ham)
                 adlar = []
                 gorulen = set()
                 for satir in bulunan or []:
@@ -8474,13 +8530,13 @@ def xml_urunleri_temizle():
                     if ad and ad not in gorulen:
                         gorulen.add(ad)
                         adlar.append(ad)
-                if not adlar and not kayitlar:
+                if not adlar and not kodlar and not kayitlar:
                     return jsonify({
                         "success": False,
                         "temizlenen": 0,
-                        "mesaj": "XML linkinde eşleşecek ürün adı bulunamadı.",
+                        "mesaj": "XML linkinde eşleşecek ürün adı veya stok kodu bulunamadı.",
                     })
-                if adlar:
+                if adlar or kodlar:
                     secilen = {urun.id: urun for urun in kayitlar}
                     aktifler = (
                         Urun.query.filter(
@@ -8491,7 +8547,9 @@ def xml_urunleri_temizle():
                     )
                     for urun in aktifler:
                         db_ad = _temizlik_adi(urun.urun_adi)
-                        if any(_temizlik_eslesir(xml_ad, db_ad) for xml_ad in adlar):
+                        if any(_temizlik_eslesir(xml_ad, db_ad, kodlar) for xml_ad in adlar) or (
+                            not adlar and _temizlik_eslesir("", db_ad, kodlar)
+                        ):
                             secilen[urun.id] = urun
                     kayitlar = list(secilen.values())
                 simdi = suan_utc()
@@ -8503,9 +8561,9 @@ def xml_urunleri_temizle():
                     "success": True,
                     "temizlenen": len(kayitlar),
                     "mesaj": (
-                        f"Linkten {len(adlar)} ürün adı okundu. "
+                        f"Linkten {len(adlar)} ürün adı ve {len(kodlar)} stok kodu okundu. "
                         f"{len(kayitlar)} aktif ürün çöp kutusuna alındı. "
-                        "Eşleşme tam ad, adın içi veya adın başıdır. Satılmış kayıtlar duruyor."
+                        "Eşleşme tam ad, adın içi, adın başı veya sonda stok kodudur. Satılmış kayıtlar duruyor."
                     ),
                 })
         simdi = suan_utc()
@@ -8524,6 +8582,47 @@ def xml_urunleri_temizle():
     except Exception as hata:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": f"XML temizliği tamamlanamadı: {hata}"}), 500
+
+
+@app.route("/api/dukkan-katalog-temizle", methods=["POST"])
+@admin_required
+def dukkan_katalog_temizle():
+    try:
+        veri = request.get_json(silent=True) or {}
+        ham = veri.get("dukkan_id", None)
+        if ham is None:
+            ham = veri.get("dukkan", None)
+        if ham is None:
+            ham = request.form.get("dukkan_id") or request.form.get("dukkan")
+        kod = str(ham or "").strip().lower()
+        if kod not in DUKKANLAR:
+            return jsonify({"success": False, "mesaj": "Seçili dükkan bulunamadı."}), 400
+        kayitlar = (
+            Urun.query.filter(
+                Urun.dukkan_kodu == kod,
+                Urun.durum == "Aktif",
+                Urun.silindi_mi.is_(False),
+            )
+            .all()
+        )
+        simdi = suan_utc()
+        for urun in kayitlar:
+            urun.silindi_mi = True
+            urun.silinme_tarihi = simdi
+        db.session.commit()
+        dukkan_ad = (DUKKANLAR.get(kod) or {}).get("ad") or kod
+        return jsonify({
+            "success": True,
+            "temizlenen": len(kayitlar),
+            "dukkan": kod,
+            "mesaj": (
+                f"{dukkan_ad} dükkanında {len(kayitlar)} satılmamış aktif ürün çöp kutusuna alındı. "
+                "Satılmış kayıtlar ve diğer dükkanlar duruyor."
+            ),
+        })
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Dükkan kataloğu temizlenemedi: {hata}"}), 500
 
 
 # ==========================================
