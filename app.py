@@ -1582,6 +1582,8 @@ class Urun(db.Model):
     )
     tedarikci_id = db.Column(db.Integer, nullable=True, index=True)
     kaynak_tipi = db.Column(db.String(50), nullable=False, default="manuel")
+    stok_adedi = db.Column(db.Integer, nullable=False, default=1)
+    xml_kaynak_url = db.Column(db.String(500), nullable=True)
     siparis_durumu = db.Column(db.String(30), default="Odeme_Bekliyor")
     kargo_takip_no = db.Column(db.String(100), nullable=True)
     kargo_firmasi = db.Column(db.String(50), default="Yurtiçi Kargo")
@@ -1614,6 +1616,7 @@ class Urun(db.Model):
                 "video": self.video or "",
                 "durum": self.durum or "Aktif",
                 "tedarikci_id": getattr(self, "tedarikci_id", None),
+                "stok_adedi": int(self.stok_adedi if self.stok_adedi is not None else 1),
             }
 
         return {
@@ -1635,6 +1638,7 @@ class Urun(db.Model):
             "kazanan_id": self.kazanan_id,
             "tedarikci_id": getattr(self, "tedarikci_id", None),
             "silindi_mi": bool(self.silindi_mi),
+            "stok_adedi": int(self.stok_adedi if self.stok_adedi is not None else 1),
         }
 
 
@@ -2250,6 +2254,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         urun.guncel_fiyat = float(tutar)
         db.session.add(urun)
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
+        stok_satis_sonrasi_dus(urun)
         db.session.commit()
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
 
@@ -2465,6 +2470,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             urun.guncel_fiyat = float(oda["durum"]["pey"])
                             db.session.add(urun)
                             OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
+                            stok_satis_sonrasi_dus(urun)
                             db.session.commit()
                             urunu_kazanana_sepete_ekle(
                                 biten_urun_id,
@@ -2910,6 +2916,8 @@ def veritabani_tablolari_onar():
                 ("urun", "guncel_fiyat", "FLOAT DEFAULT 0.0"),
                 ("urun", "tedarikci_id", "INTEGER"),
                 ("urun", "kaynak_tipi", "VARCHAR(50) DEFAULT 'manuel'"),
+                ("urun", "stok_adedi", "INTEGER DEFAULT 1"),
+                ("urun", "xml_kaynak_url", "VARCHAR(500)"),
                 ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
                 ("urun", "kargo_takip_no", "VARCHAR(100)"),
                 ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
@@ -3414,6 +3422,7 @@ def vitrin_urunler():
             Urun.dukkan_kodu == dukkan,
             Urun.durum != "Satıldı",
             Urun.silindi_mi.is_(False),
+            or_(Urun.stok_adedi.is_(None), Urun.stok_adedi > 0),
         )
 
         if kategori and kategori not in ["Tüm Kategoriler", ""]:
@@ -4527,6 +4536,10 @@ def sepete_ekle():
     if on_odeme_kilitli_mi(kullanici):
         return on_odeme_yaniti()
 
+    uygun, stok_mesaj = stok_satisa_uygun_mu(urun)
+    if not uygun:
+        return jsonify({"success": False, "mesaj": stok_mesaj})
+
     var_mi = SepetItem.query.filter_by(
         musteri_id=kullanici.id, urun_id=urun.id
     ).first()
@@ -4898,6 +4911,12 @@ def pey_ver():
             islem = veri.get("islem", "pey")
 
             if islem == "hemen_al":
+                uygun, stok_mesaj = stok_satisa_uygun_mu(
+                    urun, haric_musteri_id=kullanici.id
+                )
+                if not uygun:
+                    return jsonify({"success": False, "mesaj": stok_mesaj})
+
                 statik_hemen_al = float(urun.hemen_al_fiyati or 0.0)
                 mevcut_pey = float(
                     oda["durum"].get("pey", 0.0)
@@ -4942,6 +4961,7 @@ def pey_ver():
                 db.session.add(yeni_teklif)
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=urun.id).delete()
+                stok_satis_sonrasi_dus(urun)
                 db.session.commit()
 
                 urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
@@ -6165,6 +6185,7 @@ def satis_bitir():
                 )
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
+                stok_satis_sonrasi_dus(urun)
                 db.session.commit()
                 urunu_kazanana_sepete_ekle(
                     biten_urun_id,
@@ -8727,6 +8748,435 @@ def dukkan_katalog_temizle():
 
 
 # ==========================================
+# RAM ÖNBELLEKLİ OTOMATİK XML STOK SENKRONU
+# ==========================================
+XML_STOK_CACHE = {}
+XML_STOK_CACHE_META = {"url": "", "zaman": "", "hazir": False}
+_XML_STOK_CACHE_KILIT = BoundedSemaphore(1)
+_XML_STOK_IS_KILIT = BoundedSemaphore(1)
+_XML_STOK_ARALIK_SANIYE = 15 * 60
+_XML_STOK_AYAR_URL = "xml_stok_senkron_url"
+_XML_STOK_AYAR_ZAMAN = "xml_stok_son_guncelleme"
+STOK_TUKENDI_MESAJI = (
+    "Bu ürünün stoğu tükenmiştir. Satışı nazikçe durdurduk; "
+    "stoğu yenilendiğinde vitrine dönecek."
+)
+_XML_STOK_ZAMANLAYICI_BASLADI = False
+
+
+def _ayar_degeri(anahtar):
+    satir = Ayar.query.filter_by(anahtar=anahtar).first()
+    return satir.deger if satir is not None else ""
+
+
+def _ayar_yaz(anahtar, deger):
+    satir = Ayar.query.filter_by(anahtar=anahtar).first()
+    metin = "" if deger is None else str(deger)
+    if satir is None:
+        db.session.add(Ayar(anahtar=anahtar, deger=metin))
+    else:
+        satir.deger = metin
+
+
+def _stok_zaman_metni():
+    an = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=3)))
+    return an.strftime("%d.%m.%Y %H:%M")
+
+
+def _onbellek_stok_oku(ad):
+    anahtar = _xml_metin_sade(ad)
+    _XML_STOK_CACHE_KILIT.acquire()
+    try:
+        if anahtar not in XML_STOK_CACHE:
+            return 0
+        return XML_STOK_CACHE[anahtar].get("stok")
+    finally:
+        _XML_STOK_CACHE_KILIT.release()
+
+
+def _onbellek_stok_yaz(ad, adet):
+    if not XML_STOK_CACHE_META.get("hazir"):
+        return
+    anahtar = _xml_metin_sade(ad)
+    _XML_STOK_CACHE_KILIT.acquire()
+    try:
+        kayit = XML_STOK_CACHE.get(anahtar)
+        if isinstance(kayit, dict):
+            kayit["stok"] = adet
+    finally:
+        _XML_STOK_CACHE_KILIT.release()
+
+
+def _onbellege_yukle(url, zaman, harita):
+    global XML_STOK_CACHE
+    _XML_STOK_CACHE_KILIT.acquire()
+    try:
+        XML_STOK_CACHE = harita
+        XML_STOK_CACHE_META["url"] = url
+        XML_STOK_CACHE_META["zaman"] = zaman
+        XML_STOK_CACHE_META["hazir"] = True
+    finally:
+        _XML_STOK_CACHE_KILIT.release()
+
+
+def stok_satisa_uygun_mu(urun, haric_musteri_id=None):
+    """Sepet ve hemen al: dış XML yok, veritabanı ve RAM önbelleği."""
+    if urun is None or urun.silindi_mi:
+        return False, STOK_TUKENDI_MESAJI
+    if (urun.durum or "") in ("Satıldı", "satildi", "Pasif"):
+        return False, STOK_TUKENDI_MESAJI
+    try:
+        adet = int(urun.stok_adedi if urun.stok_adedi is not None else 1)
+    except (TypeError, ValueError):
+        adet = 1
+    if (getattr(urun, "kaynak_tipi", None) or "manuel") == "xml" and XML_STOK_CACHE_META.get("hazir"):
+        onbellek = _onbellek_stok_oku(urun.urun_adi)
+        if onbellek is not None:
+            adet = min(adet, int(onbellek))
+    if adet <= 0:
+        return False, STOK_TUKENDI_MESAJI
+    return True, ""
+
+
+def stok_satis_sonrasi_dus(urun):
+    """Başarılı satışta stok 1 düşer. 0 olunca vitrin filtresi ürünü düşürür."""
+    if urun is None:
+        return
+    try:
+        adet = int(urun.stok_adedi if urun.stok_adedi is not None else 1)
+    except (TypeError, ValueError):
+        adet = 1
+    adet = 0 if adet <= 0 else adet - 1
+    urun.stok_adedi = adet
+    if (getattr(urun, "kaynak_tipi", None) or "manuel") == "xml":
+        _onbellek_stok_yaz(urun.urun_adi, adet)
+    if adet <= 0:
+        return
+    urun.durum = "Aktif"
+    urun.silindi_mi = False
+    urun.silinme_tarihi = None
+    urun.kazanan_adi = "Yok"
+    urun.kazanan_id = None
+    try:
+        urun.guncel_fiyat = float(urun.acilis_fiyati or 0)
+    except (TypeError, ValueError):
+        urun.guncel_fiyat = 0.0
+
+
+def _xml_eleman_stok_adedi(eleman):
+    try:
+        bulunan = _xml_alan_metinleri(eleman, set(_XML_STOK_ONCELIK))
+    except Exception:
+        return None
+    for anahtar in _XML_STOK_ONCELIK:
+        if anahtar not in bulunan:
+            continue
+        adet = _xml_stok_sayisi(bulunan[anahtar])
+        if adet is None:
+            continue
+        try:
+            return max(0, int(float(adet)))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _xml_stok_kayitlarini_oku(ham):
+    import xml.etree.ElementTree as ET
+
+    if isinstance(ham, (bytes, bytearray)):
+        metin = ham.decode("utf-8-sig", errors="replace")
+    else:
+        metin = str(ham or "")
+    kurallar = _xml_kural_listesi()
+    elemanlar = []
+    try:
+        kok = ET.fromstring(metin)
+    except Exception:
+        kok = None
+    if kok is not None:
+        for eleman in kok.iter():
+            if _xml_yerel_ad(eleman.tag) not in _XML_URUN_ETIKETLERI:
+                continue
+            if any(_xml_yerel_ad(cocuk.tag) in _XML_URUN_ETIKETLERI for cocuk in list(eleman)):
+                continue
+            elemanlar.append(eleman)
+    if not elemanlar:
+        parcalar = re.findall(
+            r"<(?:item|urun|product|entry|offer)\b[\s\S]*?</(?:item|urun|product|entry|offer)>",
+            metin or "",
+            flags=re.IGNORECASE,
+        )
+        for blok in parcalar:
+            try:
+                elemanlar.append(ET.fromstring(blok))
+            except Exception:
+                continue
+    kayitlar = []
+    for eleman in elemanlar:
+        paket = _xml_bloktan_urun(eleman, kurallar)
+        if not paket:
+            continue
+        paket = dict(paket)
+        paket["stok"] = _xml_eleman_stok_adedi(eleman)
+        paket["anahtar"] = _xml_metin_sade(paket.get("ad"))
+        if paket["anahtar"]:
+            kayitlar.append(paket)
+    return kayitlar
+
+
+def _acik_teklif_var(urun, on_teklif_idler):
+    if urun.id in on_teklif_idler:
+        return True
+    if (urun.durum or "") in ("Satıldı", "satildi", "Pasif"):
+        return False
+    kazanan = (urun.kazanan_adi or "").strip().casefold()
+    if kazanan and kazanan not in {"", "yok", "kimse", "none", "-"}:
+        return True
+    try:
+        acilis = float(urun.acilis_fiyati or 0)
+        guncel = float(urun.guncel_fiyat if urun.guncel_fiyat is not None else acilis)
+    except (TypeError, ValueError):
+        return False
+    return guncel > acilis + 0.009
+
+
+def _stok_senkron_dokunulmaz(urun, on_teklif_idler):
+    if _acik_teklif_var(urun, on_teklif_idler):
+        return True
+    oda = odalar.get(urun.dukkan_kodu or "")
+    return bool(
+        oda
+        and oda.get("aktif_urun_id") == urun.id
+        and oda.get("sayac_aktif")
+    )
+
+
+def _xml_cop_kutusuna(urun, simdi):
+    urun.stok_adedi = 0
+    urun.silindi_mi = True
+    urun.silinme_tarihi = simdi
+    if (urun.durum or "") not in ("Satıldı", "satildi"):
+        urun.durum = "Pasif"
+    dukkan = urun.dukkan_kodu or ""
+    oda = odalar.get(dukkan)
+    if (
+        oda
+        and oda.get("aktif_urun_id") == urun.id
+        and not oda.get("sayac_aktif")
+    ):
+        _sahneyi_bosa_al(dukkan, "stok", sesi_kes=False)
+
+
+def _xml_stok_veritabanina_uygula(url, harita):
+    simdi = suan_utc()
+    xml_urunler = Urun.query.filter(Urun.kaynak_tipi == "xml").all()
+    indeks = {}
+    for urun in xml_urunler:
+        indeks.setdefault(_xml_metin_sade(urun.urun_adi), []).append(urun)
+    on_teklif_idler = {
+        satir[0]
+        for satir in db.session.query(OnTeklif.urun_id).distinct()
+        if satir[0]
+    }
+    manuel_adlar = set()
+    for ad_metin, dukkan_kodu in db.session.query(Urun.urun_adi, Urun.dukkan_kodu).filter(
+        or_(Urun.kaynak_tipi.is_(None), Urun.kaynak_tipi != "xml"),
+        or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+    ):
+        manuel_adlar.add((_xml_metin_sade(ad_metin), dukkan_kodu or "gumus"))
+    lot_sayaclari = {}
+    islem = 0
+
+    def sonraki_lot(dukkan):
+        if dukkan not in lot_sayaclari:
+            en_yuksek = (
+                db.session.query(func.max(Urun.lot_no))
+                .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
+                .scalar()
+            )
+            lot_sayaclari[dukkan] = int(en_yuksek or 0)
+        lot_sayaclari[dukkan] += 1
+        return lot_sayaclari[dukkan]
+
+    def kaydet():
+        nonlocal islem
+        islem += 1
+        if islem % 25 == 0:
+            db.session.commit()
+            socketio.sleep(0)
+
+    for paket in harita.values():
+        try:
+            ad = _xml_etiket_temizle(paket.get("ad"))[:200]
+            anahtar = paket.get("anahtar")
+            if not ad or not anahtar:
+                continue
+            dukkan = paket.get("dukkan") if paket.get("dukkan") in DUKKANLAR else "karma"
+            stok = paket.get("stok")
+            fiyat = _xml_fiyat_oku(paket.get("fiyat"))
+            adaylar = indeks.get(anahtar) or []
+            if not adaylar:
+                if stok == 0 or not paket.get("kayda_uygun") or fiyat is None:
+                    continue
+                if (anahtar, dukkan) in manuel_adlar:
+                    continue
+                yeni_stok = stok if isinstance(stok, int) and stok > 0 else 1
+                yeni_urun = Urun(
+                    dukkan_kodu=dukkan,
+                    lot_no=sonraki_lot(dukkan),
+                    urun_adi=ad,
+                    kategori=kategori_ad_temizle(paket.get("kategori") or "Genel"),
+                    acilis_fiyati=fiyat,
+                    guncel_fiyat=fiyat,
+                    hemen_al_fiyati=0.0,
+                    tanitim_yazisi=_xml_etiket_temizle(paket.get("aciklama"))[:4000],
+                    fotograflar=_xml_gorsel_listesi(paket.get("gorseller")),
+                    video="",
+                    ses_dosyasi="",
+                    durum="Aktif",
+                    silindi_mi=False,
+                    kaynak_tipi="xml",
+                    stok_adedi=yeni_stok,
+                    xml_kaynak_url=url[:500],
+                )
+                db.session.add(yeni_urun)
+                indeks.setdefault(anahtar, []).append(yeni_urun)
+                kaydet()
+                continue
+            for aday in adaylar:
+                if (getattr(aday, "kaynak_tipi", None) or "manuel") != "xml":
+                    continue
+                if _stok_senkron_dokunulmaz(aday, on_teklif_idler):
+                    continue
+                if stok == 0:
+                    if (aday.durum or "") in ("Satıldı", "satildi"):
+                        continue
+                    _xml_cop_kutusuna(aday, simdi)
+                    kaydet()
+                    continue
+                yeni_stok = stok if isinstance(stok, int) and stok > 0 else max(int(aday.stok_adedi or 1), 1)
+                eski_durum = aday.durum or ""
+                if eski_durum in ("Satıldı", "satildi", "Pasif") or aday.silindi_mi:
+                    aday.durum = "Aktif"
+                    aday.kazanan_adi = "Yok"
+                    aday.kazanan_id = None
+                    aday.guncel_fiyat = float(aday.acilis_fiyati or 0)
+                aday.silindi_mi = False
+                aday.silinme_tarihi = None
+                aday.stok_adedi = yeni_stok
+                aday.xml_kaynak_url = url[:500]
+                if fiyat is not None:
+                    aday.acilis_fiyati = fiyat
+                    aday.guncel_fiyat = fiyat
+                kaydet()
+        except Exception as hata:
+            db.session.rollback()
+            print(f"XML stok satırı atlandı: {hata}")
+
+    for urun in xml_urunler:
+        try:
+            if (getattr(urun, "kaynak_tipi", None) or "manuel") != "xml":
+                continue
+            if urun.silindi_mi:
+                continue
+            if (urun.durum or "") in ("Satıldı", "satildi"):
+                continue
+            if _xml_metin_sade(urun.urun_adi) in harita:
+                continue
+            if _stok_senkron_dokunulmaz(urun, on_teklif_idler):
+                continue
+            _xml_cop_kutusuna(urun, simdi)
+            kaydet()
+        except Exception as hata:
+            db.session.rollback()
+            print(f"XML stok düşümü atlandı: {hata}")
+    db.session.commit()
+
+
+def xml_stok_senkron_calistir():
+    if not _XML_STOK_IS_KILIT.acquire(blocking=False):
+        return
+    try:
+        with app.app_context():
+            try:
+                url = (_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip()
+                if not url.lower().startswith(("http://", "https://")):
+                    return
+                ham = _xml_kaynagi_indir(url)
+                kayitlar = _xml_stok_kayitlarini_oku(ham)
+                if not kayitlar:
+                    print("XML stok senkronu: ürün satırı yok, katalog duruyor.")
+                    return
+                harita = {}
+                for paket in kayitlar:
+                    harita[paket["anahtar"]] = paket
+                zaman = _stok_zaman_metni()
+                _onbellege_yukle(url, zaman, harita)
+                _xml_stok_veritabanina_uygula(url, harita)
+                _ayar_yaz(_XML_STOK_AYAR_ZAMAN, zaman)
+                db.session.commit()
+                print(f"XML stok önbelleği güncellendi: {len(harita)} ürün.")
+            except Exception as hata:
+                db.session.rollback()
+                print(f"XML stok senkronu atlandı: {hata}")
+            finally:
+                db.session.remove()
+    finally:
+        _XML_STOK_IS_KILIT.release()
+
+
+def _xml_stok_zaman_dongusu():
+    socketio.sleep(30)
+    while True:
+        try:
+            xml_stok_senkron_calistir()
+        except Exception as hata:
+            print(f"XML stok senkronu atlandı: {hata}")
+        socketio.sleep(_XML_STOK_ARALIK_SANIYE)
+
+
+def xml_stok_zamanlayiciyi_baslat():
+    global _XML_STOK_ZAMANLAYICI_BASLADI
+    if _XML_STOK_ZAMANLAYICI_BASLADI:
+        return
+    _XML_STOK_ZAMANLAYICI_BASLADI = True
+    socketio.start_background_task(_xml_stok_zaman_dongusu)
+
+
+@app.route("/api/xml-stok-senkron", methods=["GET", "POST"])
+@admin_required
+def xml_stok_senkron_api():
+    try:
+        if request.method == "GET":
+            return jsonify({
+                "success": True,
+                "url": (_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip(),
+                "aktif": bool((_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip()),
+                "son_guncelleme": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip(),
+            })
+        veri = request.get_json(silent=True) or {}
+        url = str(veri.get("url") or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            return jsonify({"success": False, "mesaj": "XML linki http veya https olmalı."})
+        if len(url) > 500:
+            return jsonify({"success": False, "mesaj": "XML linki 500 karakteri aşıyor."})
+        _ayar_yaz(_XML_STOK_AYAR_URL, url)
+        db.session.commit()
+        socketio.start_background_task(xml_stok_senkron_calistir)
+        return jsonify({
+            "success": True,
+            "url": url,
+            "aktif": True,
+            "son_guncelleme": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip(),
+            "mesaj": "Otomatik stok senkronizasyonu kaydedildi. Arka planda çalışacak.",
+        })
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Stok senkronu kaydedilemedi: {hata}"}), 500
+
+
+# ==========================================
 # BİZİMHESAP PERAKENDE SATIŞ CSV AKTARIM ROTASI
 # ==========================================
 @app.route("/admin/bizimhesap-aktarim-excel", methods=["GET"])
@@ -9911,6 +10361,7 @@ except Exception:
     pass
 
 veritabani_onarimini_bir_kez_baslat()
+xml_stok_zamanlayiciyi_baslat()
 socketio.sleep(0.05)
 
 # ==========================================

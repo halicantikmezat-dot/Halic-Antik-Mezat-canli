@@ -435,6 +435,10 @@
                     <button type="submit" class="btn btn-green" style="width: auto;">🔬 XML Tara & Laboratuvarda Analiz Et</button>
                     <span id="topluDurum" style="font-size: 12px; color: var(--accent-blue);"></span>
                 </div>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-green btn-sm" onclick="xmlStokSenkronKaydet()">Otomatik Stok Senkronizasyonunu Kaydet &amp; Aktifleştir</button>
+                    <span id="xmlStokSonGuncelleme" style="font-size:11px; color:#86efac;">Son güncelleme: —</span>
+                </div>
             </form>
             <div id="xmlLaboratuvarRapor" style="display:none; margin-top:10px; padding-top:8px; border-top:1px dashed var(--card-border);">
                 <div id="xmlLaboratuvarOzet" style="font-size:12px; color:#e2e8f0; line-height:1.45;"></div>
@@ -2419,7 +2423,7 @@
                         let div = document.createElement('div');
                         div.className = 'item-row';
                         div.innerHTML = `
-                            <span><b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${u.kategori || 'Genel'}]</small></span>
+                            <span><b>Lot #${u.lot}</b> - ${u.ad} (${u.fiyat} TL) <small style="color:#94a3b8;">[${u.kategori || 'Genel'}]</small> <small style="color:#86efac;">Stok: ${(u.stok_adedi === undefined || u.stok_adedi === null) ? 1 : u.stok_adedi} Adet</small></span>
                             <div class="actions">
                                 <button class="btn btn-sm" style="background:#0284c7; color:#fff;" onclick="urunOnizleModalAc(${u.id})">👁️ Gör</button>
                                 <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${u.id})">🎬 Sahneye Al</button>
@@ -2904,6 +2908,48 @@
             else alert((data && data.mesaj) || "Kural silinemedi.");
         })
         .catch(function () { alert("Kural silme isteği tamamlanamadı."); });
+    }
+
+    function xmlStokZamaniniYaz(zaman) {
+        const etiket = document.getElementById('xmlStokSonGuncelleme');
+        if (etiket) etiket.textContent = 'Son güncelleme: ' + (zaman || '—');
+    }
+
+    function xmlStokSenkronDurumunuYukle() {
+        fetch('/api/xml-stok-senkron')
+            .then(r => r.json())
+            .then(d => {
+                if (!d || !d.success) return;
+                xmlStokZamaniniYaz(d.son_guncelleme);
+                const urlInput = document.getElementById('topluUrl');
+                if (urlInput && !urlInput.value.trim() && d.url) urlInput.value = d.url;
+            })
+            .catch(() => {});
+    }
+
+    function xmlStokSenkronKaydet() {
+        playClickSound();
+        const urlInput = document.getElementById('topluUrl');
+        const url = urlInput ? urlInput.value.trim() : '';
+        if (!url) return alert('Önce canlı XML linkini yazın.');
+        const etiket = document.getElementById('xmlStokSonGuncelleme');
+        if (etiket) etiket.textContent = 'Son güncelleme: kaydediliyor...';
+        fetch('/api/xml-stok-senkron', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        }).then(r => r.json()).then(d => {
+            if (!d || !d.success) {
+                xmlStokZamaniniYaz('');
+                return alert((d && d.mesaj) || 'Stok senkronu kaydedilemedi.');
+            }
+            xmlStokZamaniniYaz(d.son_guncelleme || 'arka planda çalışıyor');
+            alert(d.mesaj || 'Otomatik stok senkronizasyonu kaydedildi.');
+            setTimeout(xmlStokSenkronDurumunuYukle, 8000);
+        }).catch(() => {
+            xmlStokZamaniniYaz('');
+            alert('Stok senkronu kaydedilemedi.');
+        });
     }
 
     function xmlLinkiTemizle() {
@@ -3413,6 +3459,7 @@
     }
 
     adminMuzikIstasyonlariniYukle();
+    xmlStokSenkronDurumunuYukle();
 
     function yeniUrunKartlariniBas(urunler) {
         const liste = document.getElementById('yeniUrunListesi');
