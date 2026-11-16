@@ -465,6 +465,7 @@
                 </div>
                 <ul id="xmlKuralListesi" style="list-style:none; padding:0; margin:8px 0 0;"></ul>
             </details>
+            <button type="button" class="btn btn-red btn-sm" style="margin-top:10px;" onclick="xmlUrunleriniTemizle()">Sadece Eski XML Ürünlerini Temizle (Kendi Ürünlerim Korunur)</button>
 
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 11px; color: #94a3b8;">Mevcut Kataloğa KDV & Kâr Ekle:</span>
@@ -2932,7 +2933,7 @@
 
     function xmlDagitimiOnayla() {
         playClickSound();
-        if (!confirm("Taranan uygun ürünler seçilen dükkanlara kaydedilsin mi?")) return;
+        if (!confirm("Taranan uygun ürünler işlensin mi? Kendi eklediğiniz aktif ürünlere dokunulmaz. Aynı adlı aktif XML ürünleri güncellenir, satılmış olanlar yeni lot olarak eklenir.")) return;
         const durum = document.getElementById("topluDurum");
         const buton = document.getElementById("xmlOnayButonu");
         if (buton) buton.disabled = true;
@@ -2959,6 +2960,27 @@
         })
         .finally(function () {
             if (buton) buton.disabled = false;
+        });
+    }
+
+    function xmlUrunleriniTemizle() {
+        playClickSound();
+        if (!confirm("Yalnızca kaynak_tipi xml olan aktif ürünler temizlensin mi? Kendi eklediğiniz ürünler ve satılmış kayıtlar durur.")) return;
+        const durum = document.getElementById("topluDurum");
+        if (durum) durum.innerText = "Eski XML ürünleri temizleniyor...";
+        fetch("/api/xml-urunleri-temizle", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (durum) durum.innerText = data.mesaj || "";
+            alert(data.mesaj || (data.success ? "Temizlendi." : "Temizlik yapılamadı."));
+            if (data.success) {
+                veriCekAdmin();
+                adminUrunAra();
+                dukkanlariYukleAdmin();
+            }
+        })
+        .catch(function () {
+            if (durum) durum.innerText = "Temizlik isteği tamamlanamadı.";
         });
     }
 

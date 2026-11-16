@@ -1581,6 +1581,7 @@ class Urun(db.Model):
         db.Integer, db.ForeignKey("kullanici.id"), nullable=True, index=True
     )
     tedarikci_id = db.Column(db.Integer, nullable=True, index=True)
+    kaynak_tipi = db.Column(db.String(50), nullable=False, default="manuel")
     siparis_durumu = db.Column(db.String(30), default="Odeme_Bekliyor")
     kargo_takip_no = db.Column(db.String(100), nullable=True)
     kargo_firmasi = db.Column(db.String(50), default="Yurtiçi Kargo")
@@ -2908,6 +2909,7 @@ def veritabani_tablolari_onar():
                 ("urun", "kazanan_id", "INTEGER"),
                 ("urun", "guncel_fiyat", "FLOAT DEFAULT 0.0"),
                 ("urun", "tedarikci_id", "INTEGER"),
+                ("urun", "kaynak_tipi", "VARCHAR(50) DEFAULT 'manuel'"),
                 ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
                 ("urun", "kargo_takip_no", "VARCHAR(100)"),
                 ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
@@ -2973,6 +2975,14 @@ def veritabani_tablolari_onar():
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
+            try:
+                db.session.execute(text(
+                    "UPDATE urun SET kaynak_tipi = 'manuel' "
+                    "WHERE kaynak_tipi IS NULL OR kaynak_tipi = ''"
+                ))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             for genislet in (
                 "ALTER TABLE urun ALTER COLUMN video TYPE TEXT",
                 "ALTER TABLE urun ALTER COLUMN ses_dosyasi TYPE TEXT",
@@ -8291,7 +8301,9 @@ def xml_dagitimi_onayla():
     if not kuyruk:
         return jsonify({"success": False, "mesaj": "Onaylanacak tarama yok. Önce laboratuvarda analiz edin."})
     lot_sayaclari = {}
-    kaydedilen = []
+    eklenen = []
+    guncellenen = []
+    korunan = []
     atlanan = []
 
     def sonraki_lot(dukkan):
@@ -8322,6 +8334,43 @@ def xml_dagitimi_onayla():
                 if fiyat is None or not gorseller or not ad:
                     atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat veya görsel eksik"})
                     continue
+                adaylar = (
+                    Urun.query.filter(
+                        Urun.dukkan_kodu == dukkan,
+                        Urun.urun_adi == ad,
+                        Urun.durum == "Aktif",
+                        Urun.silindi_mi.is_(False),
+                    )
+                    .order_by(Urun.id.asc())
+                    .all()
+                )
+                kisisel = [
+                    aday for aday in adaylar
+                    if (getattr(aday, "kaynak_tipi", None) or "manuel") != "xml"
+                ]
+                if kisisel:
+                    korunan.append({"sira": sira, "ad": ad, "dukkan": dukkan})
+                    continue
+                if adaylar:
+                    hedef = adaylar[0]
+                    eski_acilis = float(hedef.acilis_fiyati or 0)
+                    eski_guncel = float(
+                        hedef.guncel_fiyat if hedef.guncel_fiyat is not None else eski_acilis
+                    )
+                    kazanan = (hedef.kazanan_adi or "").strip()
+                    acik_pey = kazanan not in ("", "Yok") or eski_guncel > eski_acilis
+                    hedef.acilis_fiyati = fiyat
+                    if not acik_pey:
+                        hedef.guncel_fiyat = fiyat
+                    hedef.fotograflar = gorseller
+                    hedef.tanitim_yazisi = _xml_etiket_temizle(urun.get("aciklama"))[:4000]
+                    hedef.kaynak_tipi = "xml"
+                    guncellenen.append({
+                        "dukkan": dukkan,
+                        "lot_no": hedef.lot_no,
+                        "ad": ad,
+                    })
+                    continue
                 lot_no = sonraki_lot(dukkan)
                 yeni_urun = Urun(
                     dukkan_kodu=dukkan,
@@ -8337,22 +8386,26 @@ def xml_dagitimi_onayla():
                     ses_dosyasi="",
                     durum="Aktif",
                     silindi_mi=False,
+                    kaynak_tipi="xml",
                 )
                 if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
                     yeni_urun.eklenme_tarihi = datetime.now()
                 db.session.add(yeni_urun)
-                kaydedilen.append({"dukkan": dukkan, "lot_no": lot_no, "ad": ad})
+                eklenen.append({"dukkan": dukkan, "lot_no": lot_no, "ad": ad})
             except Exception as hata:
                 atlanan.append({
                     "sira": sira,
                     "ad": str((urun or {}).get("ad") if isinstance(urun, dict) else "")[:200],
                     "neden": str(hata),
                 })
-        if not kaydedilen:
+        if not eklenen and not guncellenen and not korunan:
             db.session.rollback()
             return jsonify({
                 "success": False,
                 "mesaj": "Kayda uygun ürün yok. Eksik fiyatlı veya görselsiz satırlar atlandı.",
+                "eklendi": 0,
+                "guncellendi": 0,
+                "korundu": 0,
                 "kaydedilen": 0,
                 "atlanan": len(atlanan),
                 "hatalar": atlanan[:20],
@@ -8360,13 +8413,21 @@ def xml_dagitimi_onayla():
         db.session.commit()
         _xml_besleme["kuyruk"] = []
         ozet = {}
-        for kayit in kaydedilen:
+        for kayit in eklenen:
             ozet[kayit["dukkan"]] = ozet.get(kayit["dukkan"], 0) + 1
-        dagilim = ", ".join(f"{kod}: {adet} ürün" for kod, adet in ozet.items())
+        mesaj = (
+            f"Yeni eklenen: {len(eklenen)}. "
+            f"Güncellenen XML ürünü: {len(guncellenen)}. "
+            f"Korunan kişisel ürün: {len(korunan)}. "
+            f"Atlanan: {len(atlanan)}."
+        )
         return jsonify({
             "success": True,
-            "mesaj": f"{len(kaydedilen)} ürün dükkanlara aktarıldı ({dagilim}). Atlanan: {len(atlanan)}.",
-            "kaydedilen": len(kaydedilen),
+            "mesaj": mesaj,
+            "eklendi": len(eklenen),
+            "guncellendi": len(guncellenen),
+            "korundu": len(korunan),
+            "kaydedilen": len(eklenen),
             "atlanan": len(atlanan),
             "dagilim": ozet,
             "hatalar": atlanan[:20],
@@ -8374,6 +8435,36 @@ def xml_dagitimi_onayla():
     except Exception as hata:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": f"Aktarım tamamlanamadı: {hata}"}), 500
+
+
+@app.route("/api/xml-urunleri-temizle", methods=["POST"])
+@admin_required
+def xml_urunleri_temizle():
+    try:
+        kayitlar = (
+            Urun.query.filter(
+                Urun.kaynak_tipi == "xml",
+                Urun.durum == "Aktif",
+                Urun.silindi_mi.is_(False),
+            )
+            .all()
+        )
+        simdi = suan_utc()
+        for urun in kayitlar:
+            urun.silindi_mi = True
+            urun.silinme_tarihi = simdi
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "temizlenen": len(kayitlar),
+            "mesaj": (
+                f"{len(kayitlar)} eski XML ürünü temizlendi. "
+                "Kendi ürünleriniz ve satılmış kayıtlar duruyor."
+            ),
+        })
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"XML temizliği tamamlanamadı: {hata}"}), 500
 
 
 # ==========================================
