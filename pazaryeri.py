@@ -1,7 +1,46 @@
+import json
 import urllib.parse
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, render_template_string, request
 from sqlalchemy import text
+
+
+def _pazaryeri_medya_listesi(ham):
+    if ham is None:
+        return []
+    if isinstance(ham, (bytes, bytearray)):
+        ham = ham.decode("utf-8", "ignore")
+    if isinstance(ham, str):
+        metin = ham.strip()
+        if not metin:
+            return []
+        try:
+            ham = json.loads(metin)
+        except (TypeError, ValueError):
+            return [metin] if metin.startswith("http") else []
+    if isinstance(ham, dict):
+        return [ham]
+    if isinstance(ham, list):
+        return ham
+    return []
+
+
+def _pazaryeri_ilk_gorsel(ham):
+    adaylar = []
+    for oge in _pazaryeri_medya_listesi(ham):
+        adres = ""
+        if isinstance(oge, str):
+            adres = oge.strip()
+        elif isinstance(oge, dict):
+            adres = str(oge.get("url") or oge.get("secure_url") or "").strip()
+        if adres.startswith("http://") or adres.startswith("https://"):
+            adaylar.append(adres)
+    for adres in adaylar:
+        dusuk = adres.lower().split("?", 1)[0]
+        if "/video/upload/" in dusuk or dusuk.endswith((".mp4", ".webm", ".mov", ".m4v")):
+            continue
+        return adres
+    return adaylar[0] if adaylar else ""
 
 pazaryeri_bp = Blueprint("pazaryeri_bp", __name__)
 
@@ -78,12 +117,26 @@ def init_pazaryeri(app, db, admin_required_decorator):
             .btn-wa:hover { background: #1ebe5d; }
             .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
             @media(max-width: 900px){ .grid { grid-template-columns: 1fr; } }
+            .btn-arsiv { background: #0f766e; color: #fff; }
+            .btn-arsiv:hover { background: #115e59; }
+            .arsiv-perde { display: none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.82); z-index: 50; align-items: center; justify-content: center; padding: 20px; }
+            .arsiv-kutu { background: #1e293b; border: 1px solid #f59e0b; border-radius: 12px; width: min(980px, 100%); max-height: min(86vh, 820px); overflow: auto; padding: 18px; box-shadow: 0 16px 40px rgba(0,0,0,0.45); }
+            .arsiv-ust { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+            .arsiv-kart { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; border-bottom: 1px solid #334155; padding: 10px 0; }
+            .arsiv-kart img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; background: #0f172a; }
+            .arsiv-bos { width: 64px; height: 64px; border-radius: 8px; background: #0f172a; color: #64748b; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+            .arsiv-meta { color: #94a3b8; font-size: 12px; margin-top: 4px; }
+            .durum-aktif { color: #4ade80; font-weight: bold; }
+            .durum-satildi { color: #fbbf24; font-weight: bold; }
         </style>
     </head>
     <body>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 10px; flex-wrap: wrap;">
             <h2>🏛️ Tedarikçi, Kargo ve Güvenli Satış Takibi</h2>
-            <a href="/admin" class="btn" style="background: #475569; color: #fff;">⬅️ Ana Panele Dön</a>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-arsiv" onclick="arsivAc('')">Kendi Bünyemiz Arşivi</button>
+                <a href="/admin" class="btn" style="background: #475569; color: #fff;">⬅️ Ana Panele Dön</a>
+            </div>
         </div>
 
         <div class="grid">
@@ -152,16 +205,29 @@ def init_pazaryeri(app, db, admin_required_decorator):
                         <th>IBAN</th>
                         <th>Komisyon</th>
                         <th>WhatsApp İletişim</th>
+                        <th>Arşiv</th>
                     </tr>
                 </thead>
                 <tbody id="tedarikciTbody">
-                    <tr><td colspan="6">Yükleniyor...</td></tr>
+                    <tr><td colspan="7">Yükleniyor...</td></tr>
                 </tbody>
             </table>
         </div>
 
+        <div id="arsivModal" class="arsiv-perde" onclick="if (event.target === this) arsivKapat()">
+            <div class="arsiv-kutu">
+                <div class="arsiv-ust">
+                    <h3 id="arsivBaslik" style="margin:0;">Ürün Arşivi</h3>
+                    <button type="button" class="btn" style="background:#475569; color:#fff;" onclick="arsivKapat()">Kapat</button>
+                </div>
+                <div id="arsivIcerik"></div>
+            </div>
+        </div>
+
         <script>
             let tumSiparisler = [];
+            let tumUrunler = [];
+            let tedarikciListesi = [];
 
             function formatliTelefon(tel) {
                 if (!tel) return '';
@@ -227,6 +293,8 @@ def init_pazaryeri(app, db, admin_required_decorator):
                     const data = await res.json();
                     
                     tumSiparisler = data.siparisler || [];
+                    tumUrunler = data.tum_urunler || [];
+                    tedarikciListesi = data.tedarikciler || [];
                     tabloFiltrele();
 
                     let tHtml = '';
@@ -243,9 +311,12 @@ def init_pazaryeri(app, db, admin_required_decorator):
                             <td>
                                 <a href="https://wa.me/${tTel}?text=${kuralMesaji}" target="_blank" class="btn btn-wa">📜 Şartnameyi Gönder</a>
                             </td>
+                            <td>
+                                <button type="button" class="btn btn-kucuk btn-arsiv" onclick="arsivAc('${t.id}')">Ürün Arşivi</button>
+                            </td>
                         </tr>`;
                     });
-                    document.getElementById('tedarikciTbody').innerHTML = tHtml || '<tr><td colspan="6">Kayıtlı tedarikçi yok.</td></tr>';
+                    document.getElementById('tedarikciTbody').innerHTML = tHtml || '<tr><td colspan="7">Kayıtlı tedarikçi yok.</td></tr>';
                 } catch(e) {}
             }
 
@@ -319,6 +390,57 @@ def init_pazaryeri(app, db, admin_required_decorator):
                 verileriGetir();
             }
 
+            function htmlKacis(metin) {
+                return String(metin == null ? '' : metin)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            function arsivKapat() {
+                const perde = document.getElementById('arsivModal');
+                if (perde) perde.style.display = 'none';
+            }
+
+            function arsivAc(tedarikciId) {
+                const hedef = String(tedarikciId == null ? '' : tedarikciId);
+                const kendi = hedef === '';
+                const liste = (tumUrunler || []).filter(u => {
+                    const tid = u && u.tedarikci_id != null && String(u.tedarikci_id) !== '' ? String(u.tedarikci_id) : '';
+                    return kendi ? tid === '' : tid === hedef;
+                });
+                let baslik = 'Kendi Bünyemiz Arşivi';
+                if (!kendi) {
+                    const kayit = (tedarikciListesi || []).find(t => String(t.id) === hedef);
+                    baslik = ((kayit && kayit.ad_soyad) || 'Tedarikçi') + ' — Ürün Arşivi';
+                }
+                const baslikKutu = document.getElementById('arsivBaslik');
+                const icerik = document.getElementById('arsivIcerik');
+                if (baslikKutu) baslikKutu.textContent = baslik;
+                if (!icerik) return;
+                if (!liste.length) {
+                    icerik.innerHTML = '<p style="color:#94a3b8;">Bu hesaba bağlı ürün yok.</p>';
+                } else {
+                    icerik.innerHTML = liste.map(u => {
+                        const gorsel = String((u && u.gorsel) || '');
+                        const guvenli = (gorsel.indexOf('https://') === 0 || gorsel.indexOf('http://') === 0) ? gorsel : '';
+                        const onizleme = guvenli
+                            ? '<img src="' + htmlKacis(guvenli) + '" alt="">'
+                            : '<div class="arsiv-bos">Görsel yok</div>';
+                        const durum = String((u && u.durum) || '');
+                        const durumSinif = durum === 'Satıldı' || durum.toLowerCase() === 'satildi' ? 'durum-satildi' : (durum === 'Aktif' ? 'durum-aktif' : '');
+                        const fiyat = Number((u && u.baslangic_fiyati) || 0);
+                        return '<div class="arsiv-kart">' + onizleme +
+                            '<div><b>Lot #' + htmlKacis(u.lot_no) + '</b> — ' + htmlKacis(u.urun_adi) +
+                            '<div class="arsiv-meta">Dükkan: ' + htmlKacis(u.dukkan_kodu || '-') +
+                            ' · Fiyat: ' + fiyat.toLocaleString('tr-TR') + ' TL · Durum: <span class="' + durumSinif + '">' + htmlKacis(durum || '-') + '</span></div></div></div>';
+                    }).join('');
+                }
+                const perde = document.getElementById('arsivModal');
+                if (perde) perde.style.display = 'flex';
+            }
+
             verileriGetir();
         </script>
     </body>
@@ -388,7 +510,57 @@ def init_pazaryeri(app, db, admin_required_decorator):
                 "kargo_takip": u.get("kargo_takip_no") or "",
             })
 
-        return jsonify({"tedarikciler": tedarikciler, "siparisler": siparisler})
+        tum_urunler = []
+        try:
+            arsiv_rows = (
+                db.session.execute(
+                    text("""
+                    SELECT id, lot_no, urun_adi, dukkan_kodu, acilis_fiyati, durum,
+                           tedarikci_id, fotograflar
+                    FROM urun
+                    WHERE (silindi_mi = FALSE OR silindi_mi IS NULL)
+                    ORDER BY id DESC
+                    """)
+                )
+                .mappings()
+                .all()
+            )
+            for u in arsiv_rows:
+                ham_tid = u.get("tedarikci_id")
+                try:
+                    tid = (
+                        int(ham_tid)
+                        if ham_tid is not None and str(ham_tid).strip() != ""
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    tid = None
+                if tid is not None and tid <= 0:
+                    tid = None
+                try:
+                    baslangic = float(u.get("acilis_fiyati") or 0)
+                except (TypeError, ValueError):
+                    baslangic = 0.0
+                tum_urunler.append(
+                    {
+                        "id": u["id"],
+                        "tedarikci_id": tid,
+                        "lot_no": u.get("lot_no"),
+                        "urun_adi": u.get("urun_adi") or "",
+                        "dukkan_kodu": u.get("dukkan_kodu") or "",
+                        "baslangic_fiyati": baslangic,
+                        "durum": u.get("durum") or "",
+                        "gorsel": _pazaryeri_ilk_gorsel(u.get("fotograflar")),
+                    }
+                )
+        except Exception:
+            tum_urunler = []
+
+        return jsonify({
+            "tedarikciler": tedarikciler,
+            "siparisler": siparisler,
+            "tum_urunler": tum_urunler,
+        })
 
     @pazaryeri_bp.route("/api/tedarikci-ekle", methods=["POST"])
     @admin_required_decorator

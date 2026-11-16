@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Haliç Antik Mezat - Çok Dükkanlı Yönetici Portalı</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/img/icon-192.png">
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         :root {
@@ -418,7 +423,7 @@
     <!-- MÜZİK VE TOPLU ÜRÜN YÜKLEME -->
     <div class="grid-2">
         <div class="card">
-            <div class="card-title">⚡ Toplu Ürün Yükleme (Excel / XML / Canlı Bağlantı)</div>
+            <div class="card-title">⚡ Akıllı XML Tarama & Dükkan Dağıtım Laboratuvarı</div>
             <form id="topluYukleForm" onsubmit="topluUrunYukle(event)" style="display: flex; flex-direction: column; gap: 8px;">
                 <div style="display:flex; gap:6px; align-items:center;">
                     <input type="text" id="topluUrl" placeholder="Canlı XML Linki" style="margin: 0; flex:1;">
@@ -427,10 +432,39 @@
                 <div style="text-align: center; font-size: 11px; color: #94a3b8;">- VEYA BİLGİSAYARDAN DOSYA SEÇİN -</div>
                 <input type="file" id="topluDosya" accept=".xlsx, .xls, .csv, .xml" style="margin: 0;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                    <button type="submit" class="btn btn-green" style="width: auto;">📥 Ürünleri Sisteme Çek & Kaydet</button>
+                    <button type="submit" class="btn btn-green" style="width: auto;">🔬 XML Tara & Laboratuvarda Analiz Et</button>
                     <span id="topluDurum" style="font-size: 12px; color: var(--accent-blue);"></span>
                 </div>
             </form>
+            <div id="xmlLaboratuvarRapor" style="display:none; margin-top:10px; padding-top:8px; border-top:1px dashed var(--card-border);">
+                <div id="xmlLaboratuvarOzet" style="font-size:12px; color:#e2e8f0; line-height:1.45;"></div>
+                <div id="xmlLaboratuvarTablo"></div>
+                <button type="button" id="xmlOnayButonu" class="btn btn-yellow" style="margin-top:8px;" onclick="xmlDagitimiOnayla()">Dağıtımı Onayla ve Dükkanlara Aktar</button>
+            </div>
+            <details id="xmlKuralKutu" style="margin-top:10px;">
+                <summary style="cursor:pointer; font-size:12px; color:var(--accent-gold); font-weight:bold;">Laboratuvar Kelime Kuralları</summary>
+                <p style="font-size:11px; color:#94a3b8; margin:6px 0;">Özel kelime, yerleşik kurallardan önce bakılır. Örnek: kehribar = antika.</p>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="xmlKuralKelime" placeholder="kehribar" style="margin:0; flex:1; min-width:120px;">
+                    <select id="xmlKuralDukkan" style="margin:0; width:auto;">
+                        <option value="gumus">Gümüş</option>
+                        <option value="antika">Antika</option>
+                        <option value="bakir">Bakır / Pirinç</option>
+                        <option value="porselen">Porselen / Seramik</option>
+                        <option value="elektronik">Elektrik / Elektronik</option>
+                        <option value="modelaraba">Model Araba</option>
+                        <option value="hirdavat">Hırdavat & Nalbur</option>
+                        <option value="kozmetik">Kozmetik</option>
+                        <option value="bijuteri">Bijuteri</option>
+                        <option value="tasarim">Tasarım</option>
+                        <option value="toptan">Toptan</option>
+                        <option value="karma">Karma</option>
+                        <option value="diger">Diğer</option>
+                    </select>
+                    <button type="button" class="btn btn-blue btn-sm" onclick="xmlKuralEkle()">Kural Ekle</button>
+                </div>
+                <ul id="xmlKuralListesi" style="list-style:none; padding:0; margin:8px 0 0;"></ul>
+            </details>
 
             <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 11px; color: #94a3b8;">Mevcut Kataloğa KDV & Kâr Ekle:</span>
@@ -798,6 +832,17 @@
                 <textarea id="studyoKondisyon" rows="4" placeholder="Tahmini kondisyon ve detay açıklaması"></textarea>
                 <input type="number" id="studyoFiyat" min="0" step="1" placeholder="Açılış Fiyatı (TL)">
                 <input type="number" id="studyoHemenAl" min="0" step="1" placeholder="Hemen Al Fiyatı (TL)">
+                <label for="studyoTedarikci" style="font-size:12px; font-weight:bold; display:block;">Ürün Kaynağı / Tedarikçi</label>
+                <select id="studyoTedarikci">
+                    <option value="">Kendi Bünyemiz (Haliç Antik)</option>
+                </select>
+                <details id="studyoTedarikciHizli" style="margin:0 0 8px;">
+                    <summary style="cursor:pointer; font-size:12px; color:#d6c089; margin-bottom:6px;">+ Hızlı Yeni Tedarikçi Ekle</summary>
+                    <input type="text" id="studyoYeniTedarikciAd" placeholder="Ad Soyad / Firma" autocomplete="off">
+                    <input type="text" id="studyoYeniTedarikciTel" placeholder="Telefon" autocomplete="off">
+                    <button type="button" class="btn btn-sm" style="background:#0f766e; color:#fff; width:100%;" onclick="studyoTedarikciKaydet()">Kaydet ve Seç</button>
+                    <div id="studyoTedarikciHizliDurum" style="font-size:11px; color:#94a3b8; min-height:16px;"></div>
+                </details>
                 <select id="studyoDukkan"></select>
                 <button type="button" class="btn btn-green" style="width:100%;" onclick="studyoAktar()">Dükkana Aktar</button>
             </div>
@@ -2165,6 +2210,7 @@
         await dukkanlariYukleAdmin();
         kategorileriDoldurAdmin();
         tedarikcileriYukleAdmin();
+        laboratuvarKurallariniGetir();
         setTimeout(sikayetleriGetir, 1200);
     };
 
@@ -2736,6 +2782,108 @@
         input.value = '';
     }
 
+    function xmlMetinKacis(metin) {
+        return String(metin == null ? "" : metin).replace(/[&<>"']/g, function (ch) {
+            return {"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"}[ch];
+        });
+    }
+
+    function xmlLaboratuvarRaporunuGizle() {
+        const kutu = document.getElementById("xmlLaboratuvarRapor");
+        if (kutu) kutu.style.display = "none";
+    }
+
+    function xmlLaboratuvarRaporunuYaz(data) {
+        const kutu = document.getElementById("xmlLaboratuvarRapor");
+        const ozet = document.getElementById("xmlLaboratuvarOzet");
+        const tablo = document.getElementById("xmlLaboratuvarTablo");
+        if (!kutu || !ozet || !tablo) return;
+        ozet.textContent = data.mesaj || "";
+        const onizleme = data.onizleme || [];
+        if (!onizleme.length) {
+            tablo.innerHTML = "";
+        } else {
+            let html = '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px;">'
+                + '<thead><tr><th style="text-align:left; padding:4px;">Ürün</th><th style="text-align:left; padding:4px;">Dükkan</th>'
+                + '<th style="text-align:left; padding:4px;">Fiyat</th><th style="text-align:left; padding:4px;">Durum</th></tr></thead><tbody>';
+            onizleme.forEach(function (satir) {
+                const durum = satir.kayda_uygun ? "aktarılacak" : ("atlanır: " + (satir.neden || "eksik"));
+                html += "<tr><td style=\"padding:4px;\">" + xmlMetinKacis(satir.ad) + "</td>"
+                    + "<td style=\"padding:4px;\">" + xmlMetinKacis(satir.dukkan) + "</td>"
+                    + "<td style=\"padding:4px;\">" + xmlMetinKacis(satir.fiyat == null ? "-" : satir.fiyat) + "</td>"
+                    + "<td style=\"padding:4px;\">" + xmlMetinKacis(durum) + "</td></tr>";
+            });
+            html += "</tbody></table>";
+            tablo.innerHTML = html;
+        }
+        kutu.style.display = "block";
+    }
+
+    function xmlKuralListesiniYaz(kurallar) {
+        const liste = document.getElementById("xmlKuralListesi");
+        if (!liste) return;
+        liste.innerHTML = "";
+        (kurallar || []).forEach(function (kural) {
+            const li = document.createElement("li");
+            li.style.cssText = "font-size:12px; margin:4px 0; display:flex; gap:8px; align-items:center;";
+            const yazi = document.createElement("span");
+            yazi.textContent = kural.kelime + " = " + kural.dukkan;
+            const sil = document.createElement("button");
+            sil.type = "button";
+            sil.className = "btn btn-red btn-sm";
+            sil.textContent = "Sil";
+            sil.onclick = function () { xmlKuralSil(kural.kelime); };
+            li.appendChild(yazi);
+            li.appendChild(sil);
+            liste.appendChild(li);
+        });
+    }
+
+    function laboratuvarKurallariniGetir() {
+        fetch("/api/xml-laboratuvar-kurallar")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.success) xmlKuralListesiniYaz(data.kurallar || []);
+            })
+            .catch(function () {});
+    }
+
+    function xmlKuralEkle() {
+        playClickSound();
+        const kelimeAlani = document.getElementById("xmlKuralKelime");
+        const dukkanAlani = document.getElementById("xmlKuralDukkan");
+        const kelime = (kelimeAlani && kelimeAlani.value || "").trim();
+        const dukkan = dukkanAlani ? dukkanAlani.value : "";
+        if (!kelime) return alert("Kelime yazın. Örnek: kehribar");
+        fetch("/api/xml-laboratuvar-kurallar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kelime: kelime, dukkan: dukkan })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.success) return alert(data.mesaj || "Kural kaydedilemedi.");
+            if (kelimeAlani) kelimeAlani.value = "";
+            xmlKuralListesiniYaz(data.kurallar || []);
+        })
+        .catch(function () { alert("Kural kaydı tamamlanamadı."); });
+    }
+
+    function xmlKuralSil(kelime) {
+        playClickSound();
+        fetch("/api/xml-laboratuvar-kurallar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sil: kelime })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data && data.success) xmlKuralListesiniYaz(data.kurallar || []);
+            else alert((data && data.mesaj) || "Kural silinemedi.");
+        })
+        .catch(function () { alert("Kural silme isteği tamamlanamadı."); });
+    }
+
     function xmlLinkiTemizle() {
         playClickSound();
         fetch('/xml-link-temizle', { method: 'POST' })
@@ -2745,6 +2893,7 @@
                 const durum = document.getElementById('topluDurum');
                 if (urlInput) urlInput.value = '';
                 if (durum) durum.innerText = d.mesaj || 'XML linki silindi.';
+                xmlLaboratuvarRaporunuGizle();
             });
     }
 
@@ -2754,29 +2903,62 @@
         const dosyaInput = document.getElementById('topluDosya');
         const urlInput = document.getElementById('topluUrl');
         const durum = document.getElementById('topluDurum');
-        
+
         if (!dosyaInput.files[0] && !urlInput.value.trim()) {
             return alert("Lütfen bir dosya seçin veya canlı XML bağlantı linki girin!");
         }
 
         const formData = new FormData();
-        formData.append('dukkan', seciliDukkan);
-        if(dosyaInput.files[0]) formData.append('dosya', dosyaInput.files[0]);
-        if(urlInput.value.trim()) formData.append('xml_url', urlInput.value.trim());
+        if (dosyaInput.files[0]) formData.append('dosya', dosyaInput.files[0]);
+        else if (urlInput.value.trim()) formData.append('xml_url', urlInput.value.trim());
 
-        durum.innerText = "Ürünler dükkana kaydediliyor, lütfen bekleyin...";
+        durum.innerText = "Taranıyor, veritabanına yazılmıyor...";
+        xmlLaboratuvarRaporunuGizle();
 
         fetch('/toplu-urun-yukle', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
-            durum.innerText = data.mesaj;
-            if(data.success) {
-                alert(data.mesaj);
-                dosyaInput.value = ""; urlInput.value = "";
+            durum.innerText = data.mesaj || "";
+            if (data.success) {
+                xmlLaboratuvarRaporunuYaz(data);
+            } else {
+                alert("Hata: " + (data.mesaj || "Tarama tamamlanamadı."));
+            }
+        })
+        .catch(function () {
+            durum.innerText = "Tarama isteği tamamlanamadı.";
+        });
+    }
+
+    function xmlDagitimiOnayla() {
+        playClickSound();
+        if (!confirm("Taranan uygun ürünler seçilen dükkanlara kaydedilsin mi?")) return;
+        const durum = document.getElementById("topluDurum");
+        const buton = document.getElementById("xmlOnayButonu");
+        if (buton) buton.disabled = true;
+        if (durum) durum.innerText = "Dağıtım kaydediliyor...";
+        fetch("/api/xml-dagitimi-onayla", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (durum) durum.innerText = data.mesaj || "";
+            alert(data.mesaj || (data.success ? "Aktarıldı." : "Aktarım yapılamadı."));
+            if (data.success) {
+                const dosyaInput = document.getElementById("topluDosya");
+                const urlInput = document.getElementById("topluUrl");
+                if (dosyaInput) dosyaInput.value = "";
+                if (urlInput) urlInput.value = "";
+                xmlLaboratuvarRaporunuGizle();
                 kategorileriDoldurAdmin();
                 veriCekAdmin();
                 adminUrunAra();
-            } else alert("Hata: " + data.mesaj);
+                dukkanlariYukleAdmin();
+            }
+        })
+        .catch(function () {
+            if (durum) durum.innerText = "Aktarım isteği tamamlanamadı.";
+        })
+        .finally(function () {
+            if (buton) buton.disabled = false;
         });
     }
 
@@ -3389,11 +3571,90 @@
         studyoOnizle();
     }
 
+    function studyoTedarikciSecenekleriYaz(liste, seciliId) {
+        const secim = document.getElementById('studyoTedarikci');
+        if (!secim) return;
+        const onceki = seciliId != null && seciliId !== '' ? String(seciliId) : secim.value;
+        secim.innerHTML = '';
+        const sabit = document.createElement('option');
+        sabit.value = '';
+        sabit.textContent = 'Kendi Bünyemiz (Haliç Antik)';
+        secim.appendChild(sabit);
+        (liste || []).forEach(t => {
+            if (!t || t.id == null) return;
+            const opt = document.createElement('option');
+            opt.value = String(t.id);
+            const ad = t.ad_soyad || 'Tedarikçi';
+            opt.textContent = t.telefon ? (ad + ' (' + t.telefon + ')') : ad;
+            secim.appendChild(opt);
+        });
+        secim.value = onceki;
+        if (secim.value !== String(onceki || '')) secim.value = '';
+    }
+
+    function studyoTedarikcileriDoldur(seciliId) {
+        return fetch('/admin/pazaryeri/api/veriler')
+            .then(r => r.json())
+            .then(d => {
+                studyoTedarikciSecenekleriYaz((d && d.tedarikciler) || [], seciliId);
+            })
+            .catch(() => {});
+    }
+
+    function studyoTedarikciKaydet() {
+        const adKutu = document.getElementById('studyoYeniTedarikciAd');
+        const telKutu = document.getElementById('studyoYeniTedarikciTel');
+        const durum = document.getElementById('studyoTedarikciHizliDurum');
+        const ad = (adKutu && adKutu.value || '').trim();
+        const tel = (telKutu && telKutu.value || '').trim();
+        if (!ad || !tel) {
+            if (durum) durum.textContent = 'Ad soyad ve telefon gerekli.';
+            return;
+        }
+        if (durum) durum.textContent = 'Kaydediliyor...';
+        fetch('/admin/pazaryeri/api/tedarikci-ekle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ad_soyad: ad, telefon: tel, iban: '', komisyon: 15 })
+        })
+            .then(r => r.json().catch(() => ({})))
+            .then(data => {
+                if (!data || !data.success) {
+                    if (durum) durum.textContent = (data && data.mesaj) || 'Kayıt yapılamadı.';
+                    return null;
+                }
+                return fetch('/admin/pazaryeri/api/veriler').then(r => r.json());
+            })
+            .then(d => {
+                if (!d) return;
+                const liste = d.tedarikciler || [];
+                const bulunan = liste.find(t => String((t && t.ad_soyad) || '').trim() === ad && String((t && t.telefon) || '').trim() === tel);
+                studyoTedarikciSecenekleriYaz(liste, bulunan ? bulunan.id : '');
+                if (adKutu) adKutu.value = '';
+                if (telKutu) telKutu.value = '';
+                if (durum) durum.textContent = bulunan ? 'Tedarikçi kaydedildi ve seçildi.' : 'Tedarikçi kaydedildi.';
+                if (bulunan) {
+                    ['tedarikci_id', 'edit_tedarikci_id'].forEach(id => {
+                        const ana = document.getElementById(id);
+                        if (!ana || ana.querySelector('option[value="' + String(bulunan.id) + '"]')) return;
+                        const opt = document.createElement('option');
+                        opt.value = String(bulunan.id);
+                        opt.textContent = (bulunan.ad_soyad || 'Tedarikçi') + (bulunan.telefon ? ' (' + bulunan.telefon + ')' : '');
+                        ana.appendChild(opt);
+                    });
+                }
+            })
+            .catch(() => {
+                if (durum) durum.textContent = 'Kayıt isteği tamamlanamadı.';
+            });
+    }
+
     function studyoAc() {
         playClickSound();
         const pencere = document.getElementById('modalStudyo');
         if (pencere) pencere.style.display = 'flex';
         studyoDukkanlariDoldur();
+        studyoTedarikcileriDoldur();
     }
 
     function studyoDukkanlariDoldur() {
@@ -3554,6 +3815,9 @@
             paket.append('baslangic_fiyati', document.getElementById('studyoFiyat').value || "0");
             paket.append('hemen_al_fiyati', document.getElementById('studyoHemenAl').value || "0");
             paket.append('dukkan', document.getElementById('studyoDukkan').value || "gumus");
+            const kaynakSecim = document.getElementById('studyoTedarikci');
+            const kaynakDeger = kaynakSecim ? String(kaynakSecim.value || '').trim() : '';
+            paket.append('tedarikci_id', kaynakDeger);
             const kayit = await fetch('/api/studyo/transfer', { method: 'POST', body: paket });
             const data = await kayit.json().catch(() => ({}));
             if (!data.success) {

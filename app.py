@@ -3054,6 +3054,27 @@ def favicon():
     return ("", 204)
 
 
+@app.route("/sw.js")
+def service_worker():
+    yanit = send_from_directory(
+        os.path.join(basedir, "static"),
+        "sw.js",
+        mimetype="application/javascript",
+    )
+    yanit.headers["Service-Worker-Allowed"] = "/"
+    yanit.headers["Cache-Control"] = "no-cache"
+    return yanit
+
+
+@app.route("/manifest.json")
+def pwa_manifest():
+    return send_from_directory(
+        os.path.join(basedir, "static"),
+        "manifest.json",
+        mimetype="application/manifest+json",
+    )
+
+
 @app.route("/robots.txt")
 def robots_txt():
     icerik = (
@@ -7393,8 +7414,8 @@ def _studyo_alanlari(veri):
 
 
 def _studyo_gorsel_analiz(mime, ham_bayt):
-    istemci = _openai_ses_istemcisi()
-    if istemci is None:
+    anahtar = (getattr(Config, "OPENAI_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")).strip()
+    if not anahtar:
         return {}, "OpenAI anahtarı tanımlı değil."
     b64 = base64.b64encode(ham_bayt).decode("ascii")
     mesajlar = [
@@ -7418,23 +7439,75 @@ def _studyo_gorsel_analiz(mime, ham_bayt):
             ],
         },
     ]
+
+    def _tamamla(response_format):
+        import subprocess
+
+        govde = {
+            "model": "gpt-4o-mini",
+            "temperature": 0.4,
+            "max_tokens": 700,
+            "messages": mesajlar,
+        }
+        if response_format:
+            govde["response_format"] = response_format
+        ham_govde = json.dumps(govde, ensure_ascii=False).encode("utf-8")
+        if os.name == "nt":
+            komut = [
+                "curl.exe",
+                "-sS",
+                "-k",
+                "--ssl-no-revoke",
+                "-X", "POST",
+                "https://api.openai.com/v1/chat/completions",
+                "-H", "Authorization: Bearer " + anahtar,
+                "-H", "Content-Type: application/json",
+                "-H", "Accept: application/json",
+                "--data-binary", "@-",
+                "-w", "\n%{http_code}",
+            ]
+        else:
+            komut = [
+                "curl",
+                "-sS",
+                "-X", "POST",
+                "https://api.openai.com/v1/chat/completions",
+                "-H", "Authorization: Bearer " + anahtar,
+                "-H", "Content-Type: application/json",
+                "-H", "Accept: application/json",
+                "--data-binary", "@-",
+                "-w", "\n%{http_code}",
+            ]
+        proc = subprocess.run(
+            komut,
+            input=ham_govde,
+            capture_output=True,
+            timeout=90,
+        )
+        if proc.returncode != 0:
+            hata = (proc.stderr or proc.stdout or b"").decode("utf-8", errors="replace").strip()
+            raise RuntimeError(hata or ("curl çıkış kodu " + str(proc.returncode)))
+        parca = (proc.stdout or b"").rsplit(b"\n", 1)
+        if len(parca) != 2:
+            raise RuntimeError("curl yanıtı okunamadı.")
+        veri, kod_ham = parca
+        try:
+            kod = int((kod_ham or b"").strip() or b"0")
+        except ValueError:
+            kod = 0
+        if kod != 200:
+            ozet = veri.decode("utf-8", errors="replace").replace("\n", " ")[:500]
+            raise RuntimeError("HTTP " + str(kod) + ": " + ozet)
+        cozulen = json.loads(veri.decode("utf-8"))
+        secim = (cozulen.get("choices") or [{}])[0]
+        icerik = (secim.get("message") or {}).get("content") or ""
+        return icerik
+
     try:
         try:
-            yanit = istemci.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.4,
-                max_tokens=700,
-                response_format={"type": "json_object"},
-                messages=mesajlar,
-            )
+            ham = _tamamla({"type": "json_object"})
         except Exception:
-            yanit = istemci.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.4,
-                max_tokens=700,
-                messages=mesajlar,
-            )
-        ham = yanit.choices[0].message.content or ""
+            ham = _tamamla(None)
     except Exception as e:
         return {}, "Görsel analizi tamamlanamadı: " + str(e)
     return _studyo_alanlari(_studyo_json_ayikla(ham)), ""
@@ -7572,6 +7645,22 @@ def studyo_transfer():
         if kondisyon:
             tanitim.append(kondisyon)
 
+        ham_tedarikci = request.form.get("tedarikci_id", None)
+        if ham_tedarikci is None:
+            govde = request.get_json(silent=True) or {}
+            if isinstance(govde, dict):
+                ham_tedarikci = govde.get("tedarikci_id")
+        secili_tedarikci_id = None
+        if ham_tedarikci is not None:
+            metin = str(ham_tedarikci).strip()
+            if metin and metin.lower() not in ("null", "none"):
+                try:
+                    sayi = int(metin)
+                except (TypeError, ValueError):
+                    sayi = 0
+                if sayi > 0:
+                    secili_tedarikci_id = sayi
+
         yeni_urun = Urun(
             dukkan_kodu=dukkan,
             lot_no=lot_no,
@@ -7586,6 +7675,7 @@ def studyo_transfer():
             ses_dosyasi="",
             durum="Aktif",
             silindi_mi=False,
+            tedarikci_id=secili_tedarikci_id,
         )
         if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
             yeni_urun.eklenme_tarihi = datetime.now()
@@ -7673,6 +7763,427 @@ def _bos_rapor_yaz(yol):
 
 _xml_besleme = {"link": "", "kuyruk": []}
 
+_XML_LAB_LIMIT = 500
+_XML_LAB_BAYT = 8 * 1024 * 1024
+_XML_URUN_ETIKETLERI = {"item", "urun", "product", "entry", "offer"}
+_XML_AD_ETIKETLERI = {
+    "title", "name", "ad", "baslik", "urunadi", "urun_adi",
+    "productname", "product_name",
+}
+_XML_ACIKLAMA_ETIKETLERI = {
+    "description", "aciklama", "tanitim", "tanitim_yazisi",
+    "detail", "summary", "long_description",
+}
+_XML_KATEGORI_ETIKETLERI = {
+    "category", "kategori", "product_type", "google_product_category",
+    "kategoriler",
+}
+_XML_FIYAT_ETIKETLERI = {
+    "price", "fiyat", "sale_price", "price_with_vat", "fiyat_tl", "satis_fiyati",
+}
+_XML_GORSEL_ETIKETLERI = {
+    "image", "image_link", "gorsel", "picture", "img", "foto", "fotograf",
+    "image_url", "resim", "additional_image_link", "resim_url",
+}
+_XML_AD_BASLIKLARI = {
+    "ad", "urun", "urun adi", "urunadi", "name", "title", "baslik",
+    "product", "product name", "productname",
+}
+_XML_ACIKLAMA_BASLIKLARI = {
+    "aciklama", "description", "tanitim", "tanitim yazisi", "detay", "detail",
+}
+_XML_KATEGORI_BASLIKLARI = {
+    "kategori", "category", "product type", "producttype",
+}
+_XML_FIYAT_BASLIKLARI = {
+    "fiyat", "price", "satis fiyati", "sale price", "price tl", "fiyat tl",
+}
+_XML_GORSEL_BASLIKLARI = {
+    "gorsel", "resim", "image", "image link", "foto", "fotograf",
+    "picture", "resim url", "image url",
+}
+_XML_VARSAYILAN_KURALLAR = (
+    ("gumus", ("gumus", "925", "telkari")),
+    ("bakir", ("bakir", "pirinc", "sahan", "ibrik", "maden", "bronz")),
+    ("porselen", ("porselen", "seramik", "cini", "fincan", "tabak", "vazo")),
+    ("elektronik", ("elektrik", "elektronik", "radyo", "pikap", "plak", "kamera", "saat")),
+    ("modelaraba", ("oyuncak", "model araba", "diecast", "maket")),
+    ("hirdavat", ("hirdavat", "nalbur", "alet", "matkap", "anahtar")),
+    ("kozmetik", ("kozmetik", "parfum", "bakim", "krem")),
+    ("bijuteri", ("bijuteri", "kolye", "kupe", "bileklik", "yuzuk")),
+    ("antika", ("antika", "osmanli", "koleksiyon", "eski")),
+    ("tasarim", ("tasarim", "dekoratif", "retro", "vintage", "lamba", "aydinlatma")),
+    ("toptan", ("toptan", "koli", "seri")),
+)
+
+
+def _xml_kural_yolu():
+    os.makedirs(os.path.join(basedir, "instance"), exist_ok=True)
+    return os.path.join(basedir, "instance", "xml_laboratuvar_kurallar.json")
+
+
+def _xml_metin_sade(metin):
+    s = html.unescape(str(metin or "")).casefold()
+    s = s.replace("i\u0307", "i")
+    s = s.translate(str.maketrans({
+        "ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c",
+        "â": "a", "î": "i", "û": "u",
+    }))
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
+
+
+def _xml_etiket_temizle(metin):
+    duz = re.sub(r"<[^>]+>", " ", html.unescape(str(metin or "")))
+    return " ".join(duz.split())
+
+
+def _xml_kural_listesi():
+    yol = _xml_kural_yolu()
+    if not os.path.isfile(yol):
+        return []
+    try:
+        with open(yol, "r", encoding="utf-8") as dosya:
+            ham = json.load(dosya)
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(ham, list):
+        return []
+    temiz = []
+    gorulen = set()
+    for kayit in ham:
+        if not isinstance(kayit, dict):
+            continue
+        kelime = _xml_metin_sade(kayit.get("kelime"))
+        dukkan = str(kayit.get("dukkan") or "").strip().lower()
+        if not kelime or dukkan not in DUKKANLAR or kelime in gorulen:
+            continue
+        gorulen.add(kelime)
+        temiz.append({"kelime": kelime, "dukkan": dukkan})
+    return temiz
+
+
+def _xml_kural_yaz(kurallar):
+    yol = _xml_kural_yolu()
+    with open(yol, "w", encoding="utf-8") as dosya:
+        json.dump(kurallar, dosya, ensure_ascii=False, indent=2)
+
+
+def _xml_kelime_var(metin, kelime):
+    hedef = _xml_metin_sade(kelime)
+    if not hedef or not metin:
+        return False
+    return f" {hedef} " in f" {metin} "
+
+
+def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
+    metin = _xml_metin_sade(" ".join([
+        str(ad or ""), str(aciklama or ""), str(kategori or ""),
+    ]))
+    if kurallar is None:
+        kurallar = _xml_kural_listesi()
+    for kural in kurallar:
+        if _xml_kelime_var(metin, kural.get("kelime")):
+            return kural.get("dukkan") or "karma"
+    for dukkan, kelimeler in _XML_VARSAYILAN_KURALLAR:
+        for kelime in kelimeler:
+            if _xml_kelime_var(metin, kelime):
+                return dukkan
+    return "karma"
+
+
+def _xml_fiyat_oku(ham):
+    if ham is None:
+        return None
+    try:
+        if ham != ham:
+            return None
+    except Exception:
+        pass
+    if isinstance(ham, bool):
+        return None
+    if isinstance(ham, (int, float)):
+        sayi = float(ham)
+        return sayi if sayi > 0 else None
+    metin = re.sub(r"[^\d,.\-]", "", str(ham).strip())
+    if not metin or metin in {"-", ".", ",", "-."}:
+        return None
+    if "," in metin and "." in metin:
+        if metin.rfind(",") > metin.rfind("."):
+            metin = metin.replace(".", "").replace(",", ".")
+        else:
+            metin = metin.replace(",", "")
+    elif "," in metin:
+        parcalar = metin.split(",")
+        if len(parcalar[-1]) == 3 and len(parcalar) > 1 and all(p.isdigit() for p in parcalar):
+            metin = "".join(parcalar)
+        else:
+            metin = metin.replace(".", "").replace(",", ".")
+    elif "." in metin:
+        parcalar = metin.split(".")
+        if len(parcalar[-1]) == 3 and len(parcalar) > 1 and all(p.isdigit() for p in parcalar):
+            metin = "".join(parcalar)
+    try:
+        sayi = float(metin)
+    except (TypeError, ValueError):
+        return None
+    return sayi if sayi > 0 else None
+
+
+def _xml_gorsel_listesi(ham):
+    if ham is None:
+        return []
+    if isinstance(ham, (list, tuple)):
+        parcalar = list(ham)
+    else:
+        parcalar = re.split(r"[\s,;|]+", str(ham))
+    adresler = []
+    for parca in parcalar:
+        adres = str(parca or "").strip()
+        if adres.lower().startswith(("http://", "https://")) and adres not in adresler:
+            adresler.append(adres[:1000])
+        if len(adresler) >= 8:
+            break
+    return adresler
+
+
+def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None):
+    ad = _xml_etiket_temizle(ad)[:200]
+    if not ad:
+        return None
+    aciklama = _xml_etiket_temizle(aciklama)[:4000]
+    kategori = _xml_etiket_temizle(kategori)[:100]
+    try:
+        fiyat = _xml_fiyat_oku(fiyat)
+    except Exception:
+        fiyat = None
+    try:
+        gorseller = _xml_gorsel_listesi(gorseller)
+    except Exception:
+        gorseller = []
+    nedenler = []
+    if fiyat is None:
+        nedenler.append("fiyat yok")
+    if not gorseller:
+        nedenler.append("görsel yok")
+    return {
+        "ad": ad,
+        "aciklama": aciklama,
+        "kategori": kategori or "Genel",
+        "fiyat": fiyat,
+        "gorseller": gorseller,
+        "dukkan": _xml_dukkan_siniflandir(ad, aciklama, kategori, kurallar),
+        "kayda_uygun": not nedenler,
+        "neden": ", ".join(nedenler),
+    }
+
+
+def _xml_yerel_ad(etiket):
+    return str(etiket or "").rsplit("}", 1)[-1].strip().lower()
+
+
+def _xml_eleman_metinleri(eleman, etiketler):
+    bulunan = []
+    for cocuk in eleman.iter():
+        if cocuk is eleman:
+            continue
+        if _xml_yerel_ad(cocuk.tag) not in etiketler:
+            continue
+        if any(_xml_yerel_ad(alt.tag) in _XML_URUN_ETIKETLERI for alt in list(cocuk)):
+            continue
+        metin = " ".join(cocuk.itertext()).strip()
+        if metin:
+            bulunan.append(metin)
+    return bulunan
+
+
+def _xml_bloktan_urun(eleman, kurallar):
+    try:
+        adlar = _xml_eleman_metinleri(eleman, _XML_AD_ETIKETLERI)
+        if not adlar:
+            return None
+        aciklamalar = _xml_eleman_metinleri(eleman, _XML_ACIKLAMA_ETIKETLERI)
+        kategoriler = _xml_eleman_metinleri(eleman, _XML_KATEGORI_ETIKETLERI)
+        fiyatlar = _xml_eleman_metinleri(eleman, _XML_FIYAT_ETIKETLERI)
+        gorseller = []
+        for metin in _xml_eleman_metinleri(eleman, _XML_GORSEL_ETIKETLERI):
+            gorseller.extend(_xml_gorsel_listesi(metin))
+        fiyat = None
+        for aday in fiyatlar:
+            fiyat = _xml_fiyat_oku(aday)
+            if fiyat is not None:
+                break
+        return _xml_kayit_paketle(
+            adlar[0],
+            " ".join(aciklamalar),
+            " ".join(kategoriler),
+            fiyat,
+            gorseller,
+            kurallar,
+        )
+    except Exception:
+        return None
+
+
+def _xml_metinden_urunler(metin, kurallar):
+    import xml.etree.ElementTree as ET
+
+    urunler = []
+    try:
+        kok = ET.fromstring(metin)
+    except Exception:
+        kok = None
+    if kok is not None:
+        for eleman in kok.iter():
+            if _xml_yerel_ad(eleman.tag) not in _XML_URUN_ETIKETLERI:
+                continue
+            if any(_xml_yerel_ad(cocuk.tag) in _XML_URUN_ETIKETLERI for cocuk in list(eleman)):
+                continue
+            paket = _xml_bloktan_urun(eleman, kurallar)
+            if paket:
+                urunler.append(paket)
+            if len(urunler) >= _XML_LAB_LIMIT:
+                break
+        if urunler:
+            return urunler
+    parcalar = re.findall(
+        r"<(?:item|urun|product|entry|offer)\b[\s\S]*?</(?:item|urun|product|entry|offer)>",
+        metin or "",
+        flags=re.IGNORECASE,
+    )
+    for blok in parcalar[:_XML_LAB_LIMIT]:
+        try:
+            parca = ET.fromstring(blok)
+        except Exception:
+            continue
+        paket = _xml_bloktan_urun(parca, kurallar)
+        if paket:
+            urunler.append(paket)
+        if len(urunler) >= _XML_LAB_LIMIT:
+            break
+    return urunler
+
+
+def _xml_tablo_alani(basliklar, kayit, hedefler):
+    for baslik in basliklar:
+        if _xml_metin_sade(baslik) in hedefler:
+            return kayit.get(baslik)
+    return None
+
+
+def _xml_tablodan_urunler(ham, uzanti, kurallar):
+    if uzanti == ".csv":
+        son_hata = None
+        tablo = None
+        for ayirac in (",", ";", "\t"):
+            try:
+                aday = pd.read_csv(io.BytesIO(ham), sep=ayirac, dtype=str)
+            except Exception as hata:
+                son_hata = hata
+                continue
+            tablo = aday
+            if len(aday.columns) > 1:
+                break
+        if tablo is None:
+            raise ValueError(f"CSV okunamadı: {son_hata}")
+    else:
+        tablo = pd.read_excel(io.BytesIO(ham), dtype=str)
+    tablo = tablo.where(pd.notnull(tablo), None)
+    basliklar = list(tablo.columns)
+    urunler = []
+    for _, satir in tablo.iterrows():
+        kayit = satir.to_dict()
+        try:
+            paket = _xml_kayit_paketle(
+                _xml_tablo_alani(basliklar, kayit, _XML_AD_BASLIKLARI),
+                _xml_tablo_alani(basliklar, kayit, _XML_ACIKLAMA_BASLIKLARI),
+                _xml_tablo_alani(basliklar, kayit, _XML_KATEGORI_BASLIKLARI),
+                _xml_tablo_alani(basliklar, kayit, _XML_FIYAT_BASLIKLARI),
+                _xml_tablo_alani(basliklar, kayit, _XML_GORSEL_BASLIKLARI),
+                kurallar,
+            )
+        except Exception:
+            paket = None
+        if paket:
+            urunler.append(paket)
+        if len(urunler) >= _XML_LAB_LIMIT:
+            break
+    return urunler
+
+
+def _xml_kaynagi_coz(ham, uzanti):
+    kurallar = _xml_kural_listesi()
+    if uzanti in {".xlsx", ".xls", ".csv"}:
+        return _xml_tablodan_urunler(ham, uzanti, kurallar)
+    metin = ham.decode("utf-8-sig", errors="replace") if isinstance(ham, (bytes, bytearray)) else str(ham or "")
+    return _xml_metinden_urunler(metin, kurallar)
+
+
+def _xml_dagilim_metni(urunler):
+    sayilar = {kod: 0 for kod in DUKKANLAR}
+    for urun in urunler:
+        kod = urun.get("dukkan") if urun.get("dukkan") in DUKKANLAR else "karma"
+        sayilar[kod] = sayilar.get(kod, 0) + 1
+    parcalar = [f"{kod}: {adet} ürün" for kod, adet in sayilar.items() if adet]
+    return ", ".join(parcalar), {kod: adet for kod, adet in sayilar.items() if adet}
+
+
+def _xml_onizleme(urunler):
+    satirlar = []
+    for urun in urunler[:10]:
+        satirlar.append({
+            "ad": urun.get("ad") or "",
+            "dukkan": urun.get("dukkan") or "karma",
+            "dukkan_ad": (DUKKANLAR.get(urun.get("dukkan")) or {}).get("ad") or urun.get("dukkan"),
+            "fiyat": urun.get("fiyat"),
+            "gorsel": bool(urun.get("gorseller")),
+            "kayda_uygun": bool(urun.get("kayda_uygun")),
+            "neden": urun.get("neden") or "",
+        })
+    return satirlar
+
+
+def _xml_tarama_yaniti(urunler, kaynak):
+    dagilim_metni, dagilim = _xml_dagilim_metni(urunler)
+    uygun = sum(1 for urun in urunler if urun.get("kayda_uygun"))
+    atlanan = len(urunler) - uygun
+    mesaj = (
+        f"{len(urunler)} ürün tarandı, veritabanına yazılmadı. "
+        f"{dagilim_metni or 'dağılım yok'}. "
+        f"Kayda uygun: {uygun}, atlanan: {atlanan}."
+    )
+    return {
+        "success": True,
+        "mesaj": mesaj,
+        "kaynak": kaynak,
+        "toplam": len(urunler),
+        "kayda_uygun": uygun,
+        "atlanan": atlanan,
+        "dagilim": dagilim,
+        "onizleme": _xml_onizleme(urunler),
+    }
+
+
+def _xml_kaynagi_indir(url):
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError("XML linki http veya https olmalı.")
+    cevap = requests.get(url, timeout=12, stream=True)
+    try:
+        cevap.raise_for_status()
+        parcalar = []
+        boyut = 0
+        for parca in cevap.iter_content(chunk_size=65536):
+            if not parca:
+                continue
+            boyut += len(parca)
+            if boyut > _XML_LAB_BAYT:
+                raise ValueError("XML yanıtı 8 MB sınırını aşıyor.")
+            parcalar.append(parca)
+    finally:
+        cevap.close()
+    return b"".join(parcalar)
+
+
 
 @app.route("/excel-rapor-sil", methods=["POST"])
 @admin_required
@@ -7706,37 +8217,163 @@ def excel_rapor_yukle():
 def xml_link_temizle():
     _xml_besleme["link"] = ""
     _xml_besleme["kuyruk"] = []
-    return jsonify({"success": True, "mesaj": "XML linki ve geçici kuyruk temizlendi."})
+    return jsonify({"success": True, "mesaj": "XML linki ve laboratuvar kuyruğu temizlendi."})
+
+
+@app.route("/api/xml-laboratuvar-kurallar", methods=["GET", "POST"])
+@admin_required
+def xml_laboratuvar_kurallar():
+    try:
+        if request.method == "GET":
+            return jsonify({"success": True, "kurallar": _xml_kural_listesi()})
+        veri = request.get_json(silent=True) or {}
+        kurallar = _xml_kural_listesi()
+        silinen = _xml_metin_sade(veri.get("sil"))
+        if silinen:
+            kurallar = [kural for kural in kurallar if kural["kelime"] != silinen]
+            _xml_kural_yaz(kurallar)
+            return jsonify({"success": True, "kurallar": kurallar, "mesaj": "Kural silindi."})
+        kelime = _xml_metin_sade(veri.get("kelime"))
+        dukkan = str(veri.get("dukkan") or "").strip().lower()
+        if not kelime:
+            return jsonify({"success": False, "mesaj": "Kelime gerekli."})
+        if dukkan not in DUKKANLAR:
+            return jsonify({"success": False, "mesaj": "Dükkan kodu geçersiz."})
+        kurallar = [kural for kural in kurallar if kural["kelime"] != kelime]
+        kurallar.append({"kelime": kelime, "dukkan": dukkan})
+        _xml_kural_yaz(kurallar)
+        return jsonify({
+            "success": True,
+            "kurallar": kurallar,
+            "mesaj": f"{kelime}={dukkan} kuralı kaydedildi.",
+        })
+    except Exception as hata:
+        return jsonify({"success": False, "mesaj": str(hata)}), 500
 
 
 @app.route("/toplu-urun-yukle", methods=["POST"])
 @admin_required
 def toplu_urun_yukle():
-    url = (request.form.get("xml_url") or "").strip()
-    if url:
-        _xml_besleme["link"] = url
-        try:
-            cevap = requests.get(url, timeout=12)
-            cevap.raise_for_status()
-            parcalar = re.findall(
-                r"<(?:item|urun|product|entry)\b[\s\S]*?</(?:item|urun|product|entry)>",
-                cevap.text,
-                flags=re.IGNORECASE,
+    try:
+        dosya = request.files.get("dosya")
+        url = (request.form.get("xml_url") or "").strip()
+        if dosya and getattr(dosya, "filename", ""):
+            uzanti = os.path.splitext(dosya.filename)[1].lower()
+            if uzanti not in {".xml", ".xlsx", ".xls", ".csv"}:
+                return jsonify({"success": False, "mesaj": "Dosya .xml, .xlsx, .xls veya .csv olmalı."})
+            ham = dosya.read(_XML_LAB_BAYT + 1)
+            if not ham:
+                return jsonify({"success": False, "mesaj": "Dosya boş."})
+            if len(ham) > _XML_LAB_BAYT:
+                return jsonify({"success": False, "mesaj": "Dosya 8 MB sınırını aşıyor."})
+            urunler = _xml_kaynagi_coz(ham, uzanti)
+            kaynak = dosya.filename
+            _xml_besleme["link"] = ""
+        elif url:
+            ham = _xml_kaynagi_indir(url)
+            urunler = _xml_kaynagi_coz(ham, ".xml")
+            kaynak = url
+            _xml_besleme["link"] = url
+        else:
+            return jsonify({"success": False, "mesaj": "XML linki veya dosya yok."})
+        if not urunler:
+            return jsonify({"success": False, "mesaj": "Taranan kaynakta ürün satırı bulunamadı."})
+        _xml_besleme["kuyruk"] = urunler
+        return jsonify(_xml_tarama_yaniti(urunler, kaynak))
+    except Exception as hata:
+        return jsonify({"success": False, "mesaj": f"Tarama tamamlanamadı: {hata}"})
+
+
+@app.route("/api/xml-dagitimi-onayla", methods=["POST"])
+@admin_required
+def xml_dagitimi_onayla():
+    kuyruk = list(_xml_besleme.get("kuyruk") or [])
+    if not kuyruk:
+        return jsonify({"success": False, "mesaj": "Onaylanacak tarama yok. Önce laboratuvarda analiz edin."})
+    lot_sayaclari = {}
+    kaydedilen = []
+    atlanan = []
+
+    def sonraki_lot(dukkan):
+        if dukkan not in lot_sayaclari:
+            en_yuksek = (
+                db.session.query(func.max(Urun.lot_no))
+                .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
+                .scalar()
             )
-            _xml_besleme["kuyruk"] = parcalar[:500]
-        except Exception as hata:
-            _xml_besleme["kuyruk"] = []
-            return jsonify({"success": False, "mesaj": f"XML okunamadı: {hata}"})
+            lot_sayaclari[dukkan] = int(en_yuksek or 0)
+        lot_sayaclari[dukkan] += 1
+        return lot_sayaclari[dukkan]
+
+    try:
+        for sira, urun in enumerate(kuyruk, start=1):
+            try:
+                if not isinstance(urun, dict) or not urun.get("kayda_uygun"):
+                    atlanan.append({
+                        "sira": sira,
+                        "ad": (urun or {}).get("ad") if isinstance(urun, dict) else "",
+                        "neden": (urun or {}).get("neden") if isinstance(urun, dict) else "bozuk satır",
+                    })
+                    continue
+                dukkan = urun.get("dukkan") if urun.get("dukkan") in DUKKANLAR else "karma"
+                fiyat = _xml_fiyat_oku(urun.get("fiyat"))
+                gorseller = _xml_gorsel_listesi(urun.get("gorseller"))
+                ad = _xml_etiket_temizle(urun.get("ad"))[:200]
+                if fiyat is None or not gorseller or not ad:
+                    atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat veya görsel eksik"})
+                    continue
+                lot_no = sonraki_lot(dukkan)
+                yeni_urun = Urun(
+                    dukkan_kodu=dukkan,
+                    lot_no=lot_no,
+                    urun_adi=ad,
+                    kategori=kategori_ad_temizle(urun.get("kategori") or "Genel"),
+                    acilis_fiyati=fiyat,
+                    guncel_fiyat=fiyat,
+                    hemen_al_fiyati=0.0,
+                    tanitim_yazisi=_xml_etiket_temizle(urun.get("aciklama"))[:4000],
+                    fotograflar=gorseller,
+                    video="",
+                    ses_dosyasi="",
+                    durum="Aktif",
+                    silindi_mi=False,
+                )
+                if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
+                    yeni_urun.eklenme_tarihi = datetime.now()
+                db.session.add(yeni_urun)
+                kaydedilen.append({"dukkan": dukkan, "lot_no": lot_no, "ad": ad})
+            except Exception as hata:
+                atlanan.append({
+                    "sira": sira,
+                    "ad": str((urun or {}).get("ad") if isinstance(urun, dict) else "")[:200],
+                    "neden": str(hata),
+                })
+        if not kaydedilen:
+            db.session.rollback()
+            return jsonify({
+                "success": False,
+                "mesaj": "Kayda uygun ürün yok. Eksik fiyatlı veya görselsiz satırlar atlandı.",
+                "kaydedilen": 0,
+                "atlanan": len(atlanan),
+                "hatalar": atlanan[:20],
+            })
+        db.session.commit()
+        _xml_besleme["kuyruk"] = []
+        ozet = {}
+        for kayit in kaydedilen:
+            ozet[kayit["dukkan"]] = ozet.get(kayit["dukkan"], 0) + 1
+        dagilim = ", ".join(f"{kod}: {adet} ürün" for kod, adet in ozet.items())
         return jsonify({
             "success": True,
-            "mesaj": f"XML linki alındı. Geçici kuyrukta {len(_xml_besleme['kuyruk'])} kayıt var.",
+            "mesaj": f"{len(kaydedilen)} ürün dükkanlara aktarıldı ({dagilim}). Atlanan: {len(atlanan)}.",
+            "kaydedilen": len(kaydedilen),
+            "atlanan": len(atlanan),
+            "dagilim": ozet,
+            "hatalar": atlanan[:20],
         })
-    if request.files.get("dosya"):
-        return jsonify({
-            "success": False,
-            "mesaj": "Ürün dosyası kataloğa yazılmadı. Rapor için Excel Raporu yanındaki üzerine yazmayı kullanın.",
-        })
-    return jsonify({"success": False, "mesaj": "XML linki veya dosya yok."})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Aktarım tamamlanamadı: {hata}"}), 500
 
 
 # ==========================================

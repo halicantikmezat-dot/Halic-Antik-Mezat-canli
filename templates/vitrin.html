@@ -9,6 +9,11 @@
     <meta property="og:image" content="/static/img/varsayilan_urun.png">
     <meta property="og:url" content="">
     <meta property="og:type" content="website">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/img/icon-192.png">
     <script type="application/ld+json" id="vitrinJsonLd"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
@@ -179,6 +184,63 @@
             color: var(--accent-gold);
             font-weight: 800;
         }
+        .vitrin-header .pwa-indir {
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 8px;
+            min-height: 28px;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: 0.2px;
+            color: #d4af37;
+            background: #121622;
+            border: 1px solid #d4af37;
+            border-radius: 999px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .vitrin-header .pwa-indir .pwa-kisa { display: none; }
+        @media (max-width: 520px) {
+            .vitrin-header .pwa-indir .pwa-uzun { display: none; }
+            .vitrin-header .pwa-indir .pwa-kisa { display: inline; }
+        }
+        #pwaIosIpucu {
+            position: fixed;
+            left: 50%;
+            bottom: calc(16px + env(safe-area-inset-bottom));
+            transform: translateX(-50%);
+            width: min(92vw, 340px);
+            z-index: 1200;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 10px 12px;
+            background: #121622;
+            color: #f8fafc;
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        #pwaIosIpucu[hidden] { display: none !important; }
+        #pwaIosIpucu p { margin: 0; }
+        #pwaIosIpucuKapat {
+            flex: 0 0 auto;
+            width: 24px;
+            height: 24px;
+            border-radius: 999px;
+            border: 1px solid #d4af37;
+            background: transparent;
+            color: #d4af37;
+            cursor: pointer;
+            line-height: 1;
+        }
+        @media (display-mode: standalone) {
+            .pwa-indir-tetik { display: none !important; }
+        }
     </style>
 </head>
 <body>
@@ -186,6 +248,10 @@
 <div class="vitrin-header">
     <h2>🏛️ HALİÇ ANTİK MEZAT - <span id="vitrinDukkanAd">GÜMÜŞ VİTRİNİ</span></h2>
     <div class="header-actions">
+        <button type="button" class="pwa-indir pwa-indir-tetik" id="pwaIndirVitrin" onclick="pwaUygulamayiIndir()">
+            <span class="pwa-uzun">📲 Uygulamayı İndir</span>
+            <span class="pwa-kisa">📲 İndir</span>
+        </button>
         <select id="currencySelector" class="currency-select" onchange="paraBirimiDegistir()">
             <option value="TRY">₺ TL</option>
             <option value="USD">$ USD</option>
@@ -1455,5 +1521,64 @@
         <span style="background:#142033; border:1px solid #334155; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700;">KVKK &amp; Mesafeli Satış Güvencesi</span>
     </div>
 </footer>
+<div id="pwaIosIpucu" hidden>
+    <p>Paylaş (↑) simgesine basıp 'Ana Ekrana Ekle'yi seçerek telefonunuza indirebilirsiniz</p>
+    <button type="button" id="pwaIosIpucuKapat" aria-label="Kapat">×</button>
+</div>
+<script>
+    (function pwaKurulum() {
+        var bekleyenKurulum = null;
+
+        function uygulamaIcinde() {
+            return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+        }
+        function iosMu() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        }
+        function tetikleriGizle() {
+            var dugmeler = document.querySelectorAll(".pwa-indir-tetik");
+            for (var i = 0; i < dugmeler.length; i++) dugmeler[i].hidden = true;
+            var ipucu = document.getElementById("pwaIosIpucu");
+            if (ipucu) ipucu.hidden = true;
+        }
+        window.pwaUygulamayiIndir = function () {
+            if (uygulamaIcinde()) {
+                tetikleriGizle();
+                return;
+            }
+            if (bekleyenKurulum) {
+                var olay = bekleyenKurulum;
+                bekleyenKurulum = null;
+                olay.prompt();
+                if (olay.userChoice && olay.userChoice.then) {
+                    olay.userChoice.then(function () {}).catch(function () {});
+                }
+                return;
+            }
+            if (iosMu()) {
+                var ipucu = document.getElementById("pwaIosIpucu");
+                if (ipucu) ipucu.hidden = false;
+            }
+        };
+        if (uygulamaIcinde()) tetikleriGizle();
+        window.addEventListener("beforeinstallprompt", function (olay) {
+            olay.preventDefault();
+            bekleyenKurulum = olay;
+        });
+        window.addEventListener("appinstalled", tetikleriGizle);
+        var kapat = document.getElementById("pwaIosIpucuKapat");
+        if (kapat) {
+            kapat.addEventListener("click", function () {
+                var ipucu = document.getElementById("pwaIosIpucu");
+                if (ipucu) ipucu.hidden = true;
+            });
+        }
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", function () {
+                navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {});
+            });
+        }
+    })();
+</script>
 </body>
 </html>
