@@ -7805,8 +7805,8 @@ def _bos_rapor_yaz(yol):
 
 _xml_besleme = {"link": "", "kuyruk": []}
 
-_XML_LAB_LIMIT = 500
-_XML_LAB_BAYT = 8 * 1024 * 1024
+_XML_ONIZLEME = 100
+_XML_LAB_BAYT = 40 * 1024 * 1024
 _XML_URUN_ETIKETLERI = {"item", "urun", "product", "entry", "offer"}
 _XML_AD_ETIKETLERI = {
     "title", "name", "ad", "baslik", "urunadi", "urun_adi",
@@ -7820,9 +7820,15 @@ _XML_KATEGORI_ETIKETLERI = {
     "category", "kategori", "product_type", "google_product_category",
     "kategoriler",
 }
-_XML_FIYAT_ETIKETLERI = {
-    "price", "fiyat", "sale_price", "price_with_vat", "fiyat_tl", "satis_fiyati",
-}
+_XML_FIYAT_ONCELIK = (
+    "fiyat", "fiyat1", "fiyat2", "satisfiyati", "bayifiyati", "psf",
+    "listefiyati", "price", "saleprice", "regularprice", "tutar",
+    "birimfiyat", "kdvdahilfiyat", "kdvharicfiyat", "genelfiyat",
+    "urunfiyati", "fiyattl", "pricewithvat",
+)
+_XML_STOK_ONCELIK = (
+    "stok", "stock", "stokadedi", "stokadet", "quantity", "qty", "miktar", "adet",
+)
 _XML_GORSEL_ETIKETLERI = {
     "image", "image_link", "gorsel", "picture", "img", "foto", "fotograf",
     "image_url", "resim", "additional_image_link", "resim_url",
@@ -7837,9 +7843,7 @@ _XML_ACIKLAMA_BASLIKLARI = {
 _XML_KATEGORI_BASLIKLARI = {
     "kategori", "category", "product type", "producttype",
 }
-_XML_FIYAT_BASLIKLARI = {
-    "fiyat", "price", "satis fiyati", "sale price", "price tl", "fiyat tl",
-}
+_XML_FIYAT_BASLIKLARI = _XML_FIYAT_ONCELIK
 _XML_GORSEL_BASLIKLARI = {
     "gorsel", "resim", "image", "image link", "foto", "fotograf",
     "picture", "resim url", "image url",
@@ -7989,7 +7993,7 @@ def _xml_gorsel_listesi(ham):
     return adresler
 
 
-def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None):
+def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None, stok_sifir=False):
     ad = _xml_etiket_temizle(ad)[:200]
     if not ad:
         return None
@@ -8004,10 +8008,10 @@ def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None):
     except Exception:
         gorseller = []
     nedenler = []
-    if fiyat is None:
+    if stok_sifir:
+        nedenler.append("stok 0")
+    elif fiyat is None:
         nedenler.append("fiyat yok")
-    if not gorseller:
-        nedenler.append("görsel yok")
     return {
         "ad": ad,
         "aciklama": aciklama,
@@ -8022,6 +8026,68 @@ def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None):
 
 def _xml_yerel_ad(etiket):
     return str(etiket or "").rsplit("}", 1)[-1].strip().lower()
+
+
+def _xml_etiket_anahtari(etiket):
+    s = _xml_yerel_ad(etiket).casefold().replace("i\u0307", "i")
+    s = s.translate(str.maketrans({
+        "ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c",
+        "â": "a", "î": "i", "û": "u",
+    }))
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+def _xml_stok_sayisi(ham):
+    if ham is None:
+        return None
+    metin = str(ham).strip()
+    if not metin:
+        return None
+    deger = _xml_fiyat_oku(metin)
+    if deger is not None:
+        return deger
+    rakam = re.sub(r"[^\d]", "", re.sub(r"[^\d,.\-]", "", metin))
+    if rakam and set(rakam) == {"0"}:
+        return 0.0
+    return None
+
+
+def _xml_alan_metinleri(eleman, anahtarlar):
+    bulunan = {}
+    for cocuk in eleman.iter():
+        if cocuk is eleman:
+            continue
+        anahtar = _xml_etiket_anahtari(cocuk.tag)
+        if anahtar not in anahtarlar or anahtar in bulunan:
+            continue
+        if any(_xml_yerel_ad(alt.tag) in _XML_URUN_ETIKETLERI for alt in list(cocuk)):
+            continue
+        metin = " ".join(cocuk.itertext()).strip()
+        if metin:
+            bulunan[anahtar] = metin
+    return bulunan
+
+
+def _xml_fiyat_bul(eleman):
+    bulunan = _xml_alan_metinleri(eleman, set(_XML_FIYAT_ONCELIK))
+    for anahtar in _XML_FIYAT_ONCELIK:
+        if anahtar not in bulunan:
+            continue
+        fiyat = _xml_fiyat_oku(bulunan[anahtar])
+        if fiyat is not None:
+            return fiyat
+    return None
+
+
+def _xml_stok_sifir_mi(eleman):
+    bulunan = _xml_alan_metinleri(eleman, set(_XML_STOK_ONCELIK))
+    for anahtar in _XML_STOK_ONCELIK:
+        if anahtar not in bulunan:
+            continue
+        adet = _xml_stok_sayisi(bulunan[anahtar])
+        if adet == 0:
+            return True
+    return False
 
 
 def _xml_eleman_metinleri(eleman, etiketler):
@@ -8046,22 +8112,17 @@ def _xml_bloktan_urun(eleman, kurallar):
             return None
         aciklamalar = _xml_eleman_metinleri(eleman, _XML_ACIKLAMA_ETIKETLERI)
         kategoriler = _xml_eleman_metinleri(eleman, _XML_KATEGORI_ETIKETLERI)
-        fiyatlar = _xml_eleman_metinleri(eleman, _XML_FIYAT_ETIKETLERI)
         gorseller = []
         for metin in _xml_eleman_metinleri(eleman, _XML_GORSEL_ETIKETLERI):
             gorseller.extend(_xml_gorsel_listesi(metin))
-        fiyat = None
-        for aday in fiyatlar:
-            fiyat = _xml_fiyat_oku(aday)
-            if fiyat is not None:
-                break
         return _xml_kayit_paketle(
             adlar[0],
             " ".join(aciklamalar),
             " ".join(kategoriler),
-            fiyat,
+            _xml_fiyat_bul(eleman),
             gorseller,
             kurallar,
+            stok_sifir=_xml_stok_sifir_mi(eleman),
         )
     except Exception:
         return None
@@ -8084,8 +8145,6 @@ def _xml_metinden_urunler(metin, kurallar):
             paket = _xml_bloktan_urun(eleman, kurallar)
             if paket:
                 urunler.append(paket)
-            if len(urunler) >= _XML_LAB_LIMIT:
-                break
         if urunler:
             return urunler
     parcalar = re.findall(
@@ -8093,7 +8152,7 @@ def _xml_metinden_urunler(metin, kurallar):
         metin or "",
         flags=re.IGNORECASE,
     )
-    for blok in parcalar[:_XML_LAB_LIMIT]:
+    for blok in parcalar:
         try:
             parca = ET.fromstring(blok)
         except Exception:
@@ -8101,8 +8160,6 @@ def _xml_metinden_urunler(metin, kurallar):
         paket = _xml_bloktan_urun(parca, kurallar)
         if paket:
             urunler.append(paket)
-        if len(urunler) >= _XML_LAB_LIMIT:
-            break
     return urunler
 
 
@@ -8110,6 +8167,18 @@ def _xml_tablo_alani(basliklar, kayit, hedefler):
     for baslik in basliklar:
         if _xml_metin_sade(baslik) in hedefler:
             return kayit.get(baslik)
+    return None
+
+
+def _xml_tablo_oncelikli(basliklar, kayit, oncelik):
+    harita = {}
+    for baslik in basliklar:
+        anahtar = re.sub(r"[^a-z0-9]", "", _xml_metin_sade(baslik))
+        if anahtar and anahtar not in harita:
+            harita[anahtar] = baslik
+    for anahtar in oncelik:
+        if anahtar in harita:
+            return kayit.get(harita[anahtar])
     return None
 
 
@@ -8136,20 +8205,20 @@ def _xml_tablodan_urunler(ham, uzanti, kurallar):
     for _, satir in tablo.iterrows():
         kayit = satir.to_dict()
         try:
+            stok_ham = _xml_tablo_oncelikli(basliklar, kayit, _XML_STOK_ONCELIK)
             paket = _xml_kayit_paketle(
                 _xml_tablo_alani(basliklar, kayit, _XML_AD_BASLIKLARI),
                 _xml_tablo_alani(basliklar, kayit, _XML_ACIKLAMA_BASLIKLARI),
                 _xml_tablo_alani(basliklar, kayit, _XML_KATEGORI_BASLIKLARI),
-                _xml_tablo_alani(basliklar, kayit, _XML_FIYAT_BASLIKLARI),
+                _xml_tablo_oncelikli(basliklar, kayit, _XML_FIYAT_ONCELIK),
                 _xml_tablo_alani(basliklar, kayit, _XML_GORSEL_BASLIKLARI),
                 kurallar,
+                stok_sifir=_xml_stok_sayisi(stok_ham) == 0,
             )
         except Exception:
             paket = None
         if paket:
             urunler.append(paket)
-        if len(urunler) >= _XML_LAB_LIMIT:
-            break
     return urunler
 
 
@@ -8172,7 +8241,7 @@ def _xml_dagilim_metni(urunler):
 
 def _xml_onizleme(urunler):
     satirlar = []
-    for urun in urunler[:10]:
+    for urun in urunler[:_XML_ONIZLEME]:
         satirlar.append({
             "ad": urun.get("ad") or "",
             "dukkan": urun.get("dukkan") or "karma",
@@ -8189,10 +8258,12 @@ def _xml_tarama_yaniti(urunler, kaynak):
     dagilim_metni, dagilim = _xml_dagilim_metni(urunler)
     uygun = sum(1 for urun in urunler if urun.get("kayda_uygun"))
     atlanan = len(urunler) - uygun
+    ornek = min(_XML_ONIZLEME, len(urunler))
     mesaj = (
         f"{len(urunler)} ürün tarandı, veritabanına yazılmadı. "
         f"{dagilim_metni or 'dağılım yok'}. "
-        f"Kayda uygun: {uygun}, atlanan: {atlanan}."
+        f"Kayda uygun: {uygun}, atlanan: {atlanan}. "
+        f"Tabloda ilk {ornek} satır örnek; sayaç ve aktarım tüm listeyi kullanır."
     )
     return {
         "success": True,
@@ -8209,7 +8280,7 @@ def _xml_tarama_yaniti(urunler, kaynak):
 def _xml_kaynagi_indir(url):
     if not url.lower().startswith(("http://", "https://")):
         raise ValueError("XML linki http veya https olmalı.")
-    cevap = requests.get(url, timeout=12, stream=True)
+    cevap = requests.get(url, timeout=90, stream=True)
     try:
         cevap.raise_for_status()
         parcalar = []
@@ -8219,7 +8290,7 @@ def _xml_kaynagi_indir(url):
                 continue
             boyut += len(parca)
             if boyut > _XML_LAB_BAYT:
-                raise ValueError("XML yanıtı 8 MB sınırını aşıyor.")
+                raise ValueError("XML yanıtı 40 MB sınırını aşıyor.")
             parcalar.append(parca)
     finally:
         cevap.close()
@@ -8307,7 +8378,7 @@ def toplu_urun_yukle():
             if not ham:
                 return jsonify({"success": False, "mesaj": "Dosya boş."})
             if len(ham) > _XML_LAB_BAYT:
-                return jsonify({"success": False, "mesaj": "Dosya 8 MB sınırını aşıyor."})
+                return jsonify({"success": False, "mesaj": "Dosya 40 MB sınırını aşıyor."})
             urunler = _xml_kaynagi_coz(ham, uzanti)
             kaynak = dosya.filename
             _xml_besleme["link"] = ""
@@ -8363,8 +8434,8 @@ def xml_dagitimi_onayla():
                 fiyat = _xml_fiyat_oku(urun.get("fiyat"))
                 gorseller = _xml_gorsel_listesi(urun.get("gorseller"))
                 ad = _xml_etiket_temizle(urun.get("ad"))[:200]
-                if fiyat is None or not gorseller or not ad:
-                    atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat veya görsel eksik"})
+                if fiyat is None or not ad:
+                    atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat eksik"})
                     continue
                 adaylar = (
                     Urun.query.filter(
