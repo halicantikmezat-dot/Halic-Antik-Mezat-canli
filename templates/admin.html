@@ -2965,10 +2965,16 @@
 
     function xmlUrunleriniTemizle() {
         playClickSound();
-        if (!confirm("Yalnızca kaynak_tipi xml olan aktif ürünler temizlensin mi? Kendi eklediğiniz ürünler ve satılmış kayıtlar durur.")) return;
+        if (!confirm("XML işaretli aktif ürünler temizlensin mi? İşaretli kayıt yoksa kutudaki linkteki adlarla eşleşen, tedarikçisi atanmamış aktif ürünler çöp kutusuna alınır. Tedarikçisi olan ve satılmış kayıtlar durur.")) return;
         const durum = document.getElementById("topluDurum");
+        const linkKutusu = document.getElementById("topluUrl");
+        const xmlAdresi = linkKutusu ? (linkKutusu.value || "").trim() : "";
         if (durum) durum.innerText = "Eski XML ürünleri temizleniyor...";
-        fetch("/api/xml-urunleri-temizle", { method: "POST" })
+        fetch("/api/xml-urunleri-temizle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ xml_url: xmlAdresi })
+        })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (durum) durum.innerText = data.mesaj || "";

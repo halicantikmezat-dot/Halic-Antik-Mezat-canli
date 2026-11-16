@@ -8449,6 +8449,48 @@ def xml_urunleri_temizle():
             )
             .all()
         )
+        if not kayitlar:
+            veri = request.get_json(silent=True) or {}
+            url = str(veri.get("xml_url") or "").strip()
+            if url:
+                ham = _xml_kaynagi_indir(url)
+                bulunan = _xml_kaynagi_coz(ham, ".xml")
+                adlar = []
+                gorulen = set()
+                for satir in bulunan or []:
+                    ad = _xml_etiket_temizle((satir or {}).get("ad"))[:200]
+                    if ad and ad not in gorulen:
+                        gorulen.add(ad)
+                        adlar.append(ad)
+                if not adlar:
+                    return jsonify({
+                        "success": False,
+                        "temizlenen": 0,
+                        "mesaj": "XML linkinde eşleşecek ürün adı bulunamadı.",
+                    })
+                kayitlar = (
+                    Urun.query.filter(
+                        Urun.durum == "Aktif",
+                        Urun.silindi_mi.is_(False),
+                        Urun.urun_adi.in_(adlar),
+                        or_(Urun.tedarikci_id.is_(None), Urun.tedarikci_id == 0),
+                    )
+                    .all()
+                )
+                simdi = suan_utc()
+                for urun in kayitlar:
+                    urun.silindi_mi = True
+                    urun.silinme_tarihi = simdi
+                db.session.commit()
+                return jsonify({
+                    "success": True,
+                    "temizlenen": len(kayitlar),
+                    "mesaj": (
+                        f"Linkten {len(adlar)} ürün adı okundu. "
+                        f"{len(kayitlar)} tedarikçisiz aktif ürün çöp kutusuna alındı. "
+                        "Tedarikçisi olan ve satılmış kayıtlar duruyor."
+                    ),
+                })
         simdi = suan_utc()
         for urun in kayitlar:
             urun.silindi_mi = True
