@@ -8449,34 +8449,51 @@ def xml_urunleri_temizle():
             )
             .all()
         )
-        if not kayitlar:
-            veri = request.get_json(silent=True) or {}
-            url = str(veri.get("xml_url") or "").strip()
+        veri = request.get_json(silent=True) or {}
+        url = str(veri.get("xml_url") or "").strip()
+        if not kayitlar or url:
             if url:
+                def _temizlik_adi(metin):
+                    return str(metin or "").strip().casefold().replace("i\u0307", "i")
+
+                def _temizlik_eslesir(xml_ad, db_ad):
+                    if not xml_ad or not db_ad:
+                        return False
+                    if xml_ad == db_ad:
+                        return True
+                    if len(xml_ad) < 3:
+                        return False
+                    return db_ad.startswith(xml_ad) or xml_ad in db_ad
+
                 ham = _xml_kaynagi_indir(url)
                 bulunan = _xml_kaynagi_coz(ham, ".xml")
                 adlar = []
                 gorulen = set()
                 for satir in bulunan or []:
-                    ad = _xml_etiket_temizle((satir or {}).get("ad"))[:200]
+                    ad = _temizlik_adi(_xml_etiket_temizle((satir or {}).get("ad"))[:200])
                     if ad and ad not in gorulen:
                         gorulen.add(ad)
                         adlar.append(ad)
-                if not adlar:
+                if not adlar and not kayitlar:
                     return jsonify({
                         "success": False,
                         "temizlenen": 0,
                         "mesaj": "XML linkinde eşleşecek ürün adı bulunamadı.",
                     })
-                kayitlar = (
-                    Urun.query.filter(
-                        Urun.durum == "Aktif",
-                        Urun.silindi_mi.is_(False),
-                        Urun.urun_adi.in_(adlar),
-                        or_(Urun.tedarikci_id.is_(None), Urun.tedarikci_id == 0),
+                if adlar:
+                    secilen = {urun.id: urun for urun in kayitlar}
+                    aktifler = (
+                        Urun.query.filter(
+                            Urun.durum == "Aktif",
+                            Urun.silindi_mi.is_(False),
+                        )
+                        .all()
                     )
-                    .all()
-                )
+                    for urun in aktifler:
+                        db_ad = _temizlik_adi(urun.urun_adi)
+                        if any(_temizlik_eslesir(xml_ad, db_ad) for xml_ad in adlar):
+                            secilen[urun.id] = urun
+                    kayitlar = list(secilen.values())
                 simdi = suan_utc()
                 for urun in kayitlar:
                     urun.silindi_mi = True
@@ -8487,8 +8504,8 @@ def xml_urunleri_temizle():
                     "temizlenen": len(kayitlar),
                     "mesaj": (
                         f"Linkten {len(adlar)} ürün adı okundu. "
-                        f"{len(kayitlar)} tedarikçisiz aktif ürün çöp kutusuna alındı. "
-                        "Tedarikçisi olan ve satılmış kayıtlar duruyor."
+                        f"{len(kayitlar)} aktif ürün çöp kutusuna alındı. "
+                        "Eşleşme tam ad, adın içi veya adın başıdır. Satılmış kayıtlar duruyor."
                     ),
                 })
         simdi = suan_utc()

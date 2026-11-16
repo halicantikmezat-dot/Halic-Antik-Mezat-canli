@@ -2965,7 +2965,7 @@
 
     function xmlUrunleriniTemizle() {
         playClickSound();
-        if (!confirm("XML işaretli aktif ürünler temizlensin mi? İşaretli kayıt yoksa kutudaki linkteki adlarla eşleşen, tedarikçisi atanmamış aktif ürünler çöp kutusuna alınır. Tedarikçisi olan ve satılmış kayıtlar durur.")) return;
+        if (!confirm("XML işaretli aktif ürünler ve kutudaki linkteki başlıklarla eşleşen aktif ürünler çöp kutusuna alınsın mı? Eşleşme tam adda, adın içinde veya adın başında aranır. Satılmış kayıtlar durur.")) return;
         const durum = document.getElementById("topluDurum");
         const linkKutusu = document.getElementById("topluUrl");
         const xmlAdresi = linkKutusu ? (linkKutusu.value || "").trim() : "";
