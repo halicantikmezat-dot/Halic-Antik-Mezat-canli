@@ -6979,6 +6979,38 @@ def cop_kutusundan_kalici_sil():
     return jsonify({"success": False, "mesaj": "Kayıt bulunamadı."})
 
 
+@app.route("/cop-kutusunu-kalici-bosalt", methods=["POST"])
+@admin_required
+def cop_kutusunu_kalici_bosalt():
+    try:
+        urunler = Urun.query.filter(Urun.silindi_mi.is_(True)).all()
+        adet = 0
+        for urun in urunler:
+            dukkan = urun.dukkan_kodu or "gumus"
+            Teklif.query.filter_by(urun_id=urun.id).delete()
+            OnTeklif.query.filter_by(urun_id=urun.id).delete()
+            SepetItem.query.filter_by(urun_id=urun.id).delete()
+            UrunTakip.query.filter_by(urun_id=urun.id).delete()
+            if dukkan in odalar and odalar[dukkan].get("aktif_urun_id") == urun.id:
+                odalar[dukkan]["aktif_urun_id"] = None
+                odalar[dukkan]["durum"]["durum"] = "Bekliyor"
+                odalar[dukkan]["durum"]["sure_bitis"] = 0
+                odalar[dukkan]["durum"]["pey"] = 0
+                odalar[dukkan]["durum"]["kazanan"] = "Yok"
+                odalar[dukkan]["durum"]["kazanan_id"] = None
+            db.session.delete(urun)
+            adet += 1
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "silinen": adet,
+            "mesaj": f"Çöp kutusundaki {adet} ürün kalıcı olarak silindi.",
+        })
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Çöp kutusu boşaltılamadı: {hata}"}), 500
+
+
 # ==========================================
 # 7/24 OTONOM MEZAT ÇOKLU MOTOR YÖNETİMİ
 # ==========================================
@@ -8437,18 +8469,27 @@ def xml_dagitimi_onayla():
         return jsonify({"success": False, "mesaj": f"Aktarım tamamlanamadı: {hata}"}), 500
 
 
+_SATILDI_DURUMLARI = ("Satıldı", "satıldı", "SATILDI", "satildi", "Satildi")
+
+
+def _vitrindeki_satilmamis(sorgu):
+    return sorgu.filter(
+        or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+        or_(
+            Urun.durum.is_(None),
+            Urun.durum == "",
+            ~Urun.durum.in_(_SATILDI_DURUMLARI),
+        ),
+    )
+
+
 @app.route("/api/xml-urunleri-temizle", methods=["POST"])
 @admin_required
 def xml_urunleri_temizle():
     try:
-        kayitlar = (
-            Urun.query.filter(
-                Urun.kaynak_tipi == "xml",
-                Urun.durum == "Aktif",
-                Urun.silindi_mi.is_(False),
-            )
-            .all()
-        )
+        kayitlar = _vitrindeki_satilmamis(
+            Urun.query.filter(Urun.kaynak_tipi == "xml")
+        ).all()
         veri = request.get_json(silent=True) or {}
         url = str(veri.get("xml_url") or "").strip()
         if not kayitlar or url:
@@ -8538,13 +8579,7 @@ def xml_urunleri_temizle():
                     })
                 if adlar or kodlar:
                     secilen = {urun.id: urun for urun in kayitlar}
-                    aktifler = (
-                        Urun.query.filter(
-                            Urun.durum == "Aktif",
-                            Urun.silindi_mi.is_(False),
-                        )
-                        .all()
-                    )
+                    aktifler = _vitrindeki_satilmamis(Urun.query).all()
                     for urun in aktifler:
                         db_ad = _temizlik_adi(urun.urun_adi)
                         if any(_temizlik_eslesir(xml_ad, db_ad, kodlar) for xml_ad in adlar) or (
@@ -8597,14 +8632,9 @@ def dukkan_katalog_temizle():
         kod = str(ham or "").strip().lower()
         if kod not in DUKKANLAR:
             return jsonify({"success": False, "mesaj": "Seçili dükkan bulunamadı."}), 400
-        kayitlar = (
-            Urun.query.filter(
-                Urun.dukkan_kodu == kod,
-                Urun.durum == "Aktif",
-                Urun.silindi_mi.is_(False),
-            )
-            .all()
-        )
+        kayitlar = _vitrindeki_satilmamis(
+            Urun.query.filter(Urun.dukkan_kodu == kod)
+        ).all()
         simdi = suan_utc()
         for urun in kayitlar:
             urun.silindi_mi = True

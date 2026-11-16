@@ -1014,7 +1014,10 @@
     <div class="modal-content" style="max-width: 800px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:10px;">
             <h3 style="color:var(--accent-gold); margin:0;">🗑️ Geri Dönüşüm Kutusu (Kurtarma Alanı)</h3>
-            <button onclick="copKutusunuKapat()" class="btn btn-red btn-sm">✕</button>
+            <div style="display:flex; gap:6px;">
+                <button type="button" onclick="copKutusunuKaliciBosalt()" class="btn btn-red btn-sm">Çöp Kutusunu Kalıcı Boşalt</button>
+                <button type="button" onclick="copKutusunuKapat()" class="btn btn-red btn-sm">✕</button>
+            </div>
         </div>
         <h4 style="color:#e0e0e0; margin-top:15px; margin-bottom:8px;">Silinen Ürünler</h4>
         <div id="copUrunlerListesi" style="font-size:13px; max-height:200px; overflow-y:auto;">Yükleniyor...</div>
@@ -2035,6 +2038,21 @@
         });
     }
 
+    function copKutusunuKaliciBosalt() {
+        playClickSound();
+        if (!confirm("DİKKAT: Çöp kutusundaki tüm ürünler veritabanından kalıcı silinecek. Geri yüklenemez. Onaylıyor musunuz?")) return;
+        fetch("/cop-kutusunu-kalici-bosalt", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+            alert(res.mesaj || (res.success ? "Çöp kutusu boşaltıldı." : "Boşaltılamadı."));
+            copVerileriniGetir();
+            adminUrunAra();
+        })
+        .catch(function () {
+            alert("Çöp kutusu boşaltılamadı.");
+        });
+    }
+
     function coptenKaliciSil(tur, id) {
         playClickSound();
         if (!confirm('DİKKAT: Bu kayıt veritabanından tamamen silinecek! Onaylıyor musunuz?')) return;
@@ -2997,7 +3015,7 @@
         playClickSound();
         const kod = typeof seciliDukkan === "string" ? seciliDukkan : "";
         const ad = (typeof dukkanlar !== "undefined" && dukkanlar[kod] && dukkanlar[kod].ad) ? dukkanlar[kod].ad : (kod || "seçili dükkan");
-        if (!confirm(ad + " dükkanındaki satılmamış aktif ürünlerin tümü çöp kutusuna alınsın mı? Satılmış kayıtlar ve diğer dükkanlar durur.")) return;
+        if (!confirm(ad + " dükkanında vitrinde görünen satılmamış ürünlerin tümü çöp kutusuna alınsın mı? Satılmış kayıtlar ve diğer dükkanlar durur.")) return;
         const durum = document.getElementById("topluDurum");
         if (durum) durum.innerText = ad + " kataloğu temizleniyor...";
         fetch("/api/dukkan-katalog-temizle", {
