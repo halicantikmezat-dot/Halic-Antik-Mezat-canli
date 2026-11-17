@@ -95,17 +95,17 @@ DUKKANLAR = {
     "toptan": {"ad": "Toptan", "sure": 45, "min_artis": 100.0},
     "kozmetik": {"ad": "Kozmetik", "sure": 30, "min_artis": 20.0},
     "bijuteri": {"ad": "Bijuteri", "sure": 30, "min_artis": 20.0},
-    "hirdavat": {"ad": "Hırdavat & Nalbur", "sure": 45, "min_artis": 50.0},
+    "hirdavat": {"ad": "Hırdavat & Yapı", "sure": 45, "min_artis": 50.0},
     "tasarim": {"ad": "Tasarım", "sure": 60, "min_artis": 100.0},
-    "modelaraba": {"ad": "Model Oyuncak Arabalar", "sure": 45, "min_artis": 50.0},
-    "karma": {"ad": "Toplu Satış", "sure": 45, "min_artis": 50.0},
+    "modelaraba": {"ad": "Model Arabalar", "sure": 45, "min_artis": 50.0},
+    "karma": {"ad": "Oyuncaklar", "sure": 45, "min_artis": 50.0},
     "diger": {"ad": "Diğer - Her Şey", "sure": 30, "min_artis": 25.0},
     "porselen": {"ad": "Porselen / Seramik", "sure": 60, "min_artis": 50.0},
     "bakir": {"ad": "Bakır / Pirinç / Madenler", "sure": 60, "min_artis": 50.0},
-    "elektronik": {"ad": "Elektrik / Elektronik", "sure": 45, "min_artis": 50.0},
+    "elektronik": {"ad": "Elektronik", "sure": 45, "min_artis": 50.0},
     "plak": {"ad": "Plak / Kaset", "sure": 45, "min_artis": 50.0},
-    "retro": {"ad": "Retro / Hediyelik", "sure": 45, "min_artis": 50.0},
-    "evyasam": {"ad": "Ev Yaşam / Mobilya", "sure": 60, "min_artis": 100.0},
+    "retro": {"ad": "Hediyelik & Retro", "sure": 45, "min_artis": 50.0},
+    "evyasam": {"ad": "Ev & Yaşam", "sure": 60, "min_artis": 100.0},
     "tekstil": {"ad": "Tekstil", "sure": 45, "min_artis": 50.0},
 }
 
@@ -7907,22 +7907,44 @@ _XML_GORSEL_BASLIKLARI = {
     "picture", "resim url", "image url",
 }
 _XML_VARSAYILAN_KURALLAR = (
+    ("modelaraba", (
+        "diecast", "model araba", "1:18", "1:24", "1:32", "1:43", "1:64",
+        "hot wheels", "matchbox", "maket araba", "koleksiyon araba", "metal araba",
+    )),
     ("plak", ("plak", "pikap", "kaset", "cd")),
-    ("retro", ("retro", "nostalji", "hediyelik", "biblo", "küre")),
-    ("evyasam", ("mobilya", "avize", "lamba", "mutfak", "salon", "dekor")),
-    ("tekstil", ("tekstil", "havlu", "nevresim", "halı", "kilim", "giyim")),
+    ("retro", (
+        "retro", "nostalji", "hediyelik", "biblo", "küre", "kar küresi",
+        "müzik kutusu", "nostaljik", "çerçeve", "kupa", "termos", "anahtarlık",
+    )),
+    ("evyasam", (
+        "mobilya", "avize", "lamba", "mutfak", "salon", "dekor", "dekorasyon",
+        "aydınlatma", "abajur", "masa", "sandalye", "organizer", "düzenleyici",
+        "banyo", "havlu",
+    )),
+    ("tekstil", ("tekstil", "nevresim", "halı", "kilim", "giyim")),
     ("gumus", ("gumus", "925", "telkari")),
     ("bakir", ("bakir", "pirinc", "sahan", "ibrik", "maden", "bronz")),
     ("porselen", ("porselen", "seramik", "cini", "fincan", "tabak", "vazo")),
-    ("elektronik", ("elektrik", "elektronik", "radyo", "pikap", "plak", "kamera", "saat")),
-    ("modelaraba", ("oyuncak", "model araba", "diecast", "maket")),
-    ("hirdavat", ("hirdavat", "nalbur", "alet", "matkap", "anahtar")),
+    ("elektronik", (
+        "elektrik", "elektronik", "radyo", "pikap", "plak", "kamera", "saat",
+        "şarj", "kablo", "kulaklık", "hoparlör", "bluetooth", "powerbank",
+        "akıllı saat", "led", "adaptör", "usb",
+    )),
+    ("hirdavat", (
+        "hirdavat", "nalbur", "alet", "matkap", "anahtar", "tornavida", "pense",
+        "anahtar takımı", "ölçü", "metre", "tamir", "el aletleri", "yapıştırıcı", "bant",
+    )),
     ("kozmetik", ("kozmetik", "parfum", "bakim", "krem")),
     ("bijuteri", ("bijuteri", "kolye", "kupe", "bileklik", "yuzuk")),
     ("antika", ("antika", "osmanli", "koleksiyon", "eski")),
     ("tasarim", ("tasarim", "dekoratif", "retro", "vintage", "lamba", "aydinlatma")),
     ("toptan", ("toptan", "koli", "seri")),
+    ("karma", (
+        "oyuncak", "peluş", "bebek", "lego", "puzzle", "yapboz",
+        "figür", "kutu oyunu", "çocuk", "eğitici",
+    )),
 )
+_XML_OTOMATIK_HARIC = frozenset({"diger"})
 
 
 def _xml_kural_yolu():
@@ -7964,7 +7986,12 @@ def _xml_kural_listesi():
             continue
         kelime = _xml_metin_sade(kayit.get("kelime"))
         dukkan = str(kayit.get("dukkan") or "").strip().lower()
-        if not kelime or dukkan not in DUKKANLAR or kelime in gorulen:
+        if (
+            not kelime
+            or dukkan not in DUKKANLAR
+            or dukkan in _XML_OTOMATIK_HARIC
+            or kelime in gorulen
+        ):
             continue
         gorulen.add(kelime)
         temiz.append({"kelime": kelime, "dukkan": dukkan})
@@ -7984,6 +8011,23 @@ def _xml_kelime_var(metin, kelime):
     return f" {hedef} " in f" {metin} "
 
 
+def _xml_dagitim_dukkani(kod):
+    kod = str(kod or "").strip().lower()
+    if kod in DUKKANLAR and kod not in _XML_OTOMATIK_HARIC:
+        return kod
+    return "karma"
+
+
+def _xml_varsayilan_kural_listesi():
+    liste = []
+    for dukkan, kelimeler in _XML_VARSAYILAN_KURALLAR:
+        if dukkan in _XML_OTOMATIK_HARIC:
+            continue
+        for kelime in kelimeler:
+            liste.append({"kelime": kelime, "dukkan": dukkan, "yerlesik": True})
+    return liste
+
+
 def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
     metin = _xml_metin_sade(" ".join([
         str(ad or ""), str(aciklama or ""), str(kategori or ""),
@@ -7991,12 +8035,17 @@ def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
     if kurallar is None:
         kurallar = _xml_kural_listesi()
     for kural in kurallar:
+        hedef = str(kural.get("dukkan") or "").strip().lower()
+        if hedef in _XML_OTOMATIK_HARIC:
+            continue
         if _xml_kelime_var(metin, kural.get("kelime")):
-            return kural.get("dukkan") or "karma"
+            return _xml_dagitim_dukkani(hedef)
     for dukkan, kelimeler in _XML_VARSAYILAN_KURALLAR:
+        if dukkan in _XML_OTOMATIK_HARIC:
+            continue
         for kelime in kelimeler:
             if _xml_kelime_var(metin, kelime):
-                return dukkan
+                return _xml_dagitim_dukkani(dukkan)
     return "karma"
 
 
@@ -8295,7 +8344,7 @@ def _xml_kaynagi_coz(ham, uzanti):
 def _xml_dagilim_metni(urunler):
     sayilar = {kod: 0 for kod in DUKKANLAR}
     for urun in urunler:
-        kod = urun.get("dukkan") if urun.get("dukkan") in DUKKANLAR else "karma"
+        kod = _xml_dagitim_dukkani(urun.get("dukkan"))
         sayilar[kod] = sayilar.get(kod, 0) + 1
     parcalar = [f"{kod}: {adet} ürün" for kod, adet in sayilar.items() if adet]
     return ", ".join(parcalar), {kod: adet for kod, adet in sayilar.items() if adet}
@@ -8306,8 +8355,8 @@ def _xml_onizleme(urunler):
     for urun in urunler[:_XML_ONIZLEME]:
         satirlar.append({
             "ad": urun.get("ad") or "",
-            "dukkan": urun.get("dukkan") or "karma",
-            "dukkan_ad": (DUKKANLAR.get(urun.get("dukkan")) or {}).get("ad") or urun.get("dukkan"),
+            "dukkan": _xml_dagitim_dukkani(urun.get("dukkan")),
+            "dukkan_ad": (DUKKANLAR.get(_xml_dagitim_dukkani(urun.get("dukkan"))) or {}).get("ad") or "",
             "fiyat": urun.get("fiyat"),
             "gorsel": bool(urun.get("gorseller")),
             "kayda_uygun": bool(urun.get("kayda_uygun")),
@@ -8400,7 +8449,11 @@ def xml_link_temizle():
 def xml_laboratuvar_kurallar():
     try:
         if request.method == "GET":
-            return jsonify({"success": True, "kurallar": _xml_kural_listesi()})
+            return jsonify({
+                "success": True,
+                "kurallar": _xml_kural_listesi(),
+                "varsayilan": _xml_varsayilan_kural_listesi(),
+            })
         veri = request.get_json(silent=True) or {}
         kurallar = _xml_kural_listesi()
         silinen = _xml_metin_sade(veri.get("sil"))
@@ -8412,6 +8465,11 @@ def xml_laboratuvar_kurallar():
         dukkan = str(veri.get("dukkan") or "").strip().lower()
         if not kelime:
             return jsonify({"success": False, "mesaj": "Kelime gerekli."})
+        if dukkan in _XML_OTOMATIK_HARIC:
+            return jsonify({
+                "success": False,
+                "mesaj": "Diğer - Her Şey otomatik dağıtımın dışındadır.",
+            })
         if dukkan not in DUKKANLAR:
             return jsonify({"success": False, "mesaj": "Dükkan kodu geçersiz."})
         kurallar = [kural for kural in kurallar if kural["kelime"] != kelime]
@@ -8493,7 +8551,7 @@ def xml_dagitimi_onayla():
                         "neden": (urun or {}).get("neden") if isinstance(urun, dict) else "bozuk satır",
                     })
                     continue
-                dukkan = urun.get("dukkan") if urun.get("dukkan") in DUKKANLAR else "karma"
+                dukkan = _xml_dagitim_dukkani(urun.get("dukkan"))
                 fiyat = _xml_fiyat_oku(urun.get("fiyat"))
                 gorseller = _xml_gorsel_listesi(urun.get("gorseller"))
                 ad = _xml_etiket_temizle(urun.get("ad"))[:200]
@@ -9153,7 +9211,7 @@ def _xml_stok_veritabanina_uygula(url, harita):
             anahtar = paket.get("anahtar")
             if not ad or not anahtar:
                 continue
-            dukkan = paket.get("dukkan") if paket.get("dukkan") in DUKKANLAR else "karma"
+            dukkan = _xml_dagitim_dukkani(paket.get("dukkan"))
             stok = paket.get("stok")
             fiyat = _xml_fiyat_oku(paket.get("fiyat"))
             adaylar = indeks.get(anahtar) or []
@@ -9189,6 +9247,8 @@ def _xml_stok_veritabanina_uygula(url, harita):
                 kaydet()
                 continue
             for aday in adaylar:
+                if (aday.dukkan_kodu or "") in _XML_OTOMATIK_HARIC:
+                    continue
                 if (getattr(aday, "kaynak_tipi", None) or "manuel") != "xml":
                     continue
                 if _stok_senkron_dokunulmaz(aday, on_teklif_idler):
@@ -9226,6 +9286,8 @@ def _xml_stok_veritabanina_uygula(url, harita):
 
     for urun in xml_urunler:
         try:
+            if (urun.dukkan_kodu or "") in _XML_OTOMATIK_HARIC:
+                continue
             if (getattr(urun, "kaynak_tipi", None) or "manuel") != "xml":
                 continue
             if urun.silindi_mi:
