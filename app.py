@@ -2341,15 +2341,14 @@ class _WorkerKilidi:
         return False
 
 
-odalar = {}
-oda_kilitleri = {}
-for kod in DUKKANLAR.keys():
-    odalar[kod] = {
+def _oda_varsayilan():
+    return {
         "aktif_urun_id": None,
         "sayac_kalan": 0,
         "sayac_aktif": False,
         "sayac_gorev_id": 0,
         "otonom_aktif": False,
+        "otonom_dongu": False,
         "izleyici_sayisi": 0,
         "son_teklif_veren_id": None,
         "gizli_pazarlik_aktif": False,
@@ -2359,6 +2358,11 @@ for kod in DUKKANLAR.keys():
         "karar_pey_geldi": False,
         "lot_kapanis": "",
         "satis_tebrik_bekleniyor": False,
+        "sunucu_lakap": "",
+        "son_hareket": 0,
+        "son_sessizlik": 0,
+        "satildi": False,
+        "son_satis": None,
         "durum": {
             "durum": "Bekliyor",
             "sure_bitis": 0,
@@ -2367,7 +2371,263 @@ for kod in DUKKANLAR.keys():
             "kazanan_id": None,
         },
     }
-    oda_kilitleri[kod] = _WorkerKilidi(kod)
+
+
+_oda_sema_hazir = False
+_oda_sema_kilit = threading.Lock()
+
+
+_ODA_REDIS_YAYIN = """
+local cur = tonumber(redis.call('get', KEYS[2]) or '0')
+local yeni = tonumber(ARGV[2])
+if yeni >= cur then
+    redis.call('set', KEYS[1], ARGV[1])
+    redis.call('set', KEYS[2], ARGV[2])
+    return 1
+end
+return 0
+"""
+
+
+def _oda_anahtar(kod):
+    return "mezat:oda:" + str(kod)
+
+
+def _oda_surum_anahtar(kod):
+    return "mezat:oda:surum:" + str(kod)
+
+
+def _oda_belge_harmanla(ham):
+    belge = _oda_varsayilan()
+    if not isinstance(ham, dict):
+        return belge
+    durum = ham.get("durum") if isinstance(ham.get("durum"), dict) else {}
+    gelen = dict(ham)
+    gelen.pop("durum", None)
+    belge.update(gelen)
+    if isinstance(durum, dict):
+        belge["durum"].update(durum)
+    return belge
+
+
+def _oda_sema():
+    """Mezat odasi satiri. Var olan kaydin uzerine varsayilan yazilmaz."""
+    global _oda_sema_hazir
+    if _oda_sema_hazir:
+        return
+    with _oda_sema_kilit:
+        if _oda_sema_hazir:
+            return
+        varsayilan = json.dumps(_oda_varsayilan(), ensure_ascii=False)
+        with db.engine.begin() as baglanti:
+            baglanti.execute(text(
+                "CREATE TABLE IF NOT EXISTS mezat_oda ("
+                "dukkan_kodu VARCHAR(30) PRIMARY KEY, "
+                "veri TEXT NOT NULL DEFAULT '{}', "
+                "surum INTEGER NOT NULL DEFAULT 0"
+                ")"
+            ))
+            for kod in DUKKANLAR:
+                baglanti.execute(
+                    text(
+                        "INSERT INTO mezat_oda (dukkan_kodu, veri, surum) "
+                        "SELECT :k, :v, 0 WHERE NOT EXISTS "
+                        "(SELECT 1 FROM mezat_oda WHERE dukkan_kodu = :k)"
+                    ),
+                    {"k": kod, "v": varsayilan},
+                )
+        _oda_sema_hazir = True
+
+
+def _oda_belge_oku(kod):
+    _oda_sema()
+    with db.engine.connect() as baglanti:
+        satir = baglanti.execute(
+            text("SELECT veri, surum FROM mezat_oda WHERE dukkan_kodu = :k"),
+            {"k": kod},
+        ).fetchone()
+    if not satir:
+        return _oda_varsayilan(), 0
+    try:
+        gelen = json.loads(satir[0] or "{}")
+    except (TypeError, ValueError):
+        gelen = {}
+    return _oda_belge_harmanla(gelen), int(satir[1] or 0)
+
+
+def _oda_pg_yaz(kod, alan, deger, sil=False):
+    """Tek alan. Satir FOR UPDATE ile kilitlenir; baska alanin yazisi ezilmez."""
+    _oda_sema()
+    with db.engine.begin() as baglanti:
+        if not IS_SQLITE:
+            satir = baglanti.execute(
+                text("SELECT veri, surum FROM mezat_oda WHERE dukkan_kodu = :k FOR UPDATE"),
+                {"k": kod},
+            ).fetchone()
+        else:
+            satir = baglanti.execute(
+                text("SELECT veri, surum FROM mezat_oda WHERE dukkan_kodu = :k"),
+                {"k": kod},
+            ).fetchone()
+        if satir:
+            try:
+                gelen = json.loads(satir[0] or "{}")
+            except (TypeError, ValueError):
+                gelen = {}
+            belge = _oda_belge_harmanla(gelen)
+            surum = int(satir[1] or 0) + 1
+        else:
+            belge = _oda_varsayilan()
+            surum = 1
+        if alan.startswith("durum."):
+            alt = alan.split(".", 1)[1]
+            if sil:
+                belge["durum"].pop(alt, None)
+            else:
+                belge["durum"][alt] = deger
+        elif sil:
+            belge.pop(alan, None)
+        else:
+            belge[alan] = deger
+        govde = json.dumps(belge, ensure_ascii=False)
+        if satir:
+            baglanti.execute(
+                text("UPDATE mezat_oda SET veri = :v, surum = :s WHERE dukkan_kodu = :k"),
+                {"k": kod, "v": govde, "s": surum},
+            )
+        else:
+            baglanti.execute(
+                text("INSERT INTO mezat_oda (dukkan_kodu, veri, surum) VALUES (:k, :v, :s)"),
+                {"k": kod, "v": govde, "s": surum},
+            )
+        return belge, surum
+
+
+def _oda_redis_yayinla(kod, belge, surum):
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.eval(
+            _ODA_REDIS_YAYIN,
+            2,
+            _oda_anahtar(kod),
+            _oda_surum_anahtar(kod),
+            json.dumps(belge, ensure_ascii=False),
+            str(surum),
+        )
+    except Exception as hata:
+        _redis_dusur(hata)
+        try:
+            istemci.delete(_oda_anahtar(kod))
+        except Exception:
+            pass
+
+
+def _oda_canli_belge(kod):
+    istemci = _redis_al()
+    if istemci is not None:
+        try:
+            ham = istemci.get(_oda_anahtar(kod))
+            if ham:
+                return _oda_belge_harmanla(json.loads(ham))
+        except Exception as hata:
+            _redis_dusur(hata)
+    belge, _surum = _oda_belge_oku(kod)
+    return belge
+
+
+def _oda_alani_oku(kod, alan, varsayilan=None):
+    try:
+        belge = _oda_canli_belge(kod)
+    except Exception as hata:
+        print(f"[ODA] okunamadi ({kod}.{alan}): {hata}", flush=True)
+        belge = _oda_varsayilan()
+    if alan.startswith("durum."):
+        return (belge.get("durum") or {}).get(alan.split(".", 1)[1], varsayilan)
+    if alan not in belge:
+        return varsayilan
+    return belge.get(alan, varsayilan)
+
+
+def _oda_alani_yaz(kod, alan, deger):
+    try:
+        belge, surum = _oda_pg_yaz(kod, alan, deger, sil=False)
+    except Exception as hata:
+        print(f"[ODA] postgres yazilamadi ({kod}.{alan}): {hata}", flush=True)
+        return
+    _oda_redis_yayinla(kod, belge, surum)
+
+
+def _oda_alani_sil(kod, alan):
+    try:
+        belge, surum = _oda_pg_yaz(kod, alan, None, sil=True)
+    except Exception as hata:
+        print(f"[ODA] postgres silinemedi ({kod}.{alan}): {hata}", flush=True)
+        return
+    _oda_redis_yayinla(kod, belge, surum)
+
+
+class _DurumProxy:
+    """durum.pey gibi alt alanlar ayri Redis/PostgreSQL alanidir."""
+
+    def __init__(self, kod):
+        self.kod = kod
+
+    def __getitem__(self, anahtar):
+        varsayilan = _oda_varsayilan()["durum"].get(anahtar)
+        return _oda_alani_oku(self.kod, "durum." + str(anahtar), varsayilan)
+
+    def __setitem__(self, anahtar, deger):
+        _oda_alani_yaz(self.kod, "durum." + str(anahtar), deger)
+
+    def get(self, anahtar, varsayilan=None):
+        bulunan = _oda_alani_oku(self.kod, "durum." + str(anahtar), _EKSIK)
+        if bulunan is _EKSIK:
+            return varsayilan
+        return bulunan
+
+
+class _OdaProxy:
+    """Worker bu nesneyi tutar; deger Redis ve mezat_oda satirindadir."""
+
+    def __init__(self, kod):
+        self.kod = kod
+
+    def __getitem__(self, anahtar):
+        if anahtar == "durum":
+            return _DurumProxy(self.kod)
+        varsayilan = _oda_varsayilan().get(anahtar)
+        return _oda_alani_oku(self.kod, str(anahtar), varsayilan)
+
+    def __setitem__(self, anahtar, deger):
+        if anahtar == "durum" and isinstance(deger, dict):
+            for alt, ic in deger.items():
+                _oda_alani_yaz(self.kod, "durum." + str(alt), ic)
+            return
+        _oda_alani_yaz(self.kod, str(anahtar), deger)
+
+    def get(self, anahtar, varsayilan=None):
+        if anahtar == "durum":
+            return _DurumProxy(self.kod)
+        bulunan = _oda_alani_oku(self.kod, str(anahtar), _EKSIK)
+        if bulunan is _EKSIK:
+            return varsayilan
+        return bulunan
+
+    def pop(self, anahtar, *varsayilan):
+        bulunan = self.get(anahtar, _EKSIK)
+        if bulunan is _EKSIK:
+            if varsayilan:
+                return varsayilan[0]
+            raise KeyError(anahtar)
+        _oda_alani_sil(self.kod, str(anahtar))
+        return bulunan
+
+
+_EKSIK = object()
+odalar = {kod: _OdaProxy(kod) for kod in DUKKANLAR}
+oda_kilitleri = {kod: _WorkerKilidi(kod) for kod in DUKKANLAR}
 
 
 def _baslik_tekrarini_sil(metin, urun_adi):
@@ -2751,7 +3011,9 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
         )
         socketio.sleep(1)
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-            oda["sayac_kalan"] -= 1
+            with oda_kilitleri[dukkan]:
+                if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
+                    oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) - 1
 
     if not (oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id):
         return False
@@ -2851,7 +3113,9 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
             )
             socketio.sleep(1)
             if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                oda["sayac_kalan"] -= 1
+                with oda_kilitleri[dukkan]:
+                    if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
+                        oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) - 1
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
     with oda_kilitleri[dukkan]:
@@ -2968,9 +3232,6 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 )
 
 
-_otonom_dongu_calisiyor = {}
-
-
 def _admin_satisi_duyur(dukkan, urun_id, kazanan, fiyat, neden):
     """Satış anında yönetici paneli yenilemeden ciro ve havuzu güncellesin."""
     try:
@@ -3079,7 +3340,7 @@ def _otonom_sayaci_baslat(dukkan, urun):
 def dukkan_otonom_dongusu(dukkan):
     oda = odalar[dukkan]
     kural = DUKKANLAR[dukkan]
-    _otonom_dongu_calisiyor[dukkan] = True
+    oda["otonom_dongu"] = True
     son_biten_id = None
     print(f"🤖 [{kural['ad']}] 3 Dakikalık Otonom Mezat Başlatıldı...")
     try:
@@ -3234,7 +3495,7 @@ def dukkan_otonom_dongusu(dukkan):
                 finally:
                     db.session.remove()
     finally:
-        _otonom_dongu_calisiyor[dukkan] = False
+        oda["otonom_dongu"] = False
 
 
 # VERİTABANI ONARIMI: Tüm eksik kolonları (ip_adresi dahil) PostgreSQL'e otomatik ekler
@@ -7746,9 +8007,10 @@ def otonom_mezat_kontrol():
         oda = odalar[d]
         if durum:
             oda["otonom_aktif"] = True
-            if not _otonom_dongu_calisiyor.get(d):
-                _otonom_dongu_calisiyor[d] = True
-                socketio.start_background_task(dukkan_otonom_dongusu, d)
+            with oda_kilitleri[d]:
+                if not oda.get("otonom_dongu"):
+                    oda["otonom_dongu"] = True
+                    socketio.start_background_task(dukkan_otonom_dongusu, d)
             sahnedeki = (
                 db.session.get(Urun, oda.get("aktif_urun_id"))
                 if oda.get("aktif_urun_id")
