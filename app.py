@@ -154,7 +154,10 @@ else:
         "pool_recycle": 300,
         "pool_pre_ping": True,
         "pool_timeout": 5,
-        "connect_args": {"connect_timeout": 5},
+        "connect_args": {
+            "connect_timeout": 5,
+            "options": "-c lock_timeout=3000 -c statement_timeout=5000",
+        },
     }
 print("[BOOT] veritabani baglanti zaman asimi 5sn", flush=True)
 
@@ -10776,10 +10779,13 @@ def veritabani_onarimini_bir_kez_baslat():
 
 
 def _arkaplan_agir_baslangic():
-    """Port açıldıktan sonra: onarım, XML senkronu ve ses hazırlığı."""
+    """Port açıldıktan sonra: onarım, pazaryeri şeması, XML senkronu ve ses hazırlığı."""
     print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
         veritabani_onarimini_bir_kez_baslat()
+        if _pazaryeri_semasi is not None:
+            print("[BOOT] pazaryeri tablolari", flush=True)
+            _pazaryeri_semasi(app, db)
         print("[BOOT] xml senkron zamanlayicisi", flush=True)
         xml_stok_zamanlayiciyi_baslat()
     except Exception as hata:
@@ -10793,6 +10799,7 @@ def _arkaplan_agir_baslangic():
 
 
 _gecikmeli_baslangic_kuruldu = False
+_pazaryeri_semasi = None
 
 
 def _gecikmeli_baslangici_kur():
@@ -10811,11 +10818,11 @@ def _gecikmeli_baslangici_kur():
 # ==========================================
 print("[BOOT] pazaryeri modulu", flush=True)
 try:
-    from pazaryeri import init_pazaryeri, pazaryeri_bp
-    print("[BOOT] pazaryeri tablolari", flush=True)
+    from pazaryeri import init_pazaryeri, pazaryeri_bp, pazaryeri_semasini_hazirla
+    _pazaryeri_semasi = pazaryeri_semasini_hazirla
     init_pazaryeri(app, db, admin_required)
     app.register_blueprint(pazaryeri_bp, url_prefix="/admin/pazaryeri")
-    print("[BOOT] pazaryeri hazir", flush=True)
+    print("[BOOT] pazaryeri rotalari hazir", flush=True)
 except Exception as hata:
     print(f"[BOOT] pazaryeri atlandi: {hata}", flush=True)
 

@@ -1,4 +1,5 @@
 import json
+import threading
 import urllib.parse
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, render_template_string, request
@@ -43,54 +44,80 @@ def _pazaryeri_ilk_gorsel(ham):
     return adaylar[0] if adaylar else ""
 
 pazaryeri_bp = Blueprint("pazaryeri_bp", __name__)
+_sema_kilit = threading.Lock()
+_sema_hazir = False
 
 
-def init_pazaryeri(app, db, admin_required_decorator):
-    """Pazaryeri modülünü ana sisteme bağlar ve tabloları hem SQLite hem PostgreSQL ile tam uyumlu günceller."""
+def pazaryeri_semasini_hazirla(app, db):
+    """Tablo ve kolon kontrolü. Import sırasında çağrılmaz."""
+    global _sema_hazir
+    if _sema_hazir:
+        return
+    if not _sema_kilit.acquire(blocking=False):
+        return
+    try:
+        if _sema_hazir:
+            return
+        with app.app_context():
+            db_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI", ""))
+            is_sqlite = "sqlite" in db_uri
 
-    with app.app_context():
-        db_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI", ""))
-        is_sqlite = "sqlite" in db_uri
-
-        id_column_def = (
-            "id INTEGER PRIMARY KEY AUTOINCREMENT"
-            if is_sqlite
-            else "id SERIAL PRIMARY KEY"
-        )
-
-        try:
-            db.session.execute(
-                text(f"""
-                    CREATE TABLE IF NOT EXISTS tedarikci (
-                        {id_column_def},
-                        ad_soyad VARCHAR(100) NOT NULL,
-                        telefon VARCHAR(20) NOT NULL,
-                        iban VARCHAR(40),
-                        komisyon_orani FLOAT DEFAULT 15.0,
-                        notlar TEXT,
-                        durum VARCHAR(20) DEFAULT 'aktif'
-                    );
-                """)
+            id_column_def = (
+                "id INTEGER PRIMARY KEY AUTOINCREMENT"
+                if is_sqlite
+                else "id SERIAL PRIMARY KEY"
             )
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
 
-        # Kolonları ekle (Zaten varsa pas geçer)
-        yeni_kolonlar = [
-            ("urun", "tedarikci_id", "INTEGER"),
-            ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
-            ("urun", "kargo_takip_no", "VARCHAR(100)"),
-            ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
-        ]
-        for tbl, col, col_type in yeni_kolonlar:
             try:
                 db.session.execute(
-                    text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type};")
+                    text(f"""
+                        CREATE TABLE IF NOT EXISTS tedarikci (
+                            {id_column_def},
+                            ad_soyad VARCHAR(100) NOT NULL,
+                            telefon VARCHAR(20) NOT NULL,
+                            iban VARCHAR(40),
+                            komisyon_orani FLOAT DEFAULT 15.0,
+                            notlar TEXT,
+                            durum VARCHAR(20) DEFAULT 'aktif'
+                        );
+                    """)
                 )
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+
+            yeni_kolonlar = [
+                ("urun", "tedarikci_id", "INTEGER"),
+                ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
+                ("urun", "kargo_takip_no", "VARCHAR(100)"),
+                ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
+            ]
+            for tbl, col, col_type in yeni_kolonlar:
+                try:
+                    db.session.execute(
+                        text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type};")
+                    )
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        _sema_hazir = True
+        print("[BOOT] pazaryeri semasi hazir", flush=True)
+    except Exception as hata:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"[BOOT] pazaryeri semasi atlandi: {hata}", flush=True)
+    finally:
+        _sema_kilit.release()
+
+
+def register_routes(app, db, admin_required_decorator):
+    """Blueprint rotaları. Veritabanına burada dokunulmaz."""
+
+    @pazaryeri_bp.before_request
+    def _pazaryeri_ilk_istek():
+        pazaryeri_semasini_hazirla(app, db)
 
     # --- HTML ARAYÜZÜ ---
     PAZARYERI_HTML = """
@@ -648,3 +675,8 @@ def init_pazaryeri(app, db, admin_required_decorator):
         )
         db.session.commit()
         return jsonify({"success": True})
+
+
+def init_pazaryeri(app, db, admin_required_decorator):
+    """Rotaları kaydeder. Şema kontrolü import sırasında çalışmaz."""
+    register_routes(app, db, admin_required_decorator)
