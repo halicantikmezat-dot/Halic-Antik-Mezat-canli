@@ -31,6 +31,26 @@ def _env(*adlar):
             return str(deger).strip()
     return ""
 
+def _sqlalchemy_engine_options(db_url):
+    """Postgres havuzu. SQLite yerelde timeout ile kalır; havuz parametresi almaz."""
+    if str(db_url or "").startswith("sqlite"):
+        return {
+            "pool_timeout": 5,
+            "connect_args": {"timeout": 5},
+        }
+    return {
+        "pool_size": 15,
+        "max_overflow": 25,
+        "pool_timeout": 10,
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+        "connect_args": {
+            "connect_timeout": 5,
+            "options": "-c lock_timeout=3000 -c statement_timeout=30000",
+        },
+    }
+
+
 def _veritabani_adresi():
     """Render DATABASE_URL. postgres:// adresi SQLAlchemy için postgresql:// olur."""
     database_url = os.environ.get("DATABASE_URL")
@@ -49,6 +69,7 @@ class Config:
     # Bulutta (Render) DATABASE_URL gelir; yerelde yalnız SQLite kullanılır
     SQLALCHEMY_DATABASE_URI = _veritabani_adresi()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = _sqlalchemy_engine_options(SQLALCHEMY_DATABASE_URI)
     
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'halic_hamid_antik_mezat_gizli_anahtar_1453'
 

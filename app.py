@@ -149,17 +149,82 @@ if IS_SQLITE:
     }
 else:
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_size": 25,
-        "max_overflow": 50,
+        "pool_size": 15,
+        "max_overflow": 25,
         "pool_recycle": 300,
         "pool_pre_ping": True,
-        "pool_timeout": 5,
+        "pool_timeout": 10,
         "connect_args": {
             "connect_timeout": 5,
             "options": "-c lock_timeout=3000 -c statement_timeout=30000",
         },
     }
 print("[BOOT] veritabani baglanti zaman asimi 5sn", flush=True)
+
+# ==========================================
+# VİTRİN MİKRO ÖNBELLEK (2 sn, stampede korumalı)
+# ==========================================
+_VITRIN_TTL = 2.0
+_vitrin_kilit = threading.Lock()
+_vitrin_onbellek = {}
+_vitrin_nesil = 0
+
+
+def invalidate_vitrin_cache():
+    """Pey, ürün, sayaç sıfırlama ve yayın durumu yazılarında vitrin anında düşer."""
+    global _vitrin_onbellek, _vitrin_nesil
+    with _vitrin_kilit:
+        _vitrin_nesil += 1
+        _vitrin_onbellek = {}
+
+
+def _vitrin_tazele(anahtar, uret):
+    global _vitrin_onbellek
+    simdi = time.monotonic()
+    kayit = _vitrin_onbellek.get(anahtar)
+    if kayit is not None and (simdi - kayit[0]) < _VITRIN_TTL:
+        return kayit[1]
+    nesil = _vitrin_nesil
+    deger = uret()
+    if nesil == _vitrin_nesil:
+        yeni = dict(_vitrin_onbellek)
+        yeni[anahtar] = (time.monotonic(), deger)
+        _vitrin_onbellek = yeni
+        return deger
+    guncel = _vitrin_onbellek.get(anahtar)
+    if guncel is not None:
+        return guncel[1]
+    return deger
+
+
+def vitrin_mikro_onbellek(anahtar, uret):
+    """Taze kayıt kilitsiz döner. Süresi dolmuş kayıtta tek iş parçacığı üretir.
+
+    Diğer istekler kilidi beklemeden son kaydı alır. Kayıt hiç yoksa çift kontrol
+    ile yalnız bir üretici veritabanına gider.
+    """
+    simdi = time.monotonic()
+    kayit = _vitrin_onbellek.get(anahtar)
+    if kayit is not None and (simdi - kayit[0]) < _VITRIN_TTL:
+        return kayit[1]
+    if kayit is not None:
+        if not _vitrin_kilit.acquire(blocking=False):
+            return kayit[1]
+        try:
+            return _vitrin_tazele(anahtar, uret)
+        finally:
+            _vitrin_kilit.release()
+    with _vitrin_kilit:
+        return _vitrin_tazele(anahtar, uret)
+
+
+def _vitrin_oturumu_ozel_mi():
+    """Yönetici ve giriş yapmış ziyaretçi kendi yanıtını önbellekten almaz."""
+    if session.get("is_admin") or session.get("admin_2fa_ok") or session.get("admin_sifre_ok"):
+        return True
+    if session.get("kullanici_id") or session.get("musteri_id"):
+        return True
+    return False
 
 app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 
@@ -2219,6 +2284,7 @@ def _fiyati_acilisa_cek(dukkan, oda):
             urun.kazanan_id = None
             db.session.add(urun)
             db.session.commit()
+            invalidate_vitrin_cache()
     oda["acilis_tabani"] = acilis
     oda["durum"]["pey"] = acilis
     oda["durum"]["kazanan"] = "Yok"
@@ -2281,6 +2347,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         db.session.commit()
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
 
+    invalidate_vitrin_cache()
     _pey_duyur(
         dukkan,
         {
@@ -2515,6 +2582,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             db.session.commit()
                             oda["durum"]["durum"] = "Pas"
 
+            invalidate_vitrin_cache()
             socketio.emit(
                 "sayac_bitti",
                 {
@@ -3075,9 +3143,33 @@ def serve_uploads(filename):
 # ==========================================
 # İZLEYİCİ, VİTRİN VE DÜKKAN ROTALARI
 # ==========================================
-@app.route("/")
-def izleyici_index():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+def _urunleri_tek_sorguda(idler):
+    """Aktif sahne ürünlerini döngü yerine tek IN sorgusuyla çeker."""
+    benzersiz = []
+    gorulen = set()
+    for ham in idler:
+        if not ham:
+            continue
+        try:
+            uid = int(ham)
+        except (TypeError, ValueError):
+            continue
+        if uid in gorulen:
+            continue
+        gorulen.add(uid)
+        benzersiz.append(uid)
+    if not benzersiz:
+        return {}
+    kayitlar = (
+        Urun.query.filter(
+            Urun.id.in_(benzersiz),
+            or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+        ).all()
+    )
+    return {kayit.id: kayit for kayit in kayitlar}
+
+
+def _ana_sayfa_html(dukkan):
     oda = odalar.get(dukkan) or {}
     durum = oda.get("durum") or {}
     ilk_sahne = {
@@ -3088,10 +3180,15 @@ def izleyici_index():
     }
     try:
         urun_id = oda.get("aktif_urun_id")
+        bulunan = _urunleri_tek_sorguda([urun_id] if urun_id else [])
+        urun = None
         if urun_id:
-            urun = db.session.get(Urun, urun_id)
-            if urun and not urun.silindi_mi:
-                ilk_sahne["aktif_urun"] = urun.to_dict()
+            try:
+                urun = bulunan.get(int(urun_id))
+            except (TypeError, ValueError):
+                urun = None
+        if urun is not None:
+            ilk_sahne["aktif_urun"] = urun.to_dict()
     except Exception:
         db.session.rollback()
     finally:
@@ -3102,6 +3199,64 @@ def izleyici_index():
         dukkanlar=DUKKANLAR,
         ilk_sahne=ilk_sahne,
     )
+
+
+@app.route("/")
+def izleyici_index():
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    if _vitrin_oturumu_ozel_mi():
+        return _ana_sayfa_html(dukkan)
+    html = vitrin_mikro_onbellek("anasayfa:" + dukkan, lambda: _ana_sayfa_html(dukkan))
+    return Response(html, mimetype="text/html; charset=utf-8")
+
+
+def _api_durum_govdesi():
+    idler = []
+    for kod in DUKKANLAR:
+        oda = odalar.get(kod) or {}
+        if oda.get("aktif_urun_id"):
+            idler.append(oda.get("aktif_urun_id"))
+    try:
+        urunler = _urunleri_tek_sorguda(idler)
+        cikti = {}
+        for kod, bilgi in DUKKANLAR.items():
+            oda = odalar.get(kod) or {}
+            durum = oda.get("durum") or {}
+            sahne = durum.get("durum") or "Bekliyor"
+            uid = oda.get("aktif_urun_id")
+            urun = None
+            if uid:
+                try:
+                    urun = urunler.get(int(uid))
+                except (TypeError, ValueError):
+                    urun = None
+            cikti[kod] = {
+                "ad": bilgi.get("ad"),
+                "sure": bilgi.get("sure"),
+                "min_artis": bilgi.get("min_artis"),
+                "canli": bool(uid) and sahne != "Satıldı",
+                "durum": sahne,
+                "pey": durum.get("pey") or 0,
+                "kazanan": durum.get("kazanan") or "Yok",
+                "kazanan_id": durum.get("kazanan_id"),
+                "kalan_sayac": oda.get("sayac_kalan") or 0,
+                "aktif_urun": urun.to_dict() if urun is not None else None,
+            }
+        return {"success": True, "dukkanlar": cikti}
+    finally:
+        db.session.remove()
+
+
+@app.route("/api/durum", methods=["GET"])
+def api_durum():
+    try:
+        govde = vitrin_mikro_onbellek("api_durum", _api_durum_govdesi)
+        return jsonify(govde)
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": False, "dukkanlar": {}}), 500
+    finally:
+        db.session.remove()
 
 
 @app.route("/favicon.ico")
@@ -5000,6 +5155,7 @@ def pey_ver():
                 OnTeklif.query.filter_by(urun_id=urun.id).delete()
                 stok_satis_sonrasi_dus(urun)
                 db.session.commit()
+                invalidate_vitrin_cache()
 
                 urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
 
@@ -5102,6 +5258,7 @@ def pey_ver():
                 db.session.add(yeni_teklif)
                 db.session.add(urun)
                 db.session.commit()
+                invalidate_vitrin_cache()
 
                 if oda.get("mevat_asama") == "karar":
                     oda["karar_pey_geldi"] = True
@@ -6120,6 +6277,7 @@ def sahneye_al():
         urun_paket.get("lot") or "",
     )
 
+    invalidate_vitrin_cache()
     return jsonify({"success": True, "urun": urun_paket})
 
 
@@ -6166,6 +6324,7 @@ def mezat_baslat():
                 room=dukkan,
             )
         socketio.emit("sayac_guncelle", paket, room=dukkan)
+        invalidate_vitrin_cache()
         return jsonify({"success": True, "dukkan": dukkan})
 
     with oda_kilitleri[dukkan]:
@@ -6186,6 +6345,7 @@ def mezat_baslat():
 
     socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, akis)
     socketio.emit("mezat_basladi_muzik", room=dukkan)
+    invalidate_vitrin_cache()
     return jsonify({"success": True, "dukkan": dukkan})
 
 
@@ -6260,6 +6420,7 @@ def satis_bitir():
         _admin_satisi_duyur(
             dukkan, biten_urun_id, oda["durum"]["kazanan"], oda["durum"]["pey"], "satis_bitir",
         )
+    invalidate_vitrin_cache()
     return jsonify({"success": True, "dukkan": dukkan})
 
 
@@ -6310,6 +6471,7 @@ def son_peyi_iptal_et():
             db.session.add(urun)
             db.session.commit()
 
+        invalidate_vitrin_cache()
         _pey_duyur(
             dukkan,
             {
@@ -6351,6 +6513,7 @@ def tek_urun_iptal_et():
 
             db.session.add(urun)
             db.session.commit()
+            invalidate_vitrin_cache()
 
             if oda["aktif_urun_id"] == urun.id:
                 oda["sayac_aktif"] = False
@@ -6766,6 +6929,7 @@ def urun_ekle():
             yeni_urun.eklenme_tarihi = datetime.now()
         db.session.add(yeni_urun)
         db.session.commit()
+        invalidate_vitrin_cache()
 
         socketio.emit(
             "yeni_urun_bildirimi",
@@ -6827,6 +6991,7 @@ def urun_guncelle():
 
         db.session.add(urun)
         db.session.commit()
+        invalidate_vitrin_cache()
 
         if oda["aktif_urun_id"] == urun.id and eski_dukkan == yeni_dukkan:
             sahneyi_herkese_yayinla(eski_dukkan, urun.to_dict())
@@ -6856,6 +7021,7 @@ def urun_sil():
             odalar[dukkan]["durum"]["kazanan_id"] = None
 
         db.session.commit()
+        invalidate_vitrin_cache()
         return jsonify({"success": True, "mesaj": "Ürün çöp kutusuna taşındı."})
     return jsonify({"success": False, "mesaj": "Ürün bulunamadı."})
 
@@ -6976,6 +7142,7 @@ def cop_kutusundan_geri_yukle():
             urun.silindi_mi = False
             urun.silinme_tarihi = None
             db.session.commit()
+            invalidate_vitrin_cache()
             return jsonify({"success": True, "mesaj": "Ürün geri yüklendi."})
     elif tur == "musteri":
         kullanici = db.session.get(Kullanici, kayit_id)
@@ -7059,6 +7226,7 @@ def cop_kutusunu_kalici_bosalt():
             db.session.delete(urun)
             adet += 1
         db.session.commit()
+        invalidate_vitrin_cache()
         return jsonify({
             "success": True,
             "silinen": adet,
@@ -7118,6 +7286,7 @@ def otonom_mezat_kontrol():
     else:
         mesaj = f"Otonom mezat durduruldu: {hedef.upper()}"
 
+    invalidate_vitrin_cache()
     return jsonify({
         "success": True,
         "mesaj": mesaj,
