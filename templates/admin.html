@@ -3122,20 +3122,19 @@
 
     function xmlUrunleriniTemizle() {
         playClickSound();
-        if (!confirm("XML işaretli aktif ürünler ve kutudaki linkteki başlıklarla eşleşen aktif ürünler çöp kutusuna alınsın mı? Eşleşme tam adda, adın içinde veya adın başında aranır. Satılmış kayıtlar durur.")) return;
+        if (!confirm("XML kaynaklı, satılmamış aktif ürünler çöp kutusuna alınsın mı? Kendi manuel ürünleriniz ve satılmış kayıtlar durur.")) return;
         const durum = document.getElementById("topluDurum");
-        const linkKutusu = document.getElementById("topluUrl");
-        const xmlAdresi = linkKutusu ? (linkKutusu.value || "").trim() : "";
         if (durum) durum.innerText = "Eski XML ürünleri temizleniyor...";
         fetch("/api/xml-urunleri-temizle", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ xml_url: xmlAdresi })
+            body: JSON.stringify({})
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-            if (durum) durum.innerText = data.mesaj || "";
-            alert(data.mesaj || (data.success ? "Temizlendi." : "Temizlik yapılamadı."));
+            const yazi = (data && (data.error || data.mesaj)) || "";
+            if (durum) durum.innerText = yazi;
+            alert(yazi || (data && data.success ? "Temizlendi." : "Temizlik yapılamadı."));
             if (data.success) {
                 veriCekAdmin();
                 adminUrunAra();

@@ -156,7 +156,7 @@ else:
         "pool_timeout": 5,
         "connect_args": {
             "connect_timeout": 5,
-            "options": "-c lock_timeout=3000 -c statement_timeout=5000",
+            "options": "-c lock_timeout=3000 -c statement_timeout=30000",
         },
     }
 print("[BOOT] veritabani baglanti zaman asimi 5sn", flush=True)
@@ -8741,140 +8741,53 @@ def _vitrindeki_satilmamis(sorgu):
     )
 
 
+def _xml_kaynakli_urun_kosulu():
+    kosullar = [
+        func.lower(func.coalesce(Urun.kaynak_tipi, "")) == "xml",
+        func.length(func.coalesce(Urun.xml_kaynak_url, "")) > 0,
+    ]
+    kod_kolonu = getattr(Urun, "xml_kodu", None)
+    if kod_kolonu is not None:
+        kosullar.append(func.length(func.coalesce(kod_kolonu, "")) > 0)
+    kosullar.append(
+        (Urun.tedarikci_id.isnot(None))
+        & (func.lower(func.coalesce(Urun.kaynak_tipi, "manuel")) != "manuel")
+    )
+    return or_(*kosullar)
+
+
 @app.route("/api/xml-urunleri-temizle", methods=["POST"])
 @admin_required
 def xml_urunleri_temizle():
     try:
-        kayitlar = _vitrindeki_satilmamis(
-            Urun.query.filter(Urun.kaynak_tipi == "xml")
-        ).all()
-        veri = request.get_json(silent=True) or {}
-        url = str(veri.get("xml_url") or "").strip()
-        if not kayitlar or url:
-            if url:
-                _KOD_ETIKETLERI = {
-                    "kod", "sku", "barkod", "barcode", "barkodno", "barkod_no",
-                    "urun_kodu", "urunkodu", "stok_kodu", "stokkodu", "stokkod",
-                    "product_code", "productcode", "product_sku", "stock_code",
-                    "stockcode", "item_code", "itemcode", "gtin", "mpn",
-                    "model", "model_kodu", "modelkodu",
-                }
-
-                def _temizlik_adi(metin):
-                    s = str(metin or "").strip().casefold().replace("i\u0307", "i")
-                    s = s.translate(str.maketrans({
-                        "ı": "i", "ş": "s", "ğ": "g", "ü": "u", "ö": "o", "ç": "c",
-                        "â": "a", "î": "i", "û": "u",
-                    }))
-                    return re.sub(r"\s+", " ", s).strip()
-
-                def _temizlik_kod(metin):
-                    return re.sub(r"[^a-z0-9]", "", _temizlik_adi(metin))
-
-                def _temizlik_eslesir(xml_ad, db_ad, kodlar):
-                    if xml_ad and db_ad:
-                        if xml_ad == db_ad:
-                            return True
-                        if len(xml_ad) >= 3 and (db_ad.startswith(xml_ad) or xml_ad in db_ad):
-                            return True
-                    if not db_ad or not kodlar:
-                        return False
-                    sik_db = _temizlik_kod(db_ad)
-                    for kod in kodlar:
-                        if len(kod) < 4:
-                            continue
-                        if db_ad.endswith(kod) or (sik_db and sik_db.endswith(kod)):
-                            return True
-                    return False
-
-                def _xml_kodlari_topla(ham_kaynak):
-                    import xml.etree.ElementTree as ET
-
-                    if isinstance(ham_kaynak, (bytes, bytearray)):
-                        metin = ham_kaynak.decode("utf-8-sig", errors="replace")
-                    else:
-                        metin = str(ham_kaynak or "")
-                    bulunan_kodlar = []
-                    gorulen_kod = set()
-
-                    def _kod_ekle(ham_kod):
-                        kod = _temizlik_kod(ham_kod)
-                        if len(kod) < 4 or kod in gorulen_kod:
-                            return
-                        gorulen_kod.add(kod)
-                        bulunan_kodlar.append(kod)
-
-                    try:
-                        kok = ET.fromstring(metin)
-                    except Exception:
-                        kok = None
-                    if kok is not None:
-                        for eleman in kok.iter():
-                            etiket = _xml_yerel_ad(eleman.tag).replace("-", "_")
-                            if etiket in _KOD_ETIKETLERI:
-                                _kod_ekle(" ".join(eleman.itertext()))
-                            for ozellik, deger in eleman.attrib.items():
-                                ad = _xml_yerel_ad(ozellik).replace("-", "_")
-                                if ad in _KOD_ETIKETLERI:
-                                    _kod_ekle(deger)
-                    return bulunan_kodlar
-
-                ham = _xml_kaynagi_indir(url)
-                bulunan = _xml_kaynagi_coz(ham, ".xml")
-                kodlar = _xml_kodlari_topla(ham)
-                adlar = []
-                gorulen = set()
-                for satir in bulunan or []:
-                    ad = _temizlik_adi(_xml_etiket_temizle((satir or {}).get("ad"))[:200])
-                    if ad and ad not in gorulen:
-                        gorulen.add(ad)
-                        adlar.append(ad)
-                if not adlar and not kodlar and not kayitlar:
-                    return jsonify({
-                        "success": False,
-                        "temizlenen": 0,
-                        "mesaj": "XML linkinde eşleşecek ürün adı veya stok kodu bulunamadı.",
-                    })
-                if adlar or kodlar:
-                    secilen = {urun.id: urun for urun in kayitlar}
-                    aktifler = _vitrindeki_satilmamis(Urun.query).all()
-                    for urun in aktifler:
-                        db_ad = _temizlik_adi(urun.urun_adi)
-                        if any(_temizlik_eslesir(xml_ad, db_ad, kodlar) for xml_ad in adlar) or (
-                            not adlar and _temizlik_eslesir("", db_ad, kodlar)
-                        ):
-                            secilen[urun.id] = urun
-                    kayitlar = list(secilen.values())
-                simdi = suan_utc()
-                for urun in kayitlar:
-                    urun.silindi_mi = True
-                    urun.silinme_tarihi = simdi
-                db.session.commit()
-                return jsonify({
-                    "success": True,
-                    "temizlenen": len(kayitlar),
-                    "mesaj": (
-                        f"Linkten {len(adlar)} ürün adı ve {len(kodlar)} stok kodu okundu. "
-                        f"{len(kayitlar)} aktif ürün çöp kutusuna alındı. "
-                        "Eşleşme tam ad, adın içi, adın başı veya sonda stok kodudur. Satılmış kayıtlar duruyor."
-                    ),
-                })
         simdi = suan_utc()
-        for urun in kayitlar:
-            urun.silindi_mi = True
-            urun.silinme_tarihi = simdi
+        temizlenen = _vitrindeki_satilmamis(
+            Urun.query.filter(_xml_kaynakli_urun_kosulu())
+        ).update(
+            {
+                Urun.silindi_mi: True,
+                Urun.silinme_tarihi: simdi,
+            },
+            synchronize_session=False,
+        )
         db.session.commit()
+        adet = int(temizlenen or 0)
         return jsonify({
             "success": True,
-            "temizlenen": len(kayitlar),
+            "temizlenen": adet,
             "mesaj": (
-                f"{len(kayitlar)} eski XML ürünü temizlendi. "
-                "Kendi ürünleriniz ve satılmış kayıtlar duruyor."
+                f"{adet} eski XML ürünü çöp kutusuna alındı. "
+                "Kendi manuel ürünleriniz ve satılmış kayıtlar duruyor."
             ),
         })
     except Exception as hata:
         db.session.rollback()
-        return jsonify({"success": False, "mesaj": f"XML temizliği tamamlanamadı: {hata}"}), 500
+        return jsonify({
+            "success": False,
+            "temizlenen": 0,
+            "mesaj": "Temizlik işlemi tamamlanamadı.",
+            "error": str(hata),
+        }), 500
 
 
 @app.route("/api/dukkan-katalog-temizle", methods=["POST"])
