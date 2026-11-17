@@ -10749,14 +10749,33 @@ def veritabani_onarimini_bir_kez_baslat():
 
 
 def _arkaplan_agir_baslangic():
-    """Model, veritabanı onarımı ve ses hazırlığı dinlemeyi kilitlemesin."""
-    veritabani_onarimini_bir_kez_baslat()
+    """Port açıldıktan sonra: onarım, XML senkronu ve ses hazırlığı."""
+    try:
+        veritabani_onarimini_bir_kez_baslat()
+        xml_stok_zamanlayiciyi_baslat()
+    except Exception as hata:
+        print(f"Gecikmeli başlangıç atlandı: {hata}")
     if getattr(Config, "ELEVENLABS_API_KEY", ""):
         print(f"Canlı ses akışı hazır: ElevenLabs {Config.ELEVENLABS_MODEL_ID}.")
     elif getattr(Config, "OPENAI_API_KEY", ""):
         print(f"Canlı ses akışı hazır: OpenAI {Config.OPENAI_TTS_VOICE}.")
     else:
         print("[SES] ElevenLabs ve OpenAI anahtarı yok; Edge TTS yedek.")
+
+
+_gecikmeli_baslangic_kuruldu = False
+
+
+def _gecikmeli_baslangici_kur():
+    """Import sırasında çalışmaz. Gunicorn portu açtıktan 8 sn sonra başlar."""
+    global _gecikmeli_baslangic_kuruldu
+    if _gecikmeli_baslangic_kuruldu:
+        return
+    _gecikmeli_baslangic_kuruldu = True
+    zamanlayici = threading.Timer(8.0, _arkaplan_agir_baslangic)
+    zamanlayici.daemon = True
+    zamanlayici.start()
+
 
 # ==========================================
 # PAZARYERİ VE TEDARİKÇİ MODÜLÜ BAĞLANTISI
@@ -10768,16 +10787,12 @@ try:
 except Exception:
     pass
 
-veritabani_onarimini_bir_kez_baslat()
-xml_stok_zamanlayiciyi_baslat()
-socketio.sleep(0.05)
+_gecikmeli_baslangici_kur()
 
 # ==========================================
 # SUNUCUYU BAŞLATMA
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    socketio.start_background_task(_arkaplan_agir_baslangic)
-    socketio.sleep(0.05)
     print(f"🚀 Haliç Antik Çok Dükkanlı Mezat Portalı http://127.0.0.1:{port} adresinde başlatılıyor...")
     socketio.run(app, host="0.0.0.0", port=port, debug=True, use_reloader=False)
