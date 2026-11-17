@@ -437,6 +437,7 @@
                 </div>
                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                     <input type="text" id="xmlToptanciAd" placeholder="Tedarikçi adı (ör. Keskin Hediyelik)" style="margin:0; flex:1; min-width:160px;">
+                    <input type="number" id="xmlToptanciKar" value="0" min="0" step="1" title="Kâr oranı yüzde" placeholder="Kâr %" style="margin:0; width:90px;">
                     <button type="button" class="btn btn-green btn-sm" onclick="xmlStokSenkronKaydet()">Otomatik Stok Senkronizasyonunu Kaydet &amp; Aktifleştir</button>
                 </div>
                 <div id="xmlToptanciKutu">
@@ -482,9 +483,11 @@
                 <button type="button" class="btn btn-red btn-sm" onclick="dukkanKatalogTemizle()">Seçili Dükkandaki Tüm Aktif Ürünleri Çöp Kutusuna Al</button>
             </div>
 
-            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 11px; color: #94a3b8;">Mevcut Kataloğa KDV & Kâr Ekle:</span>
-                <button type="button" class="btn btn-yellow btn-sm" onclick="topluFiyatArtir(30)">📈 Tüm Ürünlere %30 Ekle</button>
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--card-border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span style="font-size: 11px; color: #94a3b8;">Yalnızca kendi / AI ürünleri:</span>
+                <input type="number" id="manuelKarOrani" value="30" min="0" step="1" style="margin:0; width:80px;" title="Manuel ürünlere uygulanacak yüzde">
+                <button type="button" class="btn btn-yellow btn-sm" onclick="manuelKarUygula()">Kendi Ürünlerime % Uygula</button>
+                <button type="button" class="btn btn-sm" style="background:#475569; color:#fff;" onclick="manuelKarGeriAl()">Son Fiyat Artışını Geri Al</button>
             </div>
         </div>
 
@@ -2187,23 +2190,32 @@
         }
     });
 
-    function topluFiyatArtir(oran = 30) {
+    function manuelKarUygula() {
         playClickSound();
-        if (!confirm(`Veritabanındaki TÜM ürünlerin açılış fiyatına %${oran} artış uygulanacak. Onaylıyor musunuz?`)) return;
-
-        fetch('/fiyatlari-yuzde-artir', {
+        const alan = document.getElementById('manuelKarOrani');
+        const oran = alan ? alan.value : '';
+        if (!confirm('Yalnızca kendi eklediğiniz manuel ürünlere %' + oran + ' uygulanacak. XML ürünleri değişmez. Yanlışsa geri alınabilir. Onaylıyor musunuz?')) return;
+        fetch('/api/manuel-kar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ oran: oran })
-        })
-        .then(res => res.json())
-        .then(data => {
-            alert(data.mesaj);
-            if (data.success) {
-                veriCekAdmin();
-                adminUrunAra();
-            }
-        });
+        }).then(r => r.json()).then(data => {
+            alert((data && data.mesaj) || 'İşlem tamamlanamadı.');
+            if (data && data.success) adminUrunAra();
+        }).catch(() => alert('Manuel kâr uygulanamadı.'));
+    }
+
+    function manuelKarGeriAl() {
+        playClickSound();
+        if (!confirm('Son manuel fiyat artışı geri alınsın mı? XML ürünleri değişmez.')) return;
+        fetch('/api/manuel-kar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ geri_al: true })
+        }).then(r => r.json()).then(data => {
+            alert((data && data.mesaj) || 'Geri alma tamamlanamadı.');
+            if (data && data.success) adminUrunAra();
+        }).catch(() => alert('Fiyatlar geri alınamadı.'));
     }
 
     function tedarikcileriYukleAdmin() {
@@ -2942,6 +2954,8 @@
                 + '<span style="color:#94a3b8; word-break:break-all;">' + htmlKacis(k.url || '') + '</span>'
                 + '<span style="color:' + (aktif ? '#86efac' : '#fca5a5') + ';">' + (aktif ? 'Aktif' : 'Pasif') + '</span>'
                 + '<span style="color:#86efac;">Son senkron: ' + htmlKacis(k.son_senkron || '—') + '</span>'
+                + '<label style="color:#fef08a;">Kâr % <input id="xmlKar-' + id + '" type="number" min="0" step="1" value="' + htmlKacis(k.kar_orani || 0) + '" style="width:70px; margin:0;"></label>'
+                + '<button type="button" class="btn btn-yellow btn-sm" onclick="xmlToptanciKarKaydet(\'' + id + '\')">Kârı Kaydet</button>'
                 + '<button type="button" class="btn btn-sm" onclick="xmlToptanciDurum(\'' + id + '\', ' + (aktif ? 'false' : 'true') + ')">' + (aktif ? 'Pasifleştir' : 'Aktifleştir') + '</button>'
                 + '<button type="button" class="btn btn-blue btn-sm" onclick="xmlToptanciSenkron(\'' + id + '\')">Şimdi Senkronize Et</button>'
                 + '<button type="button" class="btn btn-red btn-sm" onclick="xmlToptanciSil(\'' + id + '\')">Sil</button>'
@@ -2983,13 +2997,21 @@
         const adInput = document.getElementById('xmlToptanciAd');
         const url = urlInput ? urlInput.value.trim() : '';
         const ad = adInput ? adInput.value.trim() : '';
+        const karInput = document.getElementById('xmlToptanciKar');
+        const kar = karInput ? karInput.value : 0;
         if (!url) return alert('Önce canlı XML linkini yazın.');
-        xmlToptanciIstek({ url: url, ad: ad });
+        xmlToptanciIstek({ url: url, ad: ad, kar_orani: kar });
     }
 
     function xmlToptanciDurum(id, aktif) {
         playClickSound();
         xmlToptanciIstek({ id: id, aktif: aktif });
+    }
+
+    function xmlToptanciKarKaydet(id) {
+        playClickSound();
+        const alan = document.getElementById('xmlKar-' + id);
+        xmlToptanciIstek({ id: id, kar_orani: alan ? alan.value : 0 });
     }
 
     function xmlToptanciSenkron(id) {

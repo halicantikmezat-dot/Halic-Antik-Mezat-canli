@@ -8454,6 +8454,7 @@ def xml_dagitimi_onayla():
         return lot_sayaclari[dukkan]
 
     try:
+        dagitim_kari = _xml_kar_orani(_xml_besleme.get("link"))
         for sira, urun in enumerate(kuyruk, start=1):
             try:
                 if not isinstance(urun, dict) or not urun.get("kayda_uygun"):
@@ -8468,6 +8469,10 @@ def xml_dagitimi_onayla():
                 gorseller = _xml_gorsel_listesi(urun.get("gorseller"))
                 ad = _xml_etiket_temizle(urun.get("ad"))[:200]
                 if fiyat is None or not ad:
+                    atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat eksik"})
+                    continue
+                satis = _xml_satis_fiyati(fiyat, dagitim_kari)
+                if satis is None:
                     atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat eksik"})
                     continue
                 adaylar = (
@@ -8495,13 +8500,13 @@ def xml_dagitimi_onayla():
                     )
                     kazanan = (hedef.kazanan_adi or "").strip()
                     acik_pey = kazanan not in ("", "Yok") or eski_guncel > eski_acilis
-                    hedef.acilis_fiyati = fiyat
+                    hedef.acilis_fiyati = satis
                     if not acik_pey:
-                        hedef.guncel_fiyat = fiyat
+                        hedef.guncel_fiyat = satis
                     hedef.fotograflar = gorseller
                     hedef.tanitim_yazisi = _xml_etiket_temizle(urun.get("aciklama"))[:4000]
                     hedef.kaynak_tipi = "xml"
-                    hedef.hemen_al_fiyati = _xml_hemen_al_fiyati(fiyat)
+                    hedef.hemen_al_fiyati = _xml_hemen_al_fiyati(satis)
                     if _xml_besleme.get("link"):
                         hedef.xml_kaynak_url = str(_xml_besleme.get("link"))[:500]
                     guncellenen.append({
@@ -8516,9 +8521,9 @@ def xml_dagitimi_onayla():
                     lot_no=lot_no,
                     urun_adi=ad,
                     kategori=kategori_ad_temizle(urun.get("kategori") or "Genel"),
-                    acilis_fiyati=fiyat,
-                    guncel_fiyat=fiyat,
-                    hemen_al_fiyati=_xml_hemen_al_fiyati(fiyat),
+                    acilis_fiyati=satis,
+                    guncel_fiyat=satis,
+                    hemen_al_fiyati=_xml_hemen_al_fiyati(satis),
                     tanitim_yazisi=_xml_etiket_temizle(urun.get("aciklama"))[:4000],
                     fotograflar=gorseller,
                     video="",
@@ -8810,6 +8815,40 @@ def _xml_hemen_al_fiyati(acilis):
     return float(int(round(fiyat * 1.5)))
 
 
+def _xml_kar_sayisi(ham):
+    try:
+        oran = float(ham or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if oran < 0:
+        return 0.0
+    if oran > 1000:
+        return 1000.0
+    return oran
+
+
+def _xml_kar_orani(url):
+    hedef = str(url or "").strip()[:500]
+    if not hedef:
+        return 0.0
+    for kayit in _xml_toptanci_listesi_oku():
+        if kayit.get("url") == hedef:
+            return _xml_kar_sayisi(kayit.get("kar_orani"))
+    return 0.0
+
+
+def _xml_satis_fiyati(baz, kar_orani):
+    """Her çalıştırmada tedarikçi baz fiyatı + sabit kâr. Önceki satış fiyatına binmez."""
+    try:
+        fiyat = float(baz or 0)
+        oran = _xml_kar_sayisi(kar_orani)
+    except (TypeError, ValueError):
+        return None
+    if fiyat <= 0:
+        return None
+    return float(int(round(fiyat * (1 + oran / 100.0))))
+
+
 def xml_hemen_al_bosluklarini_doldur():
     kayitlar = Urun.query.filter(
         Urun.kaynak_tipi == "xml",
@@ -9039,6 +9078,7 @@ def _xml_cop_kutusuna(urun, simdi):
 def _xml_stok_veritabanina_uygula(url, harita):
     simdi = suan_utc()
     hedef_url = (url or "").strip()[:500]
+    kar_orani = _xml_kar_orani(hedef_url)
     xml_urunler = Urun.query.filter(
         Urun.kaynak_tipi == "xml",
         Urun.xml_kaynak_url == hedef_url,
@@ -9093,15 +9133,18 @@ def _xml_stok_veritabanina_uygula(url, harita):
                     continue
                 if (anahtar, dukkan) in manuel_adlar:
                     continue
+                satis = _xml_satis_fiyati(fiyat, kar_orani)
+                if satis is None:
+                    continue
                 yeni_stok = stok if isinstance(stok, int) and stok > 0 else 1
                 yeni_urun = Urun(
                     dukkan_kodu=dukkan,
                     lot_no=sonraki_lot(dukkan),
                     urun_adi=ad,
                     kategori=kategori_ad_temizle(paket.get("kategori") or "Genel"),
-                    acilis_fiyati=fiyat,
-                    guncel_fiyat=fiyat,
-                    hemen_al_fiyati=_xml_hemen_al_fiyati(fiyat),
+                    acilis_fiyati=satis,
+                    guncel_fiyat=satis,
+                    hemen_al_fiyati=_xml_hemen_al_fiyati(satis),
                     tanitim_yazisi=_xml_etiket_temizle(paket.get("aciklama"))[:4000],
                     fotograflar=_xml_gorsel_listesi(paket.get("gorseller")),
                     video="",
@@ -9139,9 +9182,12 @@ def _xml_stok_veritabanina_uygula(url, harita):
                 aday.stok_adedi = yeni_stok
                 aday.xml_kaynak_url = hedef_url
                 if fiyat is not None:
-                    aday.acilis_fiyati = fiyat
-                    aday.guncel_fiyat = fiyat
-                    aday.hemen_al_fiyati = _xml_hemen_al_fiyati(fiyat)
+                    satis = _xml_satis_fiyati(fiyat, kar_orani)
+                    if satis is None:
+                        continue
+                    aday.acilis_fiyati = satis
+                    aday.guncel_fiyat = satis
+                    aday.hemen_al_fiyati = _xml_hemen_al_fiyati(satis)
                 elif not float(aday.hemen_al_fiyati or 0):
                     aday.hemen_al_fiyati = _xml_hemen_al_fiyati(aday.acilis_fiyati)
                 kaydet()
@@ -9194,6 +9240,7 @@ def _xml_toptanci_listesi_oku():
             "ad": ad,
             "url": url,
             "aktif": bool(kayit.get("aktif", True)),
+            "kar_orani": _xml_kar_sayisi(kayit.get("kar_orani")),
             "son_senkron": str(kayit.get("son_senkron") or "").strip()[:40],
         })
     return temiz
@@ -9225,6 +9272,7 @@ def _xml_toptanci_listesini_hazirla():
         "ad": "Keskin Hediyelik",
         "url": eski,
         "aktif": True,
+        "kar_orani": 0.0,
         "son_senkron": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip()[:40],
     }]
     _xml_toptanci_listesi_yaz(liste)
@@ -9233,7 +9281,7 @@ def _xml_toptanci_listesini_hazirla():
     return liste
 
 
-def _xml_toptanci_ekle(ad, url):
+def _xml_toptanci_ekle(ad, url, kar_orani=None):
     url = str(url or "").strip()[:500]
     if not url.lower().startswith(("http://", "https://")):
         raise ValueError("XML linki http veya https olmalı.")
@@ -9244,6 +9292,8 @@ def _xml_toptanci_ekle(ad, url):
             if ad:
                 kayit["ad"] = ad
             kayit["aktif"] = True
+            if kar_orani is not None:
+                kayit["kar_orani"] = _xml_kar_sayisi(kar_orani)
             _xml_toptanci_listesi_yaz(liste)
             db.session.commit()
             return liste
@@ -9254,6 +9304,7 @@ def _xml_toptanci_ekle(ad, url):
         "ad": ad,
         "url": url,
         "aktif": True,
+        "kar_orani": _xml_kar_sayisi(kar_orani),
         "son_senkron": "",
     })
     _xml_toptanci_listesi_yaz(liste)
@@ -9367,6 +9418,17 @@ def xml_toptancilar_api():
             _xml_toptanci_listesi_yaz(liste)
             db.session.commit()
             return _xml_toptanci_yaniti(liste, "Toptancı XML kaydı silindi.")
+        if kaynak_id and "kar_orani" in veri and not veri.get("url") and not veri.get("senkron") and not veri.get("sil"):
+            oran = _xml_kar_sayisi(veri.get("kar_orani"))
+            for kaynak in liste:
+                if kaynak.get("id") == kaynak_id:
+                    kaynak["kar_orani"] = oran
+            _xml_toptanci_listesi_yaz(liste)
+            db.session.commit()
+            return _xml_toptanci_yaniti(
+                liste,
+                f"Kâr oranı %{oran:g} kaydedildi. Fiyat, sonraki senkronda tedarikçi baz fiyatına bu oran eklenerek yenilenir.",
+            )
         if kaynak_id and "aktif" in veri and not veri.get("url") and not veri.get("senkron"):
             for kaynak in liste:
                 if kaynak.get("id") == kaynak_id:
@@ -9380,7 +9442,7 @@ def xml_toptancilar_api():
         url = str(veri.get("url") or "").strip()
         if not url:
             return jsonify({"success": False, "mesaj": "XML linki gerekli."})
-        liste = _xml_toptanci_ekle(veri.get("ad"), url)
+        liste = _xml_toptanci_ekle(veri.get("ad"), url, veri.get("kar_orani"))
         _xml_toptanci_senkronu_baslat()
         return _xml_toptanci_yaniti(liste, "Toptancı XML listesine kaydedildi. Arka planda senkron başlayacak.")
     except ValueError as hata:
@@ -9398,7 +9460,7 @@ def xml_stok_senkron_api():
         if request.method == "GET":
             return _xml_toptanci_yaniti(_xml_toptanci_listesini_hazirla())
         veri = request.get_json(silent=True) or {}
-        liste = _xml_toptanci_ekle(veri.get("ad"), veri.get("url"))
+        liste = _xml_toptanci_ekle(veri.get("ad"), veri.get("url"), veri.get("kar_orani"))
         _xml_toptanci_senkronu_baslat()
         return _xml_toptanci_yaniti(
             liste,
@@ -9410,6 +9472,116 @@ def xml_stok_senkron_api():
     except Exception as hata:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": f"Stok senkronu kaydedilemedi: {hata}"}), 500
+
+
+_MANUEL_FIYAT_YEDEK = "manuel_fiyat_yedek"
+
+
+def _manuel_fiyata_oran(deger, carpan):
+    try:
+        sayi = float(deger or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if sayi <= 0:
+        return 0.0
+    return float(int(round(sayi * carpan)))
+
+
+@app.route("/api/manuel-kar", methods=["POST"])
+@admin_required
+def manuel_kar_api():
+    veri = request.get_json(silent=True) or {}
+    try:
+        if veri.get("geri_al"):
+            ham = _ayar_degeri(_MANUEL_FIYAT_YEDEK)
+            try:
+                yedek = json.loads(ham) if ham else {}
+            except (TypeError, ValueError):
+                yedek = {}
+            satirlar = yedek.get("urunler") if isinstance(yedek, dict) else None
+            if not satirlar:
+                return jsonify({"success": False, "mesaj": "Geri alınacak fiyat kaydı yok."})
+            donen = 0
+            for kayit in satirlar:
+                if not isinstance(kayit, dict):
+                    continue
+                try:
+                    urun = db.session.get(Urun, int(kayit.get("id")))
+                except (TypeError, ValueError):
+                    urun = None
+                if urun is None or (getattr(urun, "kaynak_tipi", None) or "manuel") != "manuel":
+                    continue
+                urun.acilis_fiyati = float(kayit.get("acilis") or 0)
+                urun.guncel_fiyat = float(kayit.get("guncel") or 0)
+                urun.hemen_al_fiyati = float(kayit.get("hemen_al") or 0)
+                donen += 1
+            _ayar_yaz(_MANUEL_FIYAT_YEDEK, "")
+            db.session.commit()
+            return jsonify({
+                "success": True,
+                "mesaj": f"Son fiyat artışı geri alındı. {donen} manuel ürün eski fiyatına döndü.",
+            })
+
+        oran = _xml_kar_sayisi(veri.get("oran"))
+        if oran <= 0:
+            return jsonify({"success": False, "mesaj": "Uygulanacak kâr oranı 0'dan büyük olmalı."})
+        carpan = 1 + oran / 100.0
+        on_teklif_idler = {
+            satir[0]
+            for satir in db.session.query(OnTeklif.urun_id).distinct()
+            if satir[0]
+        }
+        urunler = Urun.query.filter(
+            Urun.kaynak_tipi == "manuel",
+            or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+        ).all()
+        yedek = []
+        uygulanan = 0
+        atlanan = 0
+        for urun in urunler:
+            if (urun.durum or "") in ("Satıldı", "satildi", "Pasif"):
+                continue
+            if _stok_senkron_dokunulmaz(urun, on_teklif_idler):
+                atlanan += 1
+                continue
+            acilis = float(urun.acilis_fiyati or 0)
+            if acilis <= 0:
+                continue
+            guncel = float(urun.guncel_fiyat if urun.guncel_fiyat is not None else acilis)
+            hemen = float(urun.hemen_al_fiyati or 0)
+            yedek.append({
+                "id": urun.id,
+                "acilis": acilis,
+                "guncel": guncel,
+                "hemen_al": hemen,
+            })
+            urun.acilis_fiyati = _manuel_fiyata_oran(acilis, carpan)
+            urun.guncel_fiyat = _manuel_fiyata_oran(guncel, carpan)
+            urun.hemen_al_fiyati = (
+                _manuel_fiyata_oran(hemen, carpan)
+                if hemen > 0
+                else _xml_hemen_al_fiyati(urun.acilis_fiyati)
+            )
+            uygulanan += 1
+        if not yedek:
+            return jsonify({
+                "success": False,
+                "mesaj": "Fiyat uygulanacak manuel ürün yok. XML ürünlerine dokunulmadı.",
+            })
+        _ayar_yaz(_MANUEL_FIYAT_YEDEK, json.dumps({
+            "oran": oran,
+            "zaman": _stok_zaman_metni(),
+            "urunler": yedek,
+        }, ensure_ascii=False))
+        db.session.commit()
+        mesaj = f"Kendi ürünlerinize %{oran:g} uygulandı. {uygulanan} manuel ürün güncellendi."
+        if atlanan:
+            mesaj += f" Açık teklifi olan {atlanan} ürün atlandı."
+        mesaj += " XML ürünleri değişmedi. Yanlışsa Son Fiyat Artışını Geri Al kullanılabilir."
+        return jsonify({"success": True, "mesaj": mesaj, "uygulanan": uygulanan, "atlanan": atlanan})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Manuel kâr işlemi tamamlanamadı: {hata}"}), 500
 
 
 # ==========================================
