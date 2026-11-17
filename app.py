@@ -7906,12 +7906,13 @@ _XML_GORSEL_BASLIKLARI = {
     "gorsel", "resim", "image", "image link", "foto", "fotograf",
     "picture", "resim url", "image url",
 }
+_XML_MODELARABA_IFADELER = (
+    "klasik araba", "model araba", "diecast", "maket araba", "koleksiyon araba",
+    "metal araba", "vosvos", "1:18", "1:24", "1:32", "1:43", "1:64",
+    "hot wheels", "matchbox",
+)
 _XML_VARSAYILAN_KURALLAR = (
-    ("modelaraba", (
-        "klasik araba", "model araba", "diecast", "maket araba", "koleksiyon araba",
-        "metal araba", "vosvos", "beetle", "1:18", "1:24", "1:32", "1:43", "1:64",
-        "hot wheels", "matchbox", "welly", "burago", "maisto",
-    )),
+    ("modelaraba", _XML_MODELARABA_IFADELER),
     ("plak", ("plak", "pikap", "kaset", "cd")),
     ("retro", (
         "retro", "nostalji", "hediyelik", "biblo", "küre", "kar küresi",
@@ -7946,7 +7947,7 @@ _XML_VARSAYILAN_KURALLAR = (
     )),
 )
 _XML_OTOMATIK_HARIC = frozenset({"diger"})
-_XML_MODELARABA_YALIN = frozenset({"model", "araba"})
+_XML_MODELARABA_YALIN = frozenset({"model", "modeller", "modelleri", "araba"})
 _XML_MODELARABA_ENGEL = (
     "kerata", "çekecek", "elbise", "kıyafet", "tişört", "gömlek", "pantolon",
     "bebek arabası", "pazar arabası", "alışveriş arabası",
@@ -7996,7 +7997,10 @@ def _xml_kural_listesi():
             not kelime
             or dukkan not in DUKKANLAR
             or dukkan in _XML_OTOMATIK_HARIC
-            or (dukkan == "modelaraba" and kelime in _XML_MODELARABA_YALIN)
+            or (
+                dukkan == "modelaraba"
+                and not _xml_modelaraba_adayi_kabul("modelaraba", kelime, False)
+            )
             or kelime in gorulen
         ):
             continue
@@ -8018,6 +8022,20 @@ def _xml_kelime_var(metin, kelime):
     return f" {hedef} " in f" {metin} "
 
 
+_XML_MODELARABA_IZIN = frozenset(
+    _xml_metin_sade(kelime) for kelime in _XML_MODELARABA_IFADELER
+)
+
+
+def _xml_kategori_karma_mi(kategori):
+    metin = _xml_metin_sade(kategori)
+    if not metin:
+        return False
+    if "oyuncak" in metin:
+        return True
+    return "ahsap egitici" in metin
+
+
 def _xml_modelaraba_baslik_engelli(ad):
     baslik = _xml_metin_sade(ad)
     if not baslik:
@@ -8033,7 +8051,10 @@ def _xml_modelaraba_adayi_kabul(dukkan, kelime, baslik_engelli):
         return True
     if baslik_engelli:
         return False
-    return _xml_metin_sade(kelime) not in _XML_MODELARABA_YALIN
+    sade = _xml_metin_sade(kelime)
+    if not sade or sade in _XML_MODELARABA_YALIN:
+        return False
+    return sade in _XML_MODELARABA_IZIN
 
 
 def _xml_dagitim_dukkani(kod):
@@ -8054,6 +8075,8 @@ def _xml_varsayilan_kural_listesi():
 
 
 def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
+    if _xml_kategori_karma_mi(kategori):
+        return "karma"
     metin = _xml_metin_sade(" ".join([
         str(ad or ""), str(aciklama or ""), str(kategori or ""),
     ]))
@@ -8495,10 +8518,10 @@ def xml_laboratuvar_kurallar():
         dukkan = str(veri.get("dukkan") or "").strip().lower()
         if not kelime:
             return jsonify({"success": False, "mesaj": "Kelime gerekli."})
-        if dukkan == "modelaraba" and kelime in _XML_MODELARABA_YALIN:
+        if dukkan == "modelaraba" and not _xml_modelaraba_adayi_kabul("modelaraba", kelime, False):
             return jsonify({
                 "success": False,
-                "mesaj": "Tek başına model veya araba Klasik Arabalar kuralı olamaz.",
+                "mesaj": "Klasik Arabalar yalnız net araba ifadesiyle eşleşir. model, modeller ve modelleri kullanılamaz.",
             })
         if dukkan in _XML_OTOMATIK_HARIC:
             return jsonify({
