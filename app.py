@@ -337,16 +337,78 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 print("[BOOT] sqlalchemy kuruluyor", flush=True)
 db = SQLAlchemy(app)
+
+REDIS_URL = (os.environ.get("REDIS_URL") or "").strip() or None
+_redis_istemci = None
+_redis_hazir = False
+_redis_son_hata = 0.0
+
+
+def _redis_al():
+    """REDIS_URL varsa istemci. Erisilemezse None; cagiran bellege duser, surec ayakta kalir."""
+    global _redis_istemci, _redis_hazir, _redis_son_hata
+    if not REDIS_URL:
+        return None
+    if _redis_hazir and _redis_istemci is not None:
+        return _redis_istemci
+    simdi = time.time()
+    if simdi - _redis_son_hata < 5:
+        return None
+    try:
+        import redis
+        istemci = redis.Redis.from_url(
+            REDIS_URL,
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+            health_check_interval=30,
+            decode_responses=True,
+        )
+        istemci.ping()
+    except Exception as hata:
+        _redis_istemci = None
+        _redis_hazir = False
+        _redis_son_hata = time.time()
+        print(f"[REDIS] erisilemedi, bellek yedegi: {hata}", flush=True)
+        return None
+    _redis_istemci = istemci
+    _redis_hazir = True
+    _redis_son_hata = 0.0
+    print("[REDIS] baglanti hazir", flush=True)
+    return _redis_istemci
+
+
+def _redis_dusur(hata):
+    global _redis_hazir, _redis_son_hata
+    _redis_hazir = False
+    _redis_son_hata = time.time()
+    print(f"[REDIS] islem bellege dustu: {hata}", flush=True)
+
+
 print("[BOOT] socketio kuruluyor", flush=True)
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode="gevent",
-    manage_session=False,
-    ping_timeout=60,
-    ping_interval=25,
-    max_http_buffer_size=8000000,
-)
+
+
+def _socketio_kur():
+    ayar = dict(
+        cors_allowed_origins="*",
+        async_mode="gevent",
+        manage_session=False,
+        ping_timeout=60,
+        ping_interval=25,
+        max_http_buffer_size=8000000,
+    )
+    if not REDIS_URL:
+        return SocketIO(app, **ayar)
+    try:
+        if _redis_al() is None:
+            raise RuntimeError("REDIS_URL var ama sunucu yanit vermedi")
+        print("[BOOT] socketio redis pub/sub", flush=True)
+        return SocketIO(app, message_queue=REDIS_URL, **ayar)
+    except Exception as hata:
+        print(f"[BOOT] redis pub/sub acilamadi, yerel yayin: {hata}", flush=True)
+        return SocketIO(app, **ayar)
+
+
+socketio = _socketio_kur()
 print("[BOOT] socketio hazir", flush=True)
 
 try:
@@ -1457,10 +1519,49 @@ def _entegrasyon_tokeni_gecerli():
 
 
 _rate_kovalar = {}
+_RATE_LIMIT_LUA = """
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+local n = redis.call('ZCARD', KEYS[1])
+if n >= tonumber(ARGV[3]) then
+    return 0
+end
+if ARGV[4] == '1' then
+    redis.call('ZADD', KEYS[1], ARGV[2], ARGV[5])
+    redis.call('EXPIRE', KEYS[1], ARGV[6])
+end
+return 1
+"""
+
+
+def _rate_limit_redis(anahtar, limit, pencere_sn, kaydet):
+    """Ortak sayac. Redis yoksa veya koparsa None; cagiran bellek kovasına duser."""
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    simdi = time.time()
+    try:
+        sonuc = istemci.eval(
+            _RATE_LIMIT_LUA,
+            1,
+            "rl:" + str(anahtar),
+            simdi - float(pencere_sn),
+            simdi,
+            int(limit),
+            "1" if kaydet else "0",
+            f"{simdi:.6f}:{uuid.uuid4().hex[:8]}",
+            int(float(pencere_sn)) + 2,
+        )
+        return bool(int(sonuc))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
 
 
 def _rate_limit_kontrol(anahtar, limit, pencere_sn, kaydet=True):
     """Pencere doluysa False. kaydet True ise izin verilen isteği de sayar."""
+    redis_sonuc = _rate_limit_redis(anahtar, limit, pencere_sn, kaydet)
+    if redis_sonuc is not None:
+        return redis_sonuc
     simdi = time.time()
     kova = _rate_kovalar.get(anahtar)
     if kova is None:
@@ -1479,6 +1580,12 @@ def _rate_limit_kontrol(anahtar, limit, pencere_sn, kaydet=True):
 
 
 def _rate_limit_sifirla(anahtar):
+    istemci = _redis_al()
+    if istemci is not None:
+        try:
+            istemci.delete("rl:" + str(anahtar))
+        except Exception as hata:
+            _redis_dusur(hata)
     _rate_kovalar.pop(anahtar, None)
 
 
@@ -2074,9 +2181,66 @@ def icerik_maddelerini_oku(tur):
         ]
 
 
-def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
-    if not kazanan_adi or kazanan_adi in ["Yok", "None", "-", ""]:
+def _yazma_icin_kilitle(model, kayit_id):
+    """Ürün veya kullanıcı satırını bu transaction bitene kadar kilitler.
+
+    PostgreSQL SELECT ... FOR UPDATE. SQLite aynı oturumdaki satırı döndürür.
+    """
+    if kayit_id is None or kayit_id == "":
+        return None
+    try:
+        kayit_id = int(kayit_id)
+    except (TypeError, ValueError):
+        return None
+    sorgu = db.session.query(model)
+    if not IS_SQLITE:
+        sorgu = sorgu.with_for_update()
+    return sorgu.filter(model.id == kayit_id).populate_existing().first()
+
+
+def _kilitli_fiyat(oda, urun):
+    """Kilitli satırdaki fiyat esastır. Aynı worker belleği daha yüksekse onu da görür."""
+    db_fiyat = 0.0
+    if urun is not None:
+        try:
+            db_fiyat = float(urun.guncel_fiyat or 0.0)
+        except (TypeError, ValueError):
+            db_fiyat = 0.0
+        if db_fiyat <= 0:
+            try:
+                db_fiyat = float(urun.acilis_fiyati or 0.0)
+            except (TypeError, ValueError):
+                db_fiyat = 0.0
+    try:
+        oda_fiyat = float((oda.get("durum") or {}).get("pey") or 0.0)
+    except (TypeError, ValueError):
+        oda_fiyat = 0.0
+    return max(db_fiyat, oda_fiyat)
+
+
+def _kazanan_sepetini_disari_aktar(urun_id, hedef_kullanici):
+    if not hedef_kullanici:
         return
+    urun = db.session.get(Urun, urun_id)
+    if not urun:
+        return
+    satis_tutari = float(urun.guncel_fiyat or urun.acilis_fiyati or 0)
+    socketio.start_background_task(
+        bizimhesap_siparis_aktar,
+        alici_ad=hedef_kullanici.ad_soyad,
+        telefon=hedef_kullanici.telefon,
+        email=hedef_kullanici.email,
+        adres=hedef_kullanici.adres,
+        urun_adi=urun.urun_adi,
+        lot_no=urun.lot_no,
+        satis_fiyati=satis_tutari,
+    )
+
+
+def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None, commit=True):
+    """Sepet satırını ekler. commit False ise çağıran tek transaction içinde kaydeder."""
+    if not kazanan_adi or kazanan_adi in ["Yok", "None", "-", ""]:
+        return None
 
     if isinstance(kazanan_id, str):
         kazanan_id = kazanan_id.strip()
@@ -2089,40 +2253,94 @@ def urunu_kazanana_sepete_ekle(urun_id, kazanan_adi, kazanan_id=None):
     if not hedef_kullanici:
         temiz_ad = saf_isim_temizle(kazanan_adi)
         if not temiz_ad:
-            return
+            return None
         hedef_kullanici = (
             Kullanici.query.filter(
                 Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(temiz_ad)
             ).first()
         )
 
-    if hedef_kullanici:
-        var_mi = SepetItem.query.filter_by(
-            musteri_id=hedef_kullanici.id, urun_id=urun_id
-        ).first()
-        if not var_mi:
-            yeni_item = SepetItem(musteri_id=hedef_kullanici.id, urun_id=urun_id)
-            db.session.add(yeni_item)
-            db.session.commit()
+    if not hedef_kullanici:
+        return None
 
-        urun = db.session.get(Urun, urun_id)
-        if urun:
-            satis_tutari = float(urun.guncel_fiyat or urun.acilis_fiyati or 0)
-            socketio.start_background_task(
-                bizimhesap_siparis_aktar,
-                alici_ad=hedef_kullanici.ad_soyad,
-                telefon=hedef_kullanici.telefon,
-                email=hedef_kullanici.email,
-                adres=hedef_kullanici.adres,
-                urun_adi=urun.urun_adi,
-                lot_no=urun.lot_no,
-                satis_fiyati=satis_tutari,
-            )
+    var_mi = SepetItem.query.filter_by(
+        musteri_id=hedef_kullanici.id, urun_id=urun_id
+    ).first()
+    eklendi = False
+    if not var_mi:
+        db.session.add(SepetItem(musteri_id=hedef_kullanici.id, urun_id=urun_id))
+        eklendi = True
+    if not commit:
+        return hedef_kullanici
+    if eklendi:
+        db.session.commit()
+    _kazanan_sepetini_disari_aktar(urun_id, hedef_kullanici)
+    return hedef_kullanici
 
 
 # ==========================================
 # 10 DÜKKAN İÇİN ÇOKLU ODA VE MEZAT MOTORU
 # ==========================================
+_REDIS_KILIT_BIRAK = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
+
+
+class _WorkerKilidi:
+    """Önce bu süreçteki kilit, REDIS_URL varsa worker'lar arası kilit.
+
+    Redis koparsa yerel kilit kalır ve istek düşmez.
+    """
+
+    def __init__(self, ad):
+        self.ad = ad
+        self.yerel = BoundedSemaphore(1)
+        self.token = None
+        self.anahtar = None
+        self.istemci = None
+
+    def __enter__(self):
+        self.yerel.acquire()
+        self.token = None
+        self.anahtar = None
+        self.istemci = None
+        istemci = _redis_al()
+        if istemci is None:
+            return self
+        token = uuid.uuid4().hex
+        anahtar = "mezat:kilit:" + self.ad
+        son = time.monotonic() + 12.0
+        while True:
+            try:
+                alindi = istemci.set(anahtar, token, nx=True, ex=20)
+            except Exception as hata:
+                _redis_dusur(hata)
+                return self
+            if alindi:
+                self.token = token
+                self.anahtar = anahtar
+                self.istemci = istemci
+                return self
+            if time.monotonic() >= son:
+                print(f"[REDIS] kilit zaman asimi, yerel kilit ({self.ad})", flush=True)
+                return self
+            time.sleep(0.05)
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if self.istemci is not None and self.token and self.anahtar:
+                try:
+                    self.istemci.eval(_REDIS_KILIT_BIRAK, 1, self.anahtar, self.token)
+                except Exception as hata:
+                    _redis_dusur(hata)
+        finally:
+            self.yerel.release()
+        return False
+
+
 odalar = {}
 oda_kilitleri = {}
 for kod in DUKKANLAR.keys():
@@ -2149,7 +2367,7 @@ for kod in DUKKANLAR.keys():
             "kazanan_id": None,
         },
     }
-    oda_kilitleri[kod] = BoundedSemaphore(1)
+    oda_kilitleri[kod] = _WorkerKilidi(kod)
 
 
 def _baslik_tekrarini_sil(metin, urun_adi):
@@ -2419,6 +2637,12 @@ def _gizli_pazarligi_kapat(oda):
 
 def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konusma_adi):
     """Kilidi çağıran tutar. Gizli eşik hiçbir yayına konmaz."""
+    if kullanici_id:
+        _yazma_icin_kilitle(Kullanici, kullanici_id)
+    if urun is not None and getattr(urun, "id", None):
+        kilitli_urun = _yazma_icin_kilitle(Urun, urun.id)
+        if kilitli_urun is not None:
+            urun = kilitli_urun
     oda["sayac_aktif"] = False
     oda["sayac_gorev_id"] += 1
     oda["sayac_kalan"] = 0
@@ -2441,8 +2665,12 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         db.session.add(urun)
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
         stok_satis_sonrasi_dus(urun)
+        hedef_sepet = urunu_kazanana_sepete_ekle(
+            urun.id, etiket_ad, kullanici_id, commit=False
+        )
         db.session.commit()
-        urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
+        if hedef_sepet:
+            _kazanan_sepetini_disari_aktar(urun.id, hedef_sepet)
 
     invalidate_vitrin_cache()
     _pey_duyur(
@@ -2646,7 +2874,9 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
 
             with app.app_context():
                 if biten_urun_id:
-                    urun = db.session.get(Urun, biten_urun_id)
+                    if oda["durum"].get("kazanan_id"):
+                        _yazma_icin_kilitle(Kullanici, oda["durum"].get("kazanan_id"))
+                    urun = _yazma_icin_kilitle(Urun, biten_urun_id)
                     if urun:
                         satis_lot = urun.lot_no
                         satis_ad = urun.urun_adi or "Eser"
@@ -2658,12 +2888,15 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             db.session.add(urun)
                             OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                             stok_satis_sonrasi_dus(urun)
-                            db.session.commit()
-                            urunu_kazanana_sepete_ekle(
+                            hedef_sepet = urunu_kazanana_sepete_ekle(
                                 biten_urun_id,
                                 oda["durum"]["kazanan"],
                                 oda["durum"]["kazanan_id"],
+                                commit=False,
                             )
+                            db.session.commit()
+                            if hedef_sepet:
+                                _kazanan_sepetini_disari_aktar(biten_urun_id, hedef_sepet)
                             oda["durum"]["durum"] = "Satıldı"
                             _son_satisi_yaz(
                                 oda,
@@ -4623,15 +4856,30 @@ def chat_mesaj_gonder():
             mevcut_fiyat = float(oda["durum"].get("pey", 0) or 0)
 
             if teklif_tutari > mevcut_fiyat:
+                pey_yazildi = False
+                urun = None
+                urun_adi = ""
                 with oda_kilitleri[dukkan]:
-                    etiket_ad = f"[{platform}] {kullanici}"
-                    oda["durum"]["pey"] = teklif_tutari
-                    oda["durum"]["kazanan"] = etiket_ad
-                    oda["durum"]["kazanan_id"] = kullanici_id
-
-                    urun = db.session.get(Urun, aktif_urun_id)
+                    if kullanici_id:
+                        kilitli_kullanici = _yazma_icin_kilitle(Kullanici, kullanici_id)
+                        if kilitli_kullanici and on_odeme_kilitli_mi(kilitli_kullanici):
+                            db.session.rollback()
+                            return on_odeme_yaniti()
+                    urun = _yazma_icin_kilitle(Urun, aktif_urun_id)
                     urun_adi = urun.urun_adi if urun else ""
-                    if urun:
+                    taban = _kilitli_fiyat(oda, urun) if urun is not None else mevcut_fiyat
+                    if (
+                        not urun
+                        or urun.silindi_mi
+                        or urun.durum == "Satıldı"
+                        or teklif_tutari <= taban
+                    ):
+                        db.session.rollback()
+                    else:
+                        etiket_ad = f"[{platform}] {kullanici}"
+                        oda["durum"]["pey"] = teklif_tutari
+                        oda["durum"]["kazanan"] = etiket_ad
+                        oda["durum"]["kazanan_id"] = kullanici_id
                         urun.guncel_fiyat = teklif_tutari
                         urun.kazanan_adi = etiket_ad
                         urun.kazanan_id = kullanici_id
@@ -4646,10 +4894,11 @@ def chat_mesaj_gonder():
                         )
                         db.session.add(yeni_teklif)
                         db.session.commit()
+                        pey_yazildi = True
 
-                    if oda.get("mevat_asama") == "karar":
+                    if pey_yazildi and oda.get("mevat_asama") == "karar":
                         oda["karar_pey_geldi"] = True
-                    elif _gizli_esige_vardi(oda, teklif_tutari):
+                    elif pey_yazildi and _gizli_esige_vardi(oda, teklif_tutari):
                         _pazarlik_erken_sat(
                             dukkan,
                             oda,
@@ -4661,49 +4910,51 @@ def chat_mesaj_gonder():
                         )
                         return jsonify({"success": True, "tip": "pey"})
 
-                    guncelleme = {
-                        "dukkan": dukkan,
-                        "urun_id": aktif_urun_id,
-                        "pey": teklif_tutari,
-                        "kazanan": etiket_ad,
-                        "kazanan_id": kullanici_id,
-                    }
-                    _pey_duyur(dukkan, guncelleme)
-                    if (
-                        oda.get("mevat_asama") == "karar"
-                        and oda["sayac_aktif"]
-                        and oda["sayac_kalan"] <= 10
-                    ):
-                        oda["sayac_kalan"] = 15
-                        oda["durum"]["sure_bitis"] = time.time() + 15
-                        socketio.emit(
-                            "sayac_uzatildi",
-                            {
-                                "dukkan": dukkan,
-                                "kalan": 15,
-                                "mesaj": "Son saniye teklifi nedeniyle süre 15 sn uzatıldı!",
-                            },
-                            room=dukkan,
-                        )
-                        socketio.emit(
-                            "sayac_guncelle",
-                            {"dukkan": dukkan, "kalan": 15, "sayac_gorunsun": True, "asama": "karar"},
-                            room=dukkan,
-                        )
+                    if pey_yazildi:
+                        guncelleme = {
+                            "dukkan": dukkan,
+                            "urun_id": aktif_urun_id,
+                            "pey": teklif_tutari,
+                            "kazanan": etiket_ad,
+                            "kazanan_id": kullanici_id,
+                        }
+                        _pey_duyur(dukkan, guncelleme)
+                        if (
+                            oda.get("mevat_asama") == "karar"
+                            and oda["sayac_aktif"]
+                            and oda["sayac_kalan"] <= 10
+                        ):
+                            oda["sayac_kalan"] = 15
+                            oda["durum"]["sure_bitis"] = time.time() + 15
+                            socketio.emit(
+                                "sayac_uzatildi",
+                                {
+                                    "dukkan": dukkan,
+                                    "kalan": 15,
+                                    "mesaj": "Son saniye teklifi nedeniyle süre 15 sn uzatıldı!",
+                                },
+                                room=dukkan,
+                            )
+                            socketio.emit(
+                                "sayac_guncelle",
+                                {"dukkan": dukkan, "kalan": 15, "sayac_gorunsun": True, "asama": "karar"},
+                                room=dukkan,
+                            )
 
-                anons_acilis = _acilis_tabani(oda, urun)
-                anons_hemen = float(getattr(urun, "hemen_al_fiyati", 0) or 0) if urun is not None else 0
-                if not ahmet_sicak_soguk_seslendir(dukkan, oda, kullanici, teklif_tutari):
-                    ahmet_pey_reaksiyonunu_seslendir(
-                        dukkan,
-                        kullanici,
-                        teklif_tutari,
-                        urun_adi,
-                        anons_acilis,
-                        anons_hemen,
-                        getattr(urun, "tanitim_yazisi", "") if urun is not None else "",
-                    )
-                return jsonify({"success": True, "tip": "pey"})
+                if pey_yazildi:
+                    anons_acilis = _acilis_tabani(oda, urun)
+                    anons_hemen = float(getattr(urun, "hemen_al_fiyati", 0) or 0) if urun is not None else 0
+                    if not ahmet_sicak_soguk_seslendir(dukkan, oda, kullanici, teklif_tutari):
+                        ahmet_pey_reaksiyonunu_seslendir(
+                            dukkan,
+                            kullanici,
+                            teklif_tutari,
+                            urun_adi,
+                            anons_acilis,
+                            anons_hemen,
+                            getattr(urun, "tanitim_yazisi", "") if urun is not None else "",
+                        )
+                    return jsonify({"success": True, "tip": "pey"})
         except Exception as e:
             db.session.rollback()
             print(f"Pey işleme hatası: {e}")
@@ -5316,10 +5567,18 @@ def pey_ver():
 
     with oda_kilitleri[dukkan]:
         try:
-            sorgu = Urun.query
-            if not IS_SQLITE:
-                sorgu = sorgu.with_for_update()
-            urun = sorgu.filter_by(id=urun_id).first()
+            kullanici = _yazma_icin_kilitle(Kullanici, kullanici.id)
+            if not kullanici or kullanici.silindi_mi:
+                db.session.rollback()
+                return jsonify({
+                    "success": False,
+                    "kayit_gerekli": True,
+                    "mesaj": KAYIT_PEY_MESAJI,
+                })
+            if on_odeme_kilitli_mi(kullanici):
+                db.session.rollback()
+                return on_odeme_yaniti()
+            urun = _yazma_icin_kilitle(Urun, urun_id)
 
             if (
                 not urun
@@ -5342,12 +5601,7 @@ def pey_ver():
                     return jsonify({"success": False, "mesaj": stok_mesaj})
 
                 statik_hemen_al = float(urun.hemen_al_fiyati or 0.0)
-                mevcut_pey = float(
-                    oda["durum"].get("pey", 0.0)
-                    or urun.guncel_fiyat
-                    or urun.acilis_fiyati
-                    or 0.0
-                )
+                mevcut_pey = _kilitli_fiyat(oda, urun)
 
                 if statik_hemen_al > 0 and mevcut_pey >= statik_hemen_al:
                     artis = max(100.0, round(mevcut_pey * 0.10))
@@ -5386,10 +5640,14 @@ def pey_ver():
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=urun.id).delete()
                 stok_satis_sonrasi_dus(urun)
+                hedef_sepet = urunu_kazanana_sepete_ekle(
+                    urun.id, etiket_ad, kullanici.id, commit=False
+                )
                 db.session.commit()
                 invalidate_vitrin_cache()
 
-                urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
+                if hedef_sepet:
+                    _kazanan_sepetini_disari_aktar(urun.id, hedef_sepet)
 
                 _pey_duyur(
                     dukkan,
@@ -5436,11 +5694,7 @@ def pey_ver():
                 })
 
             if islem == "pey":
-                mevcut_fiyat = float(
-                    oda["durum"]["pey"]
-                    if (oda["durum"].get("pey") and float(oda["durum"]["pey"]) > 0)
-                    else (urun.guncel_fiyat or urun.acilis_fiyati or 0.0)
-                )
+                mevcut_fiyat = _kilitli_fiyat(oda, urun)
 
                 miktar = float(veri.get("miktar", 0))
 
@@ -6600,7 +6854,9 @@ def satis_bitir():
         satis_lot = ""
         satis_ad = "Eser"
         if biten_urun_id:
-            urun = db.session.get(Urun, biten_urun_id)
+            if oda["durum"].get("kazanan_id"):
+                _yazma_icin_kilitle(Kullanici, oda["durum"].get("kazanan_id"))
+            urun = _yazma_icin_kilitle(Urun, biten_urun_id)
             if urun:
                 satis_lot = urun.lot_no
                 satis_ad = urun.urun_adi or "Eser"
@@ -6615,12 +6871,15 @@ def satis_bitir():
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                 stok_satis_sonrasi_dus(urun)
-                db.session.commit()
-                urunu_kazanana_sepete_ekle(
+                hedef_sepet = urunu_kazanana_sepete_ekle(
                     biten_urun_id,
                     oda["durum"]["kazanan"],
                     oda["durum"].get("kazanan_id"),
+                    commit=False,
                 )
+                db.session.commit()
+                if hedef_sepet:
+                    _kazanan_sepetini_disari_aktar(biten_urun_id, hedef_sepet)
 
         socketio.emit(
             "sayac_bitti",
@@ -11192,24 +11451,82 @@ def izleyici_sayisini_yayinla():
 
 _veritabani_onarim_kilit = threading.Lock()
 _veritabani_onarim_basladi = False
+_SEMA_ADVISORY_ANAHTAR = 814531453
+
+
+def _sema_kilidi_dene():
+    """PostgreSQL advisory lock. Alan worker semayi kurar, digerleri DDL'i atlar.
+
+    Kilit alinamadan hata olursa True doner; kolon ekleme zaten try-except icindedir.
+    """
+    if IS_SQLITE:
+        return True, None
+    baglanti = None
+    try:
+        baglanti = db.engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        alindi = baglanti.execute(
+            text("SELECT pg_try_advisory_lock(:anahtar)"),
+            {"anahtar": _SEMA_ADVISORY_ANAHTAR},
+        ).scalar()
+        if alindi:
+            print("[BOOT] sema advisory lock alindi", flush=True)
+            return True, baglanti
+        baglanti.close()
+        print("[BOOT] sema baska workerda, DDL atlandi", flush=True)
+        return False, None
+    except Exception as hata:
+        print(f"[BOOT] advisory lock denemesi basarisiz, DDL try-except ile: {hata}", flush=True)
+        if baglanti is not None:
+            try:
+                baglanti.close()
+            except Exception:
+                pass
+        return True, None
+
+
+def _sema_kilidi_birak(baglanti):
+    if baglanti is None:
+        return
+    try:
+        baglanti.execute(
+            text("SELECT pg_advisory_unlock(:anahtar)"),
+            {"anahtar": _SEMA_ADVISORY_ANAHTAR},
+        )
+    except Exception as hata:
+        print(f"[BOOT] advisory lock birakilamadi: {hata}", flush=True)
+    try:
+        baglanti.close()
+    except Exception:
+        pass
 
 
 def veritabani_onarimini_bir_kez_baslat():
-    """Port açıldıktan sonra bir kez. Hata uygulamayı durdurmaz."""
+    """Port açıldıktan sonra bir kez. Hata uygulamayı durdurmaz.
+
+    Uc worker ayni anda acilsa yalnizca advisory lock alan worker DDL calistirir.
+    """
     global _veritabani_onarim_basladi
     with _veritabani_onarim_kilit:
         if _veritabani_onarim_basladi:
             return
         _veritabani_onarim_basladi = True
 
-    def _calistir():
-        try:
-            veritabani_tablolari_onar()
-        except Exception as hata:
-            print(f"[BOOT] veritabani onarimi tamamlanamadi: {hata}", flush=True)
-
     print("[BOOT] veritabani onarimi zamanlandi", flush=True)
-    socketio.start_background_task(_calistir)
+    lider = False
+    baglanti = None
+    try:
+        with app.app_context():
+            lider, baglanti = _sema_kilidi_dene()
+        if not lider:
+            return
+        veritabani_tablolari_onar()
+        if _pazaryeri_semasi is not None:
+            print("[BOOT] pazaryeri tablolari", flush=True)
+            _pazaryeri_semasi(app, db)
+    except Exception as hata:
+        print(f"[BOOT] veritabani onarimi tamamlanamadi: {hata}", flush=True)
+    finally:
+        _sema_kilidi_birak(baglanti)
 
 
 def _arkaplan_agir_baslangic():
@@ -11217,9 +11534,6 @@ def _arkaplan_agir_baslangic():
     print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
         veritabani_onarimini_bir_kez_baslat()
-        if _pazaryeri_semasi is not None:
-            print("[BOOT] pazaryeri tablolari", flush=True)
-            _pazaryeri_semasi(app, db)
         print("[BOOT] xml senkron zamanlayicisi", flush=True)
         xml_stok_zamanlayiciyi_baslat()
     except Exception as hata:

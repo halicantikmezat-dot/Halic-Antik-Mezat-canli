@@ -5,6 +5,7 @@ Flask-Compress==1.14
 gevent==24.2.1
 gevent-websocket==0.10.1
 gunicorn==22.0.0
+redis>=5.0.0
 psycopg2-binary==2.9.9
 psycogreen==1.0.2
 pandas==2.2.2
