@@ -84,7 +84,7 @@ def ek_guvenlik_ve_cors_ekle(response):
     return response
 
 # ==========================================
-# 13 DÜKKANIN KODLARI VE KURALLARI
+# DÜKKAN KODLARI VE KURALLARI
 # ==========================================
 DUKKANLAR = {
     "gumus": {"ad": "Gümüş", "sure": 60, "min_artis": 50.0},
@@ -95,11 +95,15 @@ DUKKANLAR = {
     "hirdavat": {"ad": "Hırdavat & Nalbur", "sure": 45, "min_artis": 50.0},
     "tasarim": {"ad": "Tasarım", "sure": 60, "min_artis": 100.0},
     "modelaraba": {"ad": "Model Oyuncak Arabalar", "sure": 45, "min_artis": 50.0},
-    "karma": {"ad": "Karma & Toplu Satış", "sure": 45, "min_artis": 50.0},
+    "karma": {"ad": "Toplu Satış", "sure": 45, "min_artis": 50.0},
     "diger": {"ad": "Diğer - Her Şey", "sure": 30, "min_artis": 25.0},
     "porselen": {"ad": "Porselen / Seramik", "sure": 60, "min_artis": 50.0},
     "bakir": {"ad": "Bakır / Pirinç / Madenler", "sure": 60, "min_artis": 50.0},
     "elektronik": {"ad": "Elektrik / Elektronik", "sure": 45, "min_artis": 50.0},
+    "plak": {"ad": "Plak / Kaset", "sure": 45, "min_artis": 50.0},
+    "retro": {"ad": "Retro / Hediyelik", "sure": 45, "min_artis": 50.0},
+    "evyasam": {"ad": "Ev Yaşam / Mobilya", "sure": 60, "min_artis": 100.0},
+    "tekstil": {"ad": "Tekstil", "sure": 45, "min_artis": 50.0},
 }
 
 # ==========================================
@@ -1788,8 +1792,8 @@ _ESKI_VARSAYILAN_REHBER = (
 
 _VARSAYILAN_REHBER = (
     (
-        "🏛️ 13 CANLI SALON",
-        "Üst şeritten veya ☰ Menü > Dükkanlar üzerinden 13 salona sayfa yenilemeden anında geçin (CANLI rozetli salonlarda aktif yayın vardır).",
+        "🏛️ 17 CANLI SALON",
+        "Üst şeritten veya ☰ Menü > Dükkanlar üzerinden 17 salona sayfa yenilemeden anında geçin (CANLI rozetli salonlarda aktif yayın vardır).",
     ),
     (
         "🎵 SES & 4 İSTASYON RADYO",
@@ -2989,6 +2993,10 @@ def veritabani_tablolari_onar():
                     "WHERE kaynak_tipi IS NULL OR kaynak_tipi = ''"
                 ))
                 db.session.commit()
+            except Exception:
+                db.session.rollback()
+            try:
+                xml_hemen_al_bosluklarini_doldur()
             except Exception:
                 db.session.rollback()
             for genislet in (
@@ -7870,6 +7878,10 @@ _XML_GORSEL_BASLIKLARI = {
     "picture", "resim url", "image url",
 }
 _XML_VARSAYILAN_KURALLAR = (
+    ("plak", ("plak", "pikap", "kaset", "cd")),
+    ("retro", ("retro", "nostalji", "hediyelik", "biblo", "küre")),
+    ("evyasam", ("mobilya", "avize", "lamba", "mutfak", "salon", "dekor")),
+    ("tekstil", ("tekstil", "havlu", "nevresim", "halı", "kilim", "giyim")),
     ("gumus", ("gumus", "925", "telkari")),
     ("bakir", ("bakir", "pirinc", "sahan", "ibrik", "maden", "bronz")),
     ("porselen", ("porselen", "seramik", "cini", "fincan", "tabak", "vazo")),
@@ -8489,6 +8501,9 @@ def xml_dagitimi_onayla():
                     hedef.fotograflar = gorseller
                     hedef.tanitim_yazisi = _xml_etiket_temizle(urun.get("aciklama"))[:4000]
                     hedef.kaynak_tipi = "xml"
+                    hedef.hemen_al_fiyati = _xml_hemen_al_fiyati(fiyat)
+                    if _xml_besleme.get("link"):
+                        hedef.xml_kaynak_url = str(_xml_besleme.get("link"))[:500]
                     guncellenen.append({
                         "dukkan": dukkan,
                         "lot_no": hedef.lot_no,
@@ -8503,7 +8518,7 @@ def xml_dagitimi_onayla():
                     kategori=kategori_ad_temizle(urun.get("kategori") or "Genel"),
                     acilis_fiyati=fiyat,
                     guncel_fiyat=fiyat,
-                    hemen_al_fiyati=0.0,
+                    hemen_al_fiyati=_xml_hemen_al_fiyati(fiyat),
                     tanitim_yazisi=_xml_etiket_temizle(urun.get("aciklama"))[:4000],
                     fotograflar=gorseller,
                     video="",
@@ -8511,6 +8526,7 @@ def xml_dagitimi_onayla():
                     durum="Aktif",
                     silindi_mi=False,
                     kaynak_tipi="xml",
+                    xml_kaynak_url=(str(_xml_besleme.get("link") or "")[:500] or None),
                 )
                 if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
                     yeni_urun.eklenme_tarihi = datetime.now()
@@ -8757,6 +8773,7 @@ _XML_STOK_IS_KILIT = BoundedSemaphore(1)
 _XML_STOK_ARALIK_SANIYE = 15 * 60
 _XML_STOK_AYAR_URL = "xml_stok_senkron_url"
 _XML_STOK_AYAR_ZAMAN = "xml_stok_son_guncelleme"
+_XML_STOK_AYAR_LISTE = "xml_toptanci_listesi"
 STOK_TUKENDI_MESAJI = (
     "Bu ürünün stoğu tükenmiştir. Satışı nazikçe durdurduk; "
     "stoğu yenilendiğinde vitrine dönecek."
@@ -8783,21 +8800,62 @@ def _stok_zaman_metni():
     return an.strftime("%d.%m.%Y %H:%M")
 
 
-def _onbellek_stok_oku(ad):
-    anahtar = _xml_metin_sade(ad)
+def _xml_hemen_al_fiyati(acilis):
+    try:
+        fiyat = float(acilis or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if fiyat <= 0:
+        return 0.0
+    return float(int(round(fiyat * 1.5)))
+
+
+def xml_hemen_al_bosluklarini_doldur():
+    kayitlar = Urun.query.filter(
+        Urun.kaynak_tipi == "xml",
+        or_(Urun.hemen_al_fiyati.is_(None), Urun.hemen_al_fiyati <= 0),
+        Urun.acilis_fiyati > 0,
+        or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+    ).all()
+    doldu = False
+    for urun in kayitlar:
+        if (urun.durum or "") in ("Satıldı", "satildi", "Pasif"):
+            continue
+        urun.hemen_al_fiyati = _xml_hemen_al_fiyati(urun.acilis_fiyati)
+        doldu = True
+    if doldu:
+        db.session.commit()
+
+
+def _stok_onbellek_anahtari(ad, url=""):
+    ad_k = _xml_metin_sade(ad)
+    url_k = str(url or "").strip()
+    if not ad_k:
+        return ""
+    return f"{url_k}\n{ad_k}" if url_k else ad_k
+
+
+def _onbellek_stok_oku(ad, url=""):
+    anahtar = _stok_onbellek_anahtari(ad, url)
+    url_k = str(url or "").strip()
+    onek = f"{url_k}\n" if url_k else ""
     _XML_STOK_CACHE_KILIT.acquire()
     try:
-        if anahtar not in XML_STOK_CACHE:
+        if anahtar and anahtar in XML_STOK_CACHE:
+            return XML_STOK_CACHE[anahtar].get("stok")
+        if onek and any(str(kayit).startswith(onek) for kayit in XML_STOK_CACHE):
             return 0
-        return XML_STOK_CACHE[anahtar].get("stok")
+        return None
     finally:
         _XML_STOK_CACHE_KILIT.release()
 
 
-def _onbellek_stok_yaz(ad, adet):
+def _onbellek_stok_yaz(ad, adet, url=""):
     if not XML_STOK_CACHE_META.get("hazir"):
         return
-    anahtar = _xml_metin_sade(ad)
+    anahtar = _stok_onbellek_anahtari(ad, url)
+    if not anahtar:
+        return
     _XML_STOK_CACHE_KILIT.acquire()
     try:
         kayit = XML_STOK_CACHE.get(anahtar)
@@ -8809,10 +8867,20 @@ def _onbellek_stok_yaz(ad, adet):
 
 def _onbellege_yukle(url, zaman, harita):
     global XML_STOK_CACHE
+    url_k = str(url or "").strip()
     _XML_STOK_CACHE_KILIT.acquire()
     try:
-        XML_STOK_CACHE = harita
-        XML_STOK_CACHE_META["url"] = url
+        kalan = {
+            anahtar: kayit
+            for anahtar, kayit in XML_STOK_CACHE.items()
+            if not str(anahtar).startswith(url_k + "\n")
+        }
+        for paket in harita.values():
+            anahtar = _stok_onbellek_anahtari(paket.get("ad") or paket.get("anahtar"), url_k)
+            if anahtar:
+                kalan[anahtar] = paket
+        XML_STOK_CACHE = kalan
+        XML_STOK_CACHE_META["url"] = url_k
         XML_STOK_CACHE_META["zaman"] = zaman
         XML_STOK_CACHE_META["hazir"] = True
     finally:
@@ -8830,7 +8898,7 @@ def stok_satisa_uygun_mu(urun, haric_musteri_id=None):
     except (TypeError, ValueError):
         adet = 1
     if (getattr(urun, "kaynak_tipi", None) or "manuel") == "xml" and XML_STOK_CACHE_META.get("hazir"):
-        onbellek = _onbellek_stok_oku(urun.urun_adi)
+        onbellek = _onbellek_stok_oku(urun.urun_adi, getattr(urun, "xml_kaynak_url", "") or "")
         if onbellek is not None:
             adet = min(adet, int(onbellek))
     if adet <= 0:
@@ -8849,7 +8917,7 @@ def stok_satis_sonrasi_dus(urun):
     adet = 0 if adet <= 0 else adet - 1
     urun.stok_adedi = adet
     if (getattr(urun, "kaynak_tipi", None) or "manuel") == "xml":
-        _onbellek_stok_yaz(urun.urun_adi, adet)
+        _onbellek_stok_yaz(urun.urun_adi, adet, getattr(urun, "xml_kaynak_url", "") or "")
     if adet <= 0:
         return
     urun.durum = "Aktif"
@@ -8970,7 +9038,11 @@ def _xml_cop_kutusuna(urun, simdi):
 
 def _xml_stok_veritabanina_uygula(url, harita):
     simdi = suan_utc()
-    xml_urunler = Urun.query.filter(Urun.kaynak_tipi == "xml").all()
+    hedef_url = (url or "").strip()[:500]
+    xml_urunler = Urun.query.filter(
+        Urun.kaynak_tipi == "xml",
+        Urun.xml_kaynak_url == hedef_url,
+    ).all()
     indeks = {}
     for urun in xml_urunler:
         indeks.setdefault(_xml_metin_sade(urun.urun_adi), []).append(urun)
@@ -9029,7 +9101,7 @@ def _xml_stok_veritabanina_uygula(url, harita):
                     kategori=kategori_ad_temizle(paket.get("kategori") or "Genel"),
                     acilis_fiyati=fiyat,
                     guncel_fiyat=fiyat,
-                    hemen_al_fiyati=0.0,
+                    hemen_al_fiyati=_xml_hemen_al_fiyati(fiyat),
                     tanitim_yazisi=_xml_etiket_temizle(paket.get("aciklama"))[:4000],
                     fotograflar=_xml_gorsel_listesi(paket.get("gorseller")),
                     video="",
@@ -9038,7 +9110,7 @@ def _xml_stok_veritabanina_uygula(url, harita):
                     silindi_mi=False,
                     kaynak_tipi="xml",
                     stok_adedi=yeni_stok,
-                    xml_kaynak_url=url[:500],
+                    xml_kaynak_url=hedef_url,
                 )
                 db.session.add(yeni_urun)
                 indeks.setdefault(anahtar, []).append(yeni_urun)
@@ -9065,10 +9137,13 @@ def _xml_stok_veritabanina_uygula(url, harita):
                 aday.silindi_mi = False
                 aday.silinme_tarihi = None
                 aday.stok_adedi = yeni_stok
-                aday.xml_kaynak_url = url[:500]
+                aday.xml_kaynak_url = hedef_url
                 if fiyat is not None:
                     aday.acilis_fiyati = fiyat
                     aday.guncel_fiyat = fiyat
+                    aday.hemen_al_fiyati = _xml_hemen_al_fiyati(fiyat)
+                elif not float(aday.hemen_al_fiyati or 0):
+                    aday.hemen_al_fiyati = _xml_hemen_al_fiyati(aday.acilis_fiyati)
                 kaydet()
         except Exception as hata:
             db.session.rollback()
@@ -9094,29 +9169,142 @@ def _xml_stok_veritabanina_uygula(url, harita):
     db.session.commit()
 
 
-def xml_stok_senkron_calistir():
+def _xml_toptanci_listesi_oku():
+    ham = _ayar_degeri(_XML_STOK_AYAR_LISTE)
+    if not ham:
+        return []
+    try:
+        veri = json.loads(ham)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(veri, list):
+        return []
+    temiz = []
+    gorulen = set()
+    for kayit in veri:
+        if not isinstance(kayit, dict):
+            continue
+        url = str(kayit.get("url") or "").strip()[:500]
+        if not url.lower().startswith(("http://", "https://")) or url in gorulen:
+            continue
+        gorulen.add(url)
+        ad = str(kayit.get("ad") or "Toptancı").strip()[:80] or "Toptancı"
+        temiz.append({
+            "id": str(kayit.get("id") or uuid.uuid4().hex)[:40],
+            "ad": ad,
+            "url": url,
+            "aktif": bool(kayit.get("aktif", True)),
+            "son_senkron": str(kayit.get("son_senkron") or "").strip()[:40],
+        })
+    return temiz
+
+
+def _xml_toptanci_listesi_yaz(liste):
+    _ayar_yaz(_XML_STOK_AYAR_LISTE, json.dumps(liste, ensure_ascii=False))
+
+
+def _xml_kaynaksiz_urunleri_bagla(url):
+    hedef = str(url or "").strip()[:500]
+    if not hedef.lower().startswith(("http://", "https://")):
+        return
+    Urun.query.filter(
+        Urun.kaynak_tipi == "xml",
+        or_(Urun.xml_kaynak_url.is_(None), Urun.xml_kaynak_url == ""),
+    ).update({Urun.xml_kaynak_url: hedef}, synchronize_session=False)
+
+
+def _xml_toptanci_listesini_hazirla():
+    liste = _xml_toptanci_listesi_oku()
+    if liste:
+        return liste
+    eski = (_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip()[:500]
+    if not eski.lower().startswith(("http://", "https://")):
+        return []
+    liste = [{
+        "id": "keskin-hediyelik",
+        "ad": "Keskin Hediyelik",
+        "url": eski,
+        "aktif": True,
+        "son_senkron": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip()[:40],
+    }]
+    _xml_toptanci_listesi_yaz(liste)
+    _xml_kaynaksiz_urunleri_bagla(eski)
+    db.session.commit()
+    return liste
+
+
+def _xml_toptanci_ekle(ad, url):
+    url = str(url or "").strip()[:500]
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError("XML linki http veya https olmalı.")
+    liste = _xml_toptanci_listesini_hazirla()
+    ad = str(ad or "").strip()[:80]
+    for kayit in liste:
+        if kayit["url"] == url:
+            if ad:
+                kayit["ad"] = ad
+            kayit["aktif"] = True
+            _xml_toptanci_listesi_yaz(liste)
+            db.session.commit()
+            return liste
+    if not ad:
+        ad = "Keskin Hediyelik" if not liste else "Toptancı"
+    liste.append({
+        "id": uuid.uuid4().hex,
+        "ad": ad,
+        "url": url,
+        "aktif": True,
+        "son_senkron": "",
+    })
+    _xml_toptanci_listesi_yaz(liste)
+    if len(liste) == 1:
+        _ayar_yaz(_XML_STOK_AYAR_URL, url)
+        _xml_kaynaksiz_urunleri_bagla(url)
+    db.session.commit()
+    return liste
+
+
+def xml_stok_senkron_calistir(yalniz_id=None):
     if not _XML_STOK_IS_KILIT.acquire(blocking=False):
         return
     try:
         with app.app_context():
             try:
-                url = (_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip()
-                if not url.lower().startswith(("http://", "https://")):
+                liste = _xml_toptanci_listesini_hazirla()
+                if yalniz_id:
+                    secilen = [kaynak for kaynak in liste if kaynak.get("id") == yalniz_id]
+                else:
+                    secilen = [kaynak for kaynak in liste if kaynak.get("aktif")]
+                if not secilen:
                     return
-                ham = _xml_kaynagi_indir(url)
-                kayitlar = _xml_stok_kayitlarini_oku(ham)
-                if not kayitlar:
-                    print("XML stok senkronu: ürün satırı yok, katalog duruyor.")
-                    return
-                harita = {}
-                for paket in kayitlar:
-                    harita[paket["anahtar"]] = paket
-                zaman = _stok_zaman_metni()
-                _onbellege_yukle(url, zaman, harita)
-                _xml_stok_veritabanina_uygula(url, harita)
-                _ayar_yaz(_XML_STOK_AYAR_ZAMAN, zaman)
+                for kaynak in secilen:
+                    try:
+                        url = kaynak["url"]
+                        ham = _xml_kaynagi_indir(url)
+                        kayitlar = _xml_stok_kayitlarini_oku(ham)
+                        if not kayitlar:
+                            print("XML stok senkronu: ürün satırı yok, bu kaynak duruyor.")
+                            continue
+                        harita = {}
+                        for paket in kayitlar:
+                            if paket.get("anahtar"):
+                                harita[paket["anahtar"]] = paket
+                        if not harita:
+                            continue
+                        zaman = _stok_zaman_metni()
+                        _onbellege_yukle(url, zaman, harita)
+                        _xml_stok_veritabanina_uygula(url, harita)
+                        kaynak["son_senkron"] = zaman
+                        print(f"XML stok önbelleği güncellendi: {len(harita)} ürün.")
+                    except Exception as hata:
+                        db.session.rollback()
+                        print(f"XML stok senkronu atlandı: {hata}")
+                _xml_toptanci_listesi_yaz(liste)
+                if liste:
+                    _ayar_yaz(_XML_STOK_AYAR_URL, liste[0]["url"])
+                    if liste[0].get("son_senkron"):
+                        _ayar_yaz(_XML_STOK_AYAR_ZAMAN, liste[0]["son_senkron"])
                 db.session.commit()
-                print(f"XML stok önbelleği güncellendi: {len(harita)} ürün.")
             except Exception as hata:
                 db.session.rollback()
                 print(f"XML stok senkronu atlandı: {hata}")
@@ -9144,33 +9332,81 @@ def xml_stok_zamanlayiciyi_baslat():
     socketio.start_background_task(_xml_stok_zaman_dongusu)
 
 
+def _xml_toptanci_yaniti(liste, mesaj=""):
+    ilk = liste[0] if liste else {}
+    cevap = {
+        "success": True,
+        "toptancilar": liste,
+        "url": ilk.get("url") or "",
+        "aktif": bool(ilk.get("aktif")),
+        "son_guncelleme": ilk.get("son_senkron") or "",
+    }
+    if mesaj:
+        cevap["mesaj"] = mesaj
+    return jsonify(cevap)
+
+
+def _xml_toptanci_senkronu_baslat(kaynak_id=None):
+    if kaynak_id:
+        socketio.start_background_task(xml_stok_senkron_calistir, kaynak_id)
+    else:
+        socketio.start_background_task(xml_stok_senkron_calistir)
+
+
+@app.route("/api/xml-toptancilar", methods=["GET", "POST"])
+@admin_required
+def xml_toptancilar_api():
+    try:
+        if request.method == "GET":
+            return _xml_toptanci_yaniti(_xml_toptanci_listesini_hazirla())
+        veri = request.get_json(silent=True) or {}
+        liste = _xml_toptanci_listesini_hazirla()
+        kaynak_id = str(veri.get("id") or "").strip()
+        if veri.get("sil") and kaynak_id:
+            liste = [kaynak for kaynak in liste if kaynak.get("id") != kaynak_id]
+            _xml_toptanci_listesi_yaz(liste)
+            db.session.commit()
+            return _xml_toptanci_yaniti(liste, "Toptancı XML kaydı silindi.")
+        if kaynak_id and "aktif" in veri and not veri.get("url") and not veri.get("senkron"):
+            for kaynak in liste:
+                if kaynak.get("id") == kaynak_id:
+                    kaynak["aktif"] = bool(veri.get("aktif"))
+            _xml_toptanci_listesi_yaz(liste)
+            db.session.commit()
+            return _xml_toptanci_yaniti(liste, "Toptancı durumu güncellendi.")
+        if veri.get("senkron") and kaynak_id:
+            _xml_toptanci_senkronu_baslat(kaynak_id)
+            return _xml_toptanci_yaniti(liste, "Bu toptancı için senkron başlatıldı.")
+        url = str(veri.get("url") or "").strip()
+        if not url:
+            return jsonify({"success": False, "mesaj": "XML linki gerekli."})
+        liste = _xml_toptanci_ekle(veri.get("ad"), url)
+        _xml_toptanci_senkronu_baslat()
+        return _xml_toptanci_yaniti(liste, "Toptancı XML listesine kaydedildi. Arka planda senkron başlayacak.")
+    except ValueError as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)})
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": f"Toptancı listesi kaydedilemedi: {hata}"}), 500
+
+
 @app.route("/api/xml-stok-senkron", methods=["GET", "POST"])
 @admin_required
 def xml_stok_senkron_api():
     try:
         if request.method == "GET":
-            return jsonify({
-                "success": True,
-                "url": (_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip(),
-                "aktif": bool((_ayar_degeri(_XML_STOK_AYAR_URL) or "").strip()),
-                "son_guncelleme": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip(),
-            })
+            return _xml_toptanci_yaniti(_xml_toptanci_listesini_hazirla())
         veri = request.get_json(silent=True) or {}
-        url = str(veri.get("url") or "").strip()
-        if not url.lower().startswith(("http://", "https://")):
-            return jsonify({"success": False, "mesaj": "XML linki http veya https olmalı."})
-        if len(url) > 500:
-            return jsonify({"success": False, "mesaj": "XML linki 500 karakteri aşıyor."})
-        _ayar_yaz(_XML_STOK_AYAR_URL, url)
-        db.session.commit()
-        socketio.start_background_task(xml_stok_senkron_calistir)
-        return jsonify({
-            "success": True,
-            "url": url,
-            "aktif": True,
-            "son_guncelleme": (_ayar_degeri(_XML_STOK_AYAR_ZAMAN) or "").strip(),
-            "mesaj": "Otomatik stok senkronizasyonu kaydedildi. Arka planda çalışacak.",
-        })
+        liste = _xml_toptanci_ekle(veri.get("ad"), veri.get("url"))
+        _xml_toptanci_senkronu_baslat()
+        return _xml_toptanci_yaniti(
+            liste,
+            "Otomatik stok senkronizasyonu kaydedildi. Arka planda çalışacak.",
+        )
+    except ValueError as hata:
+        db.session.rollback()
+        return jsonify({"success": False, "mesaj": str(hata)})
     except Exception as hata:
         db.session.rollback()
         return jsonify({"success": False, "mesaj": f"Stok senkronu kaydedilemedi: {hata}"}), 500

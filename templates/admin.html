@@ -436,8 +436,12 @@
                     <span id="topluDurum" style="font-size: 12px; color: var(--accent-blue);"></span>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="xmlToptanciAd" placeholder="Tedarikçi adı (ör. Keskin Hediyelik)" style="margin:0; flex:1; min-width:160px;">
                     <button type="button" class="btn btn-green btn-sm" onclick="xmlStokSenkronKaydet()">Otomatik Stok Senkronizasyonunu Kaydet &amp; Aktifleştir</button>
-                    <span id="xmlStokSonGuncelleme" style="font-size:11px; color:#86efac;">Son güncelleme: —</span>
+                </div>
+                <div id="xmlToptanciKutu">
+                    <div style="font-size:12px; color:var(--accent-gold); font-weight:bold;">Kayıtlı Toptancı XML Listesi</div>
+                    <div id="xmlToptanciListesi" style="margin-top:6px;"></div>
                 </div>
             </form>
             <div id="xmlLaboratuvarRapor" style="display:none; margin-top:10px; padding-top:8px; border-top:1px dashed var(--card-border);">
@@ -461,8 +465,12 @@
                         <option value="kozmetik">Kozmetik</option>
                         <option value="bijuteri">Bijuteri</option>
                         <option value="tasarim">Tasarım</option>
+                        <option value="plak">Plak / Kaset</option>
+                        <option value="retro">Retro / Hediyelik</option>
+                        <option value="evyasam">Ev Yaşam / Mobilya</option>
+                        <option value="tekstil">Tekstil</option>
                         <option value="toptan">Toptan</option>
-                        <option value="karma">Karma</option>
+                        <option value="karma">Toplu Satış</option>
                         <option value="diger">Diğer</option>
                     </select>
                     <button type="button" class="btn btn-blue btn-sm" onclick="xmlKuralEkle()">Kural Ekle</button>
@@ -776,7 +784,7 @@
         </article>
         <article class="fon-perde">
             <span class="talimat-rozet rozet-altin">🤖 7/24 OTONOM MEZAT &amp; SAHNE KONTROLÜ</span>
-            <p>Tek dükkanda Başlat veya Tümünde Otonomu Başlat ile 13 salonu aynı anda otomatik yayına sokun. Manuel kontrolde 3 Dk Başlat, 60 Sn Karar, +15 Sn Uzat, Son Peyi İptal Et ve Satışı Bitir butonlarını kullanın.</p>
+            <p>Tek dükkanda Başlat veya Tümünde Otonomu Başlat ile 17 salonu aynı anda otomatik yayına sokun. Manuel kontrolde 3 Dk Başlat, 60 Sn Karar, +15 Sn Uzat, Son Peyi İptal Et ve Satışı Bitir butonlarını kullanın.</p>
         </article>
         <article class="fon-perde">
             <span class="talimat-rozet rozet-mavi">🎙️ GİZLİ REJİ &amp; PATRON YAYINDA</span>
@@ -790,8 +798,8 @@
         <button type="button" class="btn" style="width:100%; margin-top:6px; background:#128C7E; color:#fff;" onclick="davetKartiWhatsapp()">📲 WhatsApp'ta Paylaş</button>
         <p id="davetKartiDurum" style="font-size:15.5px; color:#ffffff; min-height:16px; margin-top:6px;"></p>
         <div id="davetKarti" class="davet-kart">
-            <p>🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 13 MEZAT SALONU CEBİNİZDE! ✨</p>
-            <p>Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 13 Salonlu, 7/24 Yapay Zeka &amp; Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.</p>
+            <p>🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 17 MEZAT SALONU CEBİNİZDE! ✨</p>
+            <p>Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 17 Salonlu, 7/24 Yapay Zeka &amp; Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.</p>
             <p>🌐 Ana Giriş: <a href="https://halicantikcanli.com/" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/</a></p>
             <ul class="davet-liste">
                 <li>Antika: <a href="https://halicantikcanli.com/?dukkan=antika" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=antika</a></li>
@@ -804,7 +812,11 @@
                 <li>Elektrik / Elektronik: <a href="https://halicantikcanli.com/?dukkan=elektronik" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=elektronik</a></li>
                 <li>Hırdavat &amp; Nalbur: <a href="https://halicantikcanli.com/?dukkan=hirdavat" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=hirdavat</a></li>
                 <li>Kozmetik: <a href="https://halicantikcanli.com/?dukkan=kozmetik" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=kozmetik</a></li>
-                <li>Karma &amp; Toplu: <a href="https://halicantikcanli.com/?dukkan=karma" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=karma</a></li>
+                <li>Plak / Kaset: <a href="https://halicantikcanli.com/?dukkan=plak" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=plak</a></li>
+                <li>Retro / Hediyelik: <a href="https://halicantikcanli.com/?dukkan=retro" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=retro</a></li>
+                <li>Ev Yaşam / Mobilya: <a href="https://halicantikcanli.com/?dukkan=evyasam" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=evyasam</a></li>
+                <li>Tekstil: <a href="https://halicantikcanli.com/?dukkan=tekstil" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=tekstil</a></li>
+                <li>Toplu Satış: <a href="https://halicantikcanli.com/?dukkan=karma" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=karma</a></li>
                 <li>Toptan: <a href="https://halicantikcanli.com/?dukkan=toptan" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=toptan</a></li>
                 <li>Diğer - Her Şey: <a href="https://halicantikcanli.com/?dukkan=diger" target="_blank" rel="noopener noreferrer">https://halicantikcanli.com/?dukkan=diger</a></li>
             </ul>
@@ -1144,7 +1156,11 @@
             <option value="porselen">🏺 Porselen / Seramik</option>
             <option value="bakir">⚱️ Bakır / Pirinç / Madenler</option>
             <option value="elektronik">📻 Elektrik / Elektronik</option>
-            <option value="karma">📦 Karma & Toplu Satış</option>
+            <option value="plak">💿 Plak / Kaset</option>
+            <option value="retro">🎁 Retro / Hediyelik</option>
+            <option value="evyasam">🛋️ Ev Yaşam / Mobilya</option>
+            <option value="tekstil">🧵 Tekstil</option>
+            <option value="karma">📦 Toplu Satış</option>
             <option value="diger">🔮 Diğer Her Şey</option>
             <option value="toptan">🏭 Toptan Satış</option>
         </select>
@@ -2910,46 +2926,81 @@
         .catch(function () { alert("Kural silme isteği tamamlanamadı."); });
     }
 
-    function xmlStokZamaniniYaz(zaman) {
-        const etiket = document.getElementById('xmlStokSonGuncelleme');
-        if (etiket) etiket.textContent = 'Son güncelleme: ' + (zaman || '—');
+    function xmlToptanciListesiniYaz(kayitlar) {
+        const liste = document.getElementById('xmlToptanciListesi');
+        if (!liste) return;
+        const satirlar = kayitlar || [];
+        if (!satirlar.length) {
+            liste.innerHTML = '<div style="font-size:12px; color:#94a3b8;">Kayıtlı toptancı XML yok.</div>';
+            return;
+        }
+        liste.innerHTML = satirlar.map(function (k) {
+            const id = htmlKacis(k.id || '');
+            const aktif = !!k.aktif;
+            return '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:12px;">'
+                + '<b>' + htmlKacis(k.ad || '') + '</b>'
+                + '<span style="color:#94a3b8; word-break:break-all;">' + htmlKacis(k.url || '') + '</span>'
+                + '<span style="color:' + (aktif ? '#86efac' : '#fca5a5') + ';">' + (aktif ? 'Aktif' : 'Pasif') + '</span>'
+                + '<span style="color:#86efac;">Son senkron: ' + htmlKacis(k.son_senkron || '—') + '</span>'
+                + '<button type="button" class="btn btn-sm" onclick="xmlToptanciDurum(\'' + id + '\', ' + (aktif ? 'false' : 'true') + ')">' + (aktif ? 'Pasifleştir' : 'Aktifleştir') + '</button>'
+                + '<button type="button" class="btn btn-blue btn-sm" onclick="xmlToptanciSenkron(\'' + id + '\')">Şimdi Senkronize Et</button>'
+                + '<button type="button" class="btn btn-red btn-sm" onclick="xmlToptanciSil(\'' + id + '\')">Sil</button>'
+                + '</div>';
+        }).join('');
     }
 
-    function xmlStokSenkronDurumunuYukle() {
-        fetch('/api/xml-stok-senkron')
+    function xmlToptanciListesiniYukle() {
+        fetch('/api/xml-toptancilar')
             .then(r => r.json())
             .then(d => {
                 if (!d || !d.success) return;
-                xmlStokZamaniniYaz(d.son_guncelleme);
+                xmlToptanciListesiniYaz(d.toptancilar || []);
                 const urlInput = document.getElementById('topluUrl');
                 if (urlInput && !urlInput.value.trim() && d.url) urlInput.value = d.url;
             })
             .catch(() => {});
     }
 
+    function xmlToptanciIstek(govde) {
+        return fetch('/api/xml-toptancilar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(govde)
+        }).then(r => r.json()).then(d => {
+            if (!d || !d.success) {
+                alert((d && d.mesaj) || 'İşlem yapılamadı.');
+                return;
+            }
+            xmlToptanciListesiniYaz(d.toptancilar || []);
+            if (d.mesaj) alert(d.mesaj);
+            setTimeout(xmlToptanciListesiniYukle, 8000);
+        }).catch(() => alert('Toptancı listesi kaydedilemedi.'));
+    }
+
     function xmlStokSenkronKaydet() {
         playClickSound();
         const urlInput = document.getElementById('topluUrl');
+        const adInput = document.getElementById('xmlToptanciAd');
         const url = urlInput ? urlInput.value.trim() : '';
+        const ad = adInput ? adInput.value.trim() : '';
         if (!url) return alert('Önce canlı XML linkini yazın.');
-        const etiket = document.getElementById('xmlStokSonGuncelleme');
-        if (etiket) etiket.textContent = 'Son güncelleme: kaydediliyor...';
-        fetch('/api/xml-stok-senkron', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url })
-        }).then(r => r.json()).then(d => {
-            if (!d || !d.success) {
-                xmlStokZamaniniYaz('');
-                return alert((d && d.mesaj) || 'Stok senkronu kaydedilemedi.');
-            }
-            xmlStokZamaniniYaz(d.son_guncelleme || 'arka planda çalışıyor');
-            alert(d.mesaj || 'Otomatik stok senkronizasyonu kaydedildi.');
-            setTimeout(xmlStokSenkronDurumunuYukle, 8000);
-        }).catch(() => {
-            xmlStokZamaniniYaz('');
-            alert('Stok senkronu kaydedilemedi.');
-        });
+        xmlToptanciIstek({ url: url, ad: ad });
+    }
+
+    function xmlToptanciDurum(id, aktif) {
+        playClickSound();
+        xmlToptanciIstek({ id: id, aktif: aktif });
+    }
+
+    function xmlToptanciSenkron(id) {
+        playClickSound();
+        xmlToptanciIstek({ id: id, senkron: true });
+    }
+
+    function xmlToptanciSil(id) {
+        playClickSound();
+        if (!confirm('Bu toptancı XML kaydı silinsin mi?')) return;
+        xmlToptanciIstek({ id: id, sil: true });
     }
 
     function xmlLinkiTemizle() {
@@ -3459,7 +3510,7 @@
     }
 
     adminMuzikIstasyonlariniYukle();
-    xmlStokSenkronDurumunuYukle();
+    xmlToptanciListesiniYukle();
 
     function yeniUrunKartlariniBas(urunler) {
         const liste = document.getElementById('yeniUrunListesi');
@@ -3525,8 +3576,8 @@
     }
 
     var DAVET_KARTI_METNI = [
-        "🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 13 MEZAT SALONU CEBİNİZDE! ✨",
-        "Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 13 Salonlu, 7/24 Yapay Zeka & Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.",
+        "🏛️ HALİÇ ANTİK CANLI — KAPALIÇARŞI'NIN 17 MEZAT SALONU CEBİNİZDE! ✨",
+        "Kıymetli Koleksiyonerlerimiz ve Değerli Dostlarımız; Türkiye'nin ilk 17 Salonlu, 7/24 Yapay Zeka & Canlı Reji Destekli Yeni Nesil Mezat Platformunda bizimle olduğunuz için gönülden teşekkür ederiz.",
         "🌐 Ana Giriş: https://halicantikcanli.com/",
         "• Antika: https://halicantikcanli.com/?dukkan=antika",
         "• Gümüş: https://halicantikcanli.com/?dukkan=gumus",
@@ -3538,7 +3589,11 @@
         "• Elektrik / Elektronik: https://halicantikcanli.com/?dukkan=elektronik",
         "• Hırdavat & Nalbur: https://halicantikcanli.com/?dukkan=hirdavat",
         "• Kozmetik: https://halicantikcanli.com/?dukkan=kozmetik",
-        "• Karma & Toplu: https://halicantikcanli.com/?dukkan=karma",
+        "• Plak / Kaset: https://halicantikcanli.com/?dukkan=plak",
+        "• Retro / Hediyelik: https://halicantikcanli.com/?dukkan=retro",
+        "• Ev Yaşam / Mobilya: https://halicantikcanli.com/?dukkan=evyasam",
+        "• Tekstil: https://halicantikcanli.com/?dukkan=tekstil",
+        "• Toplu Satış: https://halicantikcanli.com/?dukkan=karma",
         "• Toptan: https://halicantikcanli.com/?dukkan=toptan",
         "• Diğer - Her Şey: https://halicantikcanli.com/?dukkan=diger"
     ].join("\n");
