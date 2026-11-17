@@ -1,15 +1,18 @@
 from gevent import monkey
 monkey.patch_all()
+print("[BOOT] gevent monkey patch tamam", flush=True)
 
 import azure.cognitiveservices.speech as speechsdk
+print("[BOOT] azure speech import edildi", flush=True)
 import base64
 import os
 
 try:
     import psycogreen.gevent
     psycogreen.gevent.patch_psycopg()
-except Exception:
-    pass
+    print("[BOOT] psycopg gevent yamasi tamam", flush=True)
+except Exception as hata:
+    print(f"[BOOT] psycopg gevent yamasi atlandi: {hata}", flush=True)
 
 # ==========================================
 # GEVENT VE ASENKRON MOTOR (EN BAŞTA OLMALI)
@@ -122,6 +125,10 @@ else:
     db_url = "sqlite:///" + sqlite_yol
 
 IS_SQLITE = db_url.startswith("sqlite")
+print(
+    "[BOOT] veritabani hedefi " + ("sqlite" if IS_SQLITE else "postgresql"),
+    flush=True,
+)
 
 ADMIN_PASSWORD_HASH = os.environ.get(
     "ADMIN_PASSWORD_HASH",
@@ -136,14 +143,20 @@ app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 if IS_SQLITE:
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"timeout": 30}}
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_timeout": 5,
+        "connect_args": {"timeout": 5},
+    }
 else:
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_size": 25,
         "max_overflow": 50,
         "pool_recycle": 300,
         "pool_pre_ping": True,
+        "pool_timeout": 5,
+        "connect_args": {"connect_timeout": 5},
     }
+print("[BOOT] veritabani baglanti zaman asimi 5sn", flush=True)
 
 app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 
@@ -157,7 +170,9 @@ else:
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
+print("[BOOT] sqlalchemy kuruluyor", flush=True)
 db = SQLAlchemy(app)
+print("[BOOT] socketio kuruluyor", flush=True)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -167,6 +182,7 @@ socketio = SocketIO(
     ping_interval=25,
     max_http_buffer_size=8000000,
 )
+print("[BOOT] socketio hazir", flush=True)
 
 try:
     totp = pyotp.TOTP(ADMIN_2FA_SECRET) if ADMIN_2FA_SECRET else None
@@ -2896,9 +2912,13 @@ def urun_vitrin_indekslerini_hazirla():
 
 
 def veritabani_tablolari_onar():
+    print("[BOOT] veritabani onarimi basladi", flush=True)
     with app.app_context():
         try:
+            print("[BOOT] db.create_all basliyor", flush=True)
             db.create_all()
+            print("[BOOT] db.create_all bitti", flush=True)
+            print("[BOOT] kullanici ve kara liste kontrolu", flush=True)
             kullanici_ve_kara_liste_onar()
             kolonlar = [
                 ("kullanici", "ip_adresi", "VARCHAR(50)"),
@@ -2935,6 +2955,7 @@ def veritabani_tablolari_onar():
                 ("teklif", "ip_adresi", "VARCHAR(50)"),
                 ("sikayet_oneri", "ip_adresi", "VARCHAR(50)"),
             ]
+            print("[BOOT] kolon ve ayar kontrolleri", flush=True)
             try:
                 db.session.execute(text(
                     "ALTER TABLE kullanici ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"
@@ -2995,7 +3016,9 @@ def veritabani_tablolari_onar():
                 db.session.commit()
             except Exception:
                 db.session.rollback()
+            print("[BOOT] kolon ve ayar kontrolleri bitti", flush=True)
             try:
+                print("[BOOT] hemen al bosluk kontrolu", flush=True)
                 xml_hemen_al_bosluklarini_doldur()
             except Exception:
                 db.session.rollback()
@@ -3010,10 +3033,11 @@ def veritabani_tablolari_onar():
                     db.session.rollback()
         except Exception as hata:
             db.session.rollback()
-            print(f"Veritabanı onarım hatası: {hata}")
+            print(f"[BOOT] veritabani onarim hatasi: {hata}", flush=True)
         finally:
             db.session.remove()
         try:
+            print("[BOOT] icerik maddeleri kontrolu", flush=True)
             icerik_maddelerini_hazirla()
         except Exception:
             try:
@@ -3021,7 +3045,9 @@ def veritabani_tablolari_onar():
             except Exception:
                 pass
         try:
+            print("[BOOT] urun kategori indeksleri", flush=True)
             urun_vitrin_indekslerini_hazirla()
+            print("[BOOT] veritabani onarimi bitti", flush=True)
         except Exception:
             try:
                 db.session.rollback()
@@ -10732,7 +10758,7 @@ _veritabani_onarim_basladi = False
 
 
 def veritabani_onarimini_bir_kez_baslat():
-    """Modül yüklenince bir kez. Hata uygulamayı durdurmaz."""
+    """Port açıldıktan sonra bir kez. Hata uygulamayı durdurmaz."""
     global _veritabani_onarim_basladi
     with _veritabani_onarim_kilit:
         if _veritabani_onarim_basladi:
@@ -10743,18 +10769,21 @@ def veritabani_onarimini_bir_kez_baslat():
         try:
             veritabani_tablolari_onar()
         except Exception as hata:
-            print(f"Veritabanı onarımı tamamlanamadı: {hata}")
+            print(f"[BOOT] veritabani onarimi tamamlanamadi: {hata}", flush=True)
 
+    print("[BOOT] veritabani onarimi zamanlandi", flush=True)
     socketio.start_background_task(_calistir)
 
 
 def _arkaplan_agir_baslangic():
     """Port açıldıktan sonra: onarım, XML senkronu ve ses hazırlığı."""
+    print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
         veritabani_onarimini_bir_kez_baslat()
+        print("[BOOT] xml senkron zamanlayicisi", flush=True)
         xml_stok_zamanlayiciyi_baslat()
     except Exception as hata:
-        print(f"Gecikmeli başlangıç atlandı: {hata}")
+        print(f"[BOOT] gecikmeli baslangic atlandi: {hata}", flush=True)
     if getattr(Config, "ELEVENLABS_API_KEY", ""):
         print(f"Canlı ses akışı hazır: ElevenLabs {Config.ELEVENLABS_MODEL_ID}.")
     elif getattr(Config, "OPENAI_API_KEY", ""):
@@ -10767,27 +10796,31 @@ _gecikmeli_baslangic_kuruldu = False
 
 
 def _gecikmeli_baslangici_kur():
-    """Import sırasında çalışmaz. Gunicorn portu açtıktan 8 sn sonra başlar."""
+    """Import greenlet'inde uyumaz. Hub döngüsü portu açtıktan 8 sn sonra çalışır."""
     global _gecikmeli_baslangic_kuruldu
     if _gecikmeli_baslangic_kuruldu:
         return
     _gecikmeli_baslangic_kuruldu = True
-    zamanlayici = threading.Timer(8.0, _arkaplan_agir_baslangic)
-    zamanlayici.daemon = True
-    zamanlayici.start()
+    import gevent
+    gevent.spawn_later(8, _arkaplan_agir_baslangic)
+    print("[BOOT] agir baslangic 8sn sonraya birakildi", flush=True)
 
 
 # ==========================================
 # PAZARYERİ VE TEDARİKÇİ MODÜLÜ BAĞLANTISI
 # ==========================================
+print("[BOOT] pazaryeri modulu", flush=True)
 try:
     from pazaryeri import init_pazaryeri, pazaryeri_bp
+    print("[BOOT] pazaryeri tablolari", flush=True)
     init_pazaryeri(app, db, admin_required)
     app.register_blueprint(pazaryeri_bp, url_prefix="/admin/pazaryeri")
-except Exception:
-    pass
+    print("[BOOT] pazaryeri hazir", flush=True)
+except Exception as hata:
+    print(f"[BOOT] pazaryeri atlandi: {hata}", flush=True)
 
 _gecikmeli_baslangici_kur()
+print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 
 # ==========================================
 # SUNUCUYU BAŞLATMA
