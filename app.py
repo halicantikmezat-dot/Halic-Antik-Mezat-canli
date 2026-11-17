@@ -97,7 +97,7 @@ DUKKANLAR = {
     "bijuteri": {"ad": "Bijuteri", "sure": 30, "min_artis": 20.0},
     "hirdavat": {"ad": "Hırdavat & Yapı", "sure": 45, "min_artis": 50.0},
     "tasarim": {"ad": "Tasarım", "sure": 60, "min_artis": 100.0},
-    "modelaraba": {"ad": "Model Arabalar", "sure": 45, "min_artis": 50.0},
+    "modelaraba": {"ad": "Klasik Arabalar", "sure": 45, "min_artis": 50.0},
     "karma": {"ad": "Oyuncaklar", "sure": 45, "min_artis": 50.0},
     "diger": {"ad": "Diğer - Her Şey", "sure": 30, "min_artis": 25.0},
     "porselen": {"ad": "Porselen / Seramik", "sure": 60, "min_artis": 50.0},
@@ -7908,8 +7908,9 @@ _XML_GORSEL_BASLIKLARI = {
 }
 _XML_VARSAYILAN_KURALLAR = (
     ("modelaraba", (
-        "diecast", "model araba", "1:18", "1:24", "1:32", "1:43", "1:64",
-        "hot wheels", "matchbox", "maket araba", "koleksiyon araba", "metal araba",
+        "klasik araba", "model araba", "diecast", "maket araba", "koleksiyon araba",
+        "metal araba", "vosvos", "beetle", "1:18", "1:24", "1:32", "1:43", "1:64",
+        "hot wheels", "matchbox", "welly", "burago", "maisto",
     )),
     ("plak", ("plak", "pikap", "kaset", "cd")),
     ("retro", (
@@ -7945,6 +7946,11 @@ _XML_VARSAYILAN_KURALLAR = (
     )),
 )
 _XML_OTOMATIK_HARIC = frozenset({"diger"})
+_XML_MODELARABA_YALIN = frozenset({"model", "araba"})
+_XML_MODELARABA_ENGEL = (
+    "kerata", "çekecek", "elbise", "kıyafet", "tişört", "gömlek", "pantolon",
+    "bebek arabası", "pazar arabası", "alışveriş arabası",
+)
 
 
 def _xml_kural_yolu():
@@ -7990,6 +7996,7 @@ def _xml_kural_listesi():
             not kelime
             or dukkan not in DUKKANLAR
             or dukkan in _XML_OTOMATIK_HARIC
+            or (dukkan == "modelaraba" and kelime in _XML_MODELARABA_YALIN)
             or kelime in gorulen
         ):
             continue
@@ -8009,6 +8016,24 @@ def _xml_kelime_var(metin, kelime):
     if not hedef or not metin:
         return False
     return f" {hedef} " in f" {metin} "
+
+
+def _xml_modelaraba_baslik_engelli(ad):
+    baslik = _xml_metin_sade(ad)
+    if not baslik:
+        return False
+    for kelime in _XML_MODELARABA_ENGEL:
+        if _xml_kelime_var(baslik, kelime):
+            return True
+    return False
+
+
+def _xml_modelaraba_adayi_kabul(dukkan, kelime, baslik_engelli):
+    if dukkan != "modelaraba":
+        return True
+    if baslik_engelli:
+        return False
+    return _xml_metin_sade(kelime) not in _XML_MODELARABA_YALIN
 
 
 def _xml_dagitim_dukkani(kod):
@@ -8032,11 +8057,14 @@ def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
     metin = _xml_metin_sade(" ".join([
         str(ad or ""), str(aciklama or ""), str(kategori or ""),
     ]))
+    baslik_engelli = _xml_modelaraba_baslik_engelli(ad)
     if kurallar is None:
         kurallar = _xml_kural_listesi()
     for kural in kurallar:
         hedef = str(kural.get("dukkan") or "").strip().lower()
         if hedef in _XML_OTOMATIK_HARIC:
+            continue
+        if not _xml_modelaraba_adayi_kabul(hedef, kural.get("kelime"), baslik_engelli):
             continue
         if _xml_kelime_var(metin, kural.get("kelime")):
             return _xml_dagitim_dukkani(hedef)
@@ -8044,6 +8072,8 @@ def _xml_dukkan_siniflandir(ad, aciklama="", kategori="", kurallar=None):
         if dukkan in _XML_OTOMATIK_HARIC:
             continue
         for kelime in kelimeler:
+            if not _xml_modelaraba_adayi_kabul(dukkan, kelime, baslik_engelli):
+                continue
             if _xml_kelime_var(metin, kelime):
                 return _xml_dagitim_dukkani(dukkan)
     return "karma"
@@ -8465,6 +8495,11 @@ def xml_laboratuvar_kurallar():
         dukkan = str(veri.get("dukkan") or "").strip().lower()
         if not kelime:
             return jsonify({"success": False, "mesaj": "Kelime gerekli."})
+        if dukkan == "modelaraba" and kelime in _XML_MODELARABA_YALIN:
+            return jsonify({
+                "success": False,
+                "mesaj": "Tek başına model veya araba Klasik Arabalar kuralı olamaz.",
+            })
         if dukkan in _XML_OTOMATIK_HARIC:
             return jsonify({
                 "success": False,
