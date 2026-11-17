@@ -1516,38 +1516,7 @@
             border-radius: 999px;
             text-align: center;
         }
-        #pwaIosIpucu {
-            position: fixed;
-            left: 50%;
-            bottom: calc(118px + env(safe-area-inset-bottom));
-            transform: translateX(-50%);
-            width: min(92vw, 340px);
-            z-index: 1200;
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            padding: 10px 12px;
-            background: #121622;
-            color: #f8fafc;
-            border: 1px solid #d4af37;
-            border-radius: 12px;
-            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-            font-size: 13px;
-            line-height: 1.4;
-        }
         #pwaIosIpucu[hidden] { display: none !important; }
-        #pwaIosIpucu p { margin: 0; }
-        #pwaIosIpucuKapat {
-            flex: 0 0 auto;
-            width: 24px;
-            height: 24px;
-            border-radius: 999px;
-            border: 1px solid #d4af37;
-            background: transparent;
-            color: #d4af37;
-            cursor: pointer;
-            line-height: 1;
-        }
         @media (display-mode: standalone) {
             .pwa-indir-tetik { display: none !important; }
         }
@@ -1580,6 +1549,137 @@
         #medyaKapsayici {
             min-height: 250px;
             aspect-ratio: 16 / 9;
+        }
+        @media (max-width: 900px) and (orientation: portrait) {
+            .stage-media-box,
+            #medyaKapsayici {
+                width: 100% !important;
+                max-width: 100% !important;
+                aspect-ratio: auto !important;
+                overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-width: 0;
+                box-sizing: border-box;
+            }
+            .stage-media-box img,
+            #medyaKapsayici > img {
+                width: 100% !important;
+                height: 100% !important;
+                max-width: 100% !important;
+                max-height: 100% !important;
+                object-fit: contain !important;
+                object-position: center center !important;
+                margin: 0 auto !important;
+                min-width: 0 !important;
+                display: block;
+                position: relative;
+                left: auto;
+                right: auto;
+            }
+            #medyaKapsayici:not(.pinch-aktif):not(.tanitim-zoom) > img {
+                transform: none !important;
+            }
+        }
+        @media (max-width: 480px) {
+            .header.sade-header {
+                flex-wrap: nowrap;
+                align-items: center;
+                width: 100%;
+                max-width: 100%;
+                min-width: 0;
+                overflow: hidden;
+                gap: 4px;
+                box-sizing: border-box;
+            }
+            .header.sade-header .logo-box {
+                flex: 1 1 0;
+                min-width: 0;
+                overflow: hidden;
+            }
+            .header.sade-header .logo-box h2 {
+                flex: 0 1 auto;
+                min-width: 0;
+                max-width: 46%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .header.sade-header .header-lokasyon-rozet {
+                flex: 1 1 auto;
+                min-width: 0;
+                max-width: 54%;
+                overflow: hidden;
+            }
+            .header.sade-header #aktifDukkanRozet {
+                display: inline-block;
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                vertical-align: bottom;
+            }
+            .header.sade-header .header-actions {
+                flex: 0 0 auto;
+                flex-shrink: 0;
+                margin-left: auto;
+            }
+        }
+        #pwaIosIpucu {
+            position: fixed;
+            inset: 0;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            transform: none;
+            width: 100%;
+            height: 100%;
+            z-index: 100000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.72);
+            box-shadow: none;
+            border: none;
+            border-radius: 0;
+        }
+        #pwaIosIpucu[hidden] { display: none !important; }
+        .pwa-ios-kutu {
+            width: min(92vw, 360px);
+            background: #121622;
+            color: #f8fafc;
+            border: 1px solid #d4af37;
+            border-radius: 16px;
+            padding: 18px 16px 14px;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+            text-align: left;
+        }
+        .pwa-ios-kutu h3 {
+            margin: 0 0 10px;
+            color: #f6e27a;
+            font-size: 16px;
+            line-height: 1.35;
+        }
+        .pwa-ios-kutu ol {
+            margin: 0;
+            padding-left: 18px;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .pwa-ios-kutu li { margin-bottom: 8px; }
+        .pwa-ios-kutu button {
+            width: 100%;
+            margin-top: 6px;
+            background: #d4af37;
+            color: #111;
+            border: none;
+            border-radius: 999px;
+            padding: 10px 12px;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -1698,7 +1798,7 @@
         <div class="stage-wrapper" id="stageWrapper">
             <div class="stage-media-box" id="medyaKapsayici">
                 {% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun and ilk_sahne.aktif_urun.fotograflar %}
-                <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;object-fit:contain;">
+                <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;margin:0 auto;">
                 {% elif ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">LOT #{{ ilk_sahne.aktif_urun.lot }} - {{ ilk_sahne.aktif_urun.ad }}</p>
                 {% else %}
@@ -4988,6 +5088,13 @@
         } else {
             let img = document.createElement('img');
             img.src = sahneMedyaAdresi(medya.url);
+            img.alt = "";
+            img.style.width = "100%";
+            img.style.height = "100%";
+            img.style.maxWidth = "100%";
+            img.style.maxHeight = "100%";
+            img.style.objectFit = "contain";
+            img.style.margin = "0 auto";
             const kutu = document.getElementById('medyaKapsayici');
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
@@ -7007,8 +7114,14 @@
     })();
 </script>
 <div id="pwaIosIpucu" hidden>
-    <p>Paylaş (↑) simgesine basıp 'Ana Ekrana Ekle'yi seçerek telefonunuza indirebilirsiniz</p>
-    <button type="button" id="pwaIosIpucuKapat" aria-label="Kapat">×</button>
+    <div class="pwa-ios-kutu" role="dialog" aria-modal="true" aria-labelledby="pwaIosBaslik">
+        <h3 id="pwaIosBaslik">iPhone'a Uygulama Olarak Eklemek İçin</h3>
+        <ol>
+            <li>Safari'nin en altındaki Paylaş (↑) simgesine dokunun.</li>
+            <li>Açılan menüden "Ana Ekrana Ekle" seçeneğine basın.</li>
+        </ol>
+        <button type="button" id="pwaIosIpucuKapat">Anladım</button>
+    </div>
 </div>
 <script>
     (function pwaKurulum() {
@@ -7047,10 +7160,17 @@
         };
         if (uygulamaIcinde()) tetikleriGizle();
         window.addEventListener("beforeinstallprompt", function (olay) {
+            if (iosMu()) return;
             olay.preventDefault();
             bekleyenKurulum = olay;
         });
         window.addEventListener("appinstalled", tetikleriGizle);
+        var ipucuKutu = document.getElementById("pwaIosIpucu");
+        if (ipucuKutu) {
+            ipucuKutu.addEventListener("click", function (e) {
+                if (e.target === ipucuKutu) ipucuKutu.hidden = true;
+            });
+        }
         var kapat = document.getElementById("pwaIosIpucuKapat");
         if (kapat) {
             kapat.addEventListener("click", function () {
