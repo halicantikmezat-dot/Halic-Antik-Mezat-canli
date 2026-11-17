@@ -20,6 +20,7 @@ except Exception as hata:
 from datetime import datetime, timedelta, timezone
 import collections
 import functools
+import gzip
 import hashlib
 import hmac
 import io
@@ -71,6 +72,38 @@ os.makedirs(SESLER_DIR, exist_ok=True)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 app = Flask(__name__)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 86400
+
+def _gzip_kabul_ediyor():
+    """Accept-Encoding içinde q>0 olan gzip var mı."""
+    ham = request.headers.get("Accept-Encoding") or ""
+    for parca in ham.split(","):
+        parca = parca.strip()
+        if not parca:
+            continue
+        ad, _, parametre = parca.partition(";")
+        if ad.strip().lower() != "gzip":
+            continue
+        kalite = 1.0
+        for secenek in parametre.split(";"):
+            secenek = secenek.strip()
+            if not secenek.lower().startswith("q="):
+                continue
+            try:
+                kalite = float(secenek[2:].strip())
+            except ValueError:
+                kalite = 0.0
+        return kalite > 0
+    return False
+
+
+def _vary_accept_encoding(response):
+    mevcut = response.headers.get("Vary") or ""
+    parcalar = [p.strip() for p in mevcut.split(",") if p.strip()]
+    if not any(p.lower() == "accept-encoding" for p in parcalar):
+        parcalar.append("Accept-Encoding")
+    response.headers["Vary"] = ", ".join(parcalar)
+
 
 # ==========================================
 # NGROK / CLOUDFLARE VE WOOCOMMERCE CORS BAŞLIKLARI
@@ -84,6 +117,39 @@ def ek_guvenlik_ve_cors_ekle(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+@app.after_request
+def genel_yanit_sikistir_ve_statik_onbellek(response):
+    """1 KB üstü HTML/JSON gzip. Statik dosyaya bir gün önbellek. Akış ve hazır gzip'e dokunmaz."""
+    try:
+        yol = request.path or ""
+        if yol.startswith("/static/"):
+            if response.status_code == 200:
+                response.headers["Cache-Control"] = "public, max-age=86400"
+            return response
+        if getattr(response, "direct_passthrough", False) or response.is_streamed:
+            return response
+        if response.headers.get("Content-Encoding"):
+            return response
+        if not _gzip_kabul_ediyor():
+            return response
+        ctype = (response.headers.get("Content-Type") or "").lower()
+        if "text/html" not in ctype and "application/json" not in ctype:
+            return response
+        if response.status_code in (204, 304):
+            return response
+        veri = response.get_data()
+        if not veri or len(veri) <= 1024:
+            return response
+        sikistirilmis = gzip.compress(veri, compresslevel=5)
+        response.set_data(sikistirilmis)
+        response.headers["Content-Encoding"] = "gzip"
+        response.headers["Content-Length"] = str(len(sikistirilmis))
+        _vary_accept_encoding(response)
+    except Exception as hata:
+        print(f"[GZIP] yanit sikistirilamadi: {hata}", flush=True)
     return response
 
 # ==========================================
@@ -171,11 +237,42 @@ _vitrin_nesil = 0
 
 
 def invalidate_vitrin_cache():
-    """Pey, ürün, sayaç sıfırlama ve yayın durumu yazılarında vitrin anında düşer."""
+    """Pey, ürün, sayaç sıfırlama ve yayın durumu yazılarında vitrin anında düşer.
+
+    Düz utf-8 ve önceden sıkıştırılmış gzip kopyası aynı kayıtta durur; ikisi birlikte silinir.
+    """
     global _vitrin_onbellek, _vitrin_nesil
     with _vitrin_kilit:
         _vitrin_nesil += 1
         _vitrin_onbellek = {}
+
+
+def _bayt_ve_gzip(icerik):
+    """Düz utf-8 bayt ve compresslevel=5 gzip kopyası. İkisi aynı kaynaktan üretilir."""
+    if isinstance(icerik, bytes):
+        duz = icerik
+    elif isinstance(icerik, str):
+        duz = icerik.encode("utf-8")
+    else:
+        duz = json.dumps(icerik, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return duz, gzip.compress(duz, compresslevel=5)
+
+
+def _paketten_yanit(paket, mimetype):
+    """İstemci gzip istiyorsa hazır baytı döndürür; sıkıştırmayı yeniden hesaplamaz."""
+    duz, sikistirilmis = paket
+    if _gzip_kabul_ediyor():
+        govde = sikistirilmis
+        kodlu = True
+    else:
+        govde = duz
+        kodlu = False
+    yanit = Response(govde, mimetype=mimetype)
+    yanit.headers["Content-Length"] = str(len(govde))
+    yanit.headers["Vary"] = "Accept-Encoding"
+    if kodlu:
+        yanit.headers["Content-Encoding"] = "gzip"
+    return yanit
 
 
 def _vitrin_tazele(anahtar, uret):
@@ -2982,6 +3079,133 @@ def urun_vitrin_indekslerini_hazirla():
         db.session.commit()
 
 
+def _tablo_indeks_kolonlari(tablo):
+    """Tablodaki indekslerin soldan sağa kolon dizileri."""
+    if not tablo or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", tablo):
+        return []
+    if IS_SQLITE:
+        adlar = db.session.execute(text(f"PRAGMA index_list({tablo})")).fetchall()
+        bulunan = []
+        for satir in adlar:
+            ad = str(satir[1]).replace('"', "")
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", ad):
+                continue
+            kolonlar = db.session.execute(text(f"PRAGMA index_info({ad})")).fetchall()
+            bulunan.append(tuple(str(kolon[2]) for kolon in kolonlar if kolon[2]))
+        return bulunan
+    satirlar = db.session.execute(
+        text(
+            "SELECT i.relname, a.attname, k.n "
+            "FROM pg_index x "
+            "JOIN pg_class t ON t.oid = x.indrelid "
+            "JOIN pg_class i ON i.oid = x.indexrelid "
+            "JOIN LATERAL unnest(x.indkey) WITH ORDINALITY AS k(attnum, n) ON true "
+            "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum "
+            "WHERE t.relname = :tablo AND k.attnum > 0 "
+            "ORDER BY i.relname, k.n"
+        ),
+        {"tablo": tablo},
+    ).fetchall()
+    gruplar = {}
+    sira = []
+    for _ad, kolon, _n in satirlar:
+        if _ad not in gruplar:
+            gruplar[_ad] = []
+            sira.append(_ad)
+        gruplar[_ad].append(str(kolon))
+    return [tuple(gruplar[ad]) for ad in sira]
+
+
+def _indeks_kapsaniyor(istenen, mevcutlar):
+    """İstenen kolon dizisi, mevcut bir indeksin sol öneki ise yeni indeks gerekmez."""
+    hedef = tuple(istenen)
+    for mevcut in mevcutlar:
+        if mevcut[: len(hedef)] == hedef:
+            return True
+    return False
+
+
+def _indeks_guvenli_olustur(sql):
+    """CREATE INDEX IF NOT EXISTS. PostgreSQL yazmayı kilitlemeden dener."""
+    komut = " ".join(str(sql).split())
+    if not komut.upper().startswith("CREATE INDEX IF NOT EXISTS "):
+        raise ValueError("yalnizca CREATE INDEX IF NOT EXISTS")
+    try:
+        if IS_SQLITE:
+            db.session.execute(text(komut))
+            db.session.commit()
+            return
+        eszamanli = komut.replace(
+            "CREATE INDEX IF NOT EXISTS",
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS",
+            1,
+        )
+        baglanti = db.engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            baglanti.execute(text(eszamanli))
+        finally:
+            baglanti.close()
+    except Exception as hata:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"[BOOT] indeks atlandi: {hata}", flush=True)
+
+
+def sicak_sorgu_indekslerini_hazirla():
+    """Ana vitrin ve /api/durum sıcak kolonları. Eksikse oluşturur, hata açılışı durdurmaz.
+
+    Şemada dükkan anahtarı dukkan_kodu'dur. Aktif vitrin süzgeci silindi_mi, durum ve lot_no
+    ile kurulur. aktif veya dukkan_id kolonu gerçekten varsa onlara da indeks eklenir.
+    """
+    try:
+        kolonlar = _urun_kolon_adlari()
+    except Exception as hata:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"[BOOT] sicak indeks kontrolu atlandi: {hata}", flush=True)
+        return
+    try:
+        mevcut = _tablo_indeks_kolonlari("urun")
+    except Exception as hata:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"[BOOT] indeks listesi okunamadi, IF NOT EXISTS denenecek: {hata}", flush=True)
+        mevcut = []
+    adaylar = []
+    if {"dukkan_kodu", "silindi_mi", "durum", "lot_no"} <= kolonlar:
+        hedef = ("dukkan_kodu", "silindi_mi", "durum", "lot_no")
+        if not _indeks_kapsaniyor(hedef, mevcut):
+            adaylar.append(
+                "CREATE INDEX IF NOT EXISTS ix_urun_vitrin_aktif "
+                "ON urun (dukkan_kodu, silindi_mi, durum, lot_no)"
+            )
+    if {"silindi_mi", "id"} <= kolonlar:
+        hedef = ("silindi_mi", "id")
+        if not _indeks_kapsaniyor(hedef, mevcut):
+            adaylar.append(
+                "CREATE INDEX IF NOT EXISTS ix_urun_api_durum_silindi "
+                "ON urun (silindi_mi, id)"
+            )
+    if "durum" in kolonlar and not _indeks_kapsaniyor(("durum",), mevcut):
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_durum_sicak ON urun (durum)"
+        )
+    if "aktif" in kolonlar and not _indeks_kapsaniyor(("aktif",), mevcut):
+        adaylar.append("CREATE INDEX IF NOT EXISTS ix_urun_aktif ON urun (aktif)")
+    if "dukkan_id" in kolonlar and not _indeks_kapsaniyor(("dukkan_id",), mevcut):
+        adaylar.append(
+            "CREATE INDEX IF NOT EXISTS ix_urun_dukkan_id_kolon ON urun (dukkan_id)"
+        )
+    for sql in adaylar:
+        _indeks_guvenli_olustur(sql)
+
+
 def veritabani_tablolari_onar():
     print("[BOOT] veritabani onarimi basladi", flush=True)
     with app.app_context():
@@ -3118,6 +3342,8 @@ def veritabani_tablolari_onar():
         try:
             print("[BOOT] urun kategori indeksleri", flush=True)
             urun_vitrin_indekslerini_hazirla()
+            print("[BOOT] sicak sorgu indeksleri", flush=True)
+            sicak_sorgu_indekslerini_hazirla()
             print("[BOOT] veritabani onarimi bitti", flush=True)
         except Exception:
             try:
@@ -3206,8 +3432,11 @@ def izleyici_index():
     dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
     if _vitrin_oturumu_ozel_mi():
         return _ana_sayfa_html(dukkan)
-    html = vitrin_mikro_onbellek("anasayfa:" + dukkan, lambda: _ana_sayfa_html(dukkan))
-    return Response(html, mimetype="text/html; charset=utf-8")
+    paket = vitrin_mikro_onbellek(
+        "anasayfa:" + dukkan,
+        lambda: _bayt_ve_gzip(_ana_sayfa_html(dukkan)),
+    )
+    return _paketten_yanit(paket, "text/html; charset=utf-8")
 
 
 def _api_durum_govdesi():
@@ -3250,8 +3479,11 @@ def _api_durum_govdesi():
 @app.route("/api/durum", methods=["GET"])
 def api_durum():
     try:
-        govde = vitrin_mikro_onbellek("api_durum", _api_durum_govdesi)
-        return jsonify(govde)
+        paket = vitrin_mikro_onbellek(
+            "api_durum",
+            lambda: _bayt_ve_gzip(jsonify(_api_durum_govdesi()).get_data()),
+        )
+        return _paketten_yanit(paket, "application/json")
     except Exception:
         db.session.rollback()
         return jsonify({"success": False, "dukkanlar": {}}), 500
