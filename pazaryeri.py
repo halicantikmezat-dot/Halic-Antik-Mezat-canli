@@ -2,7 +2,7 @@ import json
 import threading
 import urllib.parse
 from datetime import datetime, timezone
-from flask import Blueprint, jsonify, render_template_string, request
+from flask import Blueprint, has_request_context, jsonify, render_template_string, request
 from sqlalchemy import text
 
 
@@ -46,62 +46,168 @@ def _pazaryeri_ilk_gorsel(ham):
 pazaryeri_bp = Blueprint("pazaryeri_bp", __name__)
 _sema_kilit = threading.Lock()
 _sema_hazir = False
+_oturum_hazir = set()
+_PAZARYERI_TEDARIKCI_KOLONLARI = (
+    ("ad_soyad", "VARCHAR(100)"),
+    ("telefon", "VARCHAR(20)"),
+    ("iban", "VARCHAR(40)"),
+    ("komisyon_orani", "FLOAT DEFAULT 15.0"),
+    ("notlar", "TEXT"),
+    ("durum", "VARCHAR(20) DEFAULT 'aktif'"),
+)
+_PAZARYERI_URUN_KOLONLARI = (
+    ("tedarikci_id", "INTEGER"),
+    ("siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
+    ("kargo_takip_no", "VARCHAR(100)"),
+    ("kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
+)
+
+
+def _pazaryeri_oturum_anahtari():
+    if not has_request_context():
+        return None
+    return request.cookies.get("session") or ""
+
+
+def _pazaryeri_katalog_oku(db, is_sqlite):
+    """Salt okunur katalog. DDL ve kilit üretmez."""
+    if is_sqlite:
+        tablolar = {
+            str(satir[0])
+            for satir in db.session.execute(
+                text(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' "
+                    "AND name IN ('tedarikci', 'urun')"
+                )
+            ).fetchall()
+        }
+        kolonlar = {}
+        for tablo in tablolar:
+            kolonlar[tablo] = {
+                str(satir[1])
+                for satir in db.session.execute(text(f"PRAGMA table_info({tablo})")).fetchall()
+            }
+        return kolonlar
+    tablolar = {
+        str(satir[0])
+        for satir in db.session.execute(
+            text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = current_schema() "
+                "AND table_type = 'BASE TABLE' "
+                "AND table_name IN ('tedarikci', 'urun')"
+            )
+        ).fetchall()
+    }
+    kolonlar = {tablo: set() for tablo in tablolar}
+    for tablo, kolon in db.session.execute(
+        text(
+            "SELECT table_name, column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() "
+            "AND table_name IN ('tedarikci', 'urun')"
+        )
+    ).fetchall():
+        kolonlar.setdefault(str(tablo), set()).add(str(kolon))
+    return kolonlar
+
+
+def _pazaryeri_eksikler(kolonlar):
+    tedarikci = kolonlar.get("tedarikci")
+    eksik_tablo = tedarikci is None
+    eksik_tedarikci = []
+    if tedarikci is not None:
+        eksik_tedarikci = [
+            (ad, tip)
+            for ad, tip in _PAZARYERI_TEDARIKCI_KOLONLARI
+            if ad not in tedarikci
+        ]
+    urun = kolonlar.get("urun")
+    eksik_urun = []
+    if urun is not None:
+        eksik_urun = [
+            (ad, tip)
+            for ad, tip in _PAZARYERI_URUN_KOLONLARI
+            if ad not in urun
+        ]
+    return eksik_tablo, eksik_tedarikci, eksik_urun, urun is None
+
+
+def _pazaryeri_ddl(db, is_sqlite, sql):
+    if not is_sqlite:
+        db.session.execute(text("SET LOCAL lock_timeout = '1500ms'"))
+    db.session.execute(text(sql))
+    db.session.commit()
+
+
+def _pazaryeri_semayi_denetle(app, db):
+    db_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI", ""))
+    is_sqlite = "sqlite" in db_uri
+    kolonlar = _pazaryeri_katalog_oku(db, is_sqlite)
+    db.session.rollback()
+    eksik_tablo, eksik_tedarikci, eksik_urun, urun_yok = _pazaryeri_eksikler(kolonlar)
+    if not eksik_tablo and not eksik_tedarikci and not eksik_urun and not urun_yok:
+        return True
+    if eksik_tablo:
+        kimlik = (
+            "id INTEGER PRIMARY KEY AUTOINCREMENT"
+            if is_sqlite
+            else "id SERIAL PRIMARY KEY"
+        )
+        _pazaryeri_ddl(
+            db,
+            is_sqlite,
+            f"""
+            CREATE TABLE tedarikci (
+                {kimlik},
+                ad_soyad VARCHAR(100) NOT NULL,
+                telefon VARCHAR(20) NOT NULL,
+                iban VARCHAR(40),
+                komisyon_orani FLOAT DEFAULT 15.0,
+                notlar TEXT,
+                durum VARCHAR(20) DEFAULT 'aktif'
+            )
+            """,
+        )
+    for ad, tip in eksik_tedarikci:
+        _pazaryeri_ddl(db, is_sqlite, f"ALTER TABLE tedarikci ADD COLUMN {ad} {tip}")
+    if not urun_yok:
+        for ad, tip in eksik_urun:
+            _pazaryeri_ddl(db, is_sqlite, f"ALTER TABLE urun ADD COLUMN {ad} {tip}")
+    kolonlar = _pazaryeri_katalog_oku(db, is_sqlite)
+    db.session.rollback()
+    eksik_tablo, eksik_tedarikci, eksik_urun, urun_yok = _pazaryeri_eksikler(kolonlar)
+    return not eksik_tablo and not eksik_tedarikci and not eksik_urun and not urun_yok
 
 
 def pazaryeri_semasini_hazirla(app, db):
-    """Tablo ve kolon kontrolü. Import sırasında çağrılmaz."""
+    """Eksik tablo veya sütun yoksa DDL çalıştırmaz. Import sırasında çağrılmaz."""
     global _sema_hazir
     if _sema_hazir:
         return
-    if not _sema_kilit.acquire(blocking=False):
+    oturum = _pazaryeri_oturum_anahtari()
+    if oturum and oturum in _oturum_hazir:
+        return
+    if not _sema_kilit.acquire(timeout=2):
         return
     try:
         if _sema_hazir:
             return
         with app.app_context():
-            db_uri = str(app.config.get("SQLALCHEMY_DATABASE_URI", ""))
-            is_sqlite = "sqlite" in db_uri
-
-            id_column_def = (
-                "id INTEGER PRIMARY KEY AUTOINCREMENT"
-                if is_sqlite
-                else "id SERIAL PRIMARY KEY"
-            )
-
             try:
-                db.session.execute(
-                    text(f"""
-                        CREATE TABLE IF NOT EXISTS tedarikci (
-                            {id_column_def},
-                            ad_soyad VARCHAR(100) NOT NULL,
-                            telefon VARCHAR(20) NOT NULL,
-                            iban VARCHAR(40),
-                            komisyon_orani FLOAT DEFAULT 15.0,
-                            notlar TEXT,
-                            durum VARCHAR(20) DEFAULT 'aktif'
-                        );
-                    """)
-                )
-                db.session.commit()
-            except Exception:
+                tamam = _pazaryeri_semayi_denetle(app, db)
+            except Exception as hata:
                 db.session.rollback()
-
-            yeni_kolonlar = [
-                ("urun", "tedarikci_id", "INTEGER"),
-                ("urun", "siparis_durumu", "VARCHAR(30) DEFAULT 'Odeme_Bekliyor'"),
-                ("urun", "kargo_takip_no", "VARCHAR(100)"),
-                ("urun", "kargo_firmasi", "VARCHAR(50) DEFAULT 'Yurtiçi Kargo'"),
-            ]
-            for tbl, col, col_type in yeni_kolonlar:
-                try:
-                    db.session.execute(
-                        text(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_type};")
-                    )
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-        _sema_hazir = True
-        print("[BOOT] pazaryeri semasi hazir", flush=True)
+                print(f"[BOOT] pazaryeri semasi atlandi: {hata}", flush=True)
+                if oturum:
+                    _oturum_hazir.add(oturum)
+                return
+        if tamam:
+            _sema_hazir = True
+            print("[BOOT] pazaryeri semasi hazir", flush=True)
+            if oturum:
+                _oturum_hazir.add(oturum)
+                if len(_oturum_hazir) > 4000:
+                    _oturum_hazir.clear()
     except Exception as hata:
         try:
             db.session.rollback()
@@ -117,6 +223,9 @@ def register_routes(app, db, admin_required_decorator):
 
     @pazaryeri_bp.before_request
     def _pazaryeri_ilk_istek():
+        yol = request.path or ""
+        if "pazaryeri" not in yol and "tedarikci" not in yol:
+            return
         pazaryeri_semasini_hazirla(app, db)
 
     # --- HTML ARAYÜZÜ ---
