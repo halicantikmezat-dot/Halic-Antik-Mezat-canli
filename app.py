@@ -56,12 +56,13 @@ import pandas as pd
 import pyotp
 import requests
 from sqlalchemy import func, or_, text
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 # Servis Katmanı
 from bizimhesap_service import bizimhesap_siparis_aktar
-from config import Config
+from config import Config, _sqlalchemy_engine_options
 
 # Yükleme klasörünü garantiye al
 UPLOADS_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
@@ -208,23 +209,7 @@ app.config["SECRET_KEY"] = os.environ.get(
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-if IS_SQLITE:
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_timeout": 5,
-        "connect_args": {"timeout": 5},
-    }
-else:
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_size": 15,
-        "max_overflow": 25,
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-        "pool_timeout": 10,
-        "connect_args": {
-            "connect_timeout": 5,
-            "options": "-c lock_timeout=3000 -c statement_timeout=30000",
-        },
-    }
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = _sqlalchemy_engine_options(db_url)
 print("[BOOT] veritabani baglanti zaman asimi 5sn", flush=True)
 
 # ==========================================
@@ -2196,6 +2181,41 @@ def _yazma_icin_kilitle(model, kayit_id):
     if not IS_SQLITE:
         sorgu = sorgu.with_for_update()
     return sorgu.filter(model.id == kayit_id).populate_existing().first()
+
+
+def _satir_kilit_cakismasi(hata):
+    """PostgreSQL lock_timeout (55P03 / LockNotAvailable). Baska hatalar sayilmaz."""
+    kuyruk = [hata]
+    gorulen = set()
+    while kuyruk:
+        guncel = kuyruk.pop()
+        if guncel is None or id(guncel) in gorulen:
+            continue
+        gorulen.add(id(guncel))
+        if type(guncel).__name__ == "LockNotAvailable":
+            return True
+        if getattr(guncel, "pgcode", None) == "55P03":
+            return True
+        metin = str(guncel).lower()
+        if (
+            "locknotavailable" in metin
+            or "lock timeout" in metin
+            or "lock not available" in metin
+            or "could not obtain lock" in metin
+        ):
+            return True
+        for bag in ("orig", "__cause__", "__context__"):
+            ic = getattr(guncel, bag, None)
+            if ic is not None and ic is not guncel:
+                kuyruk.append(ic)
+    return False
+
+
+def _havuz_yogun_yaniti():
+    return jsonify({
+        "success": False,
+        "mesaj": "Sistem şu an çok yoğun, lütfen tekrar deneyin.",
+    })
 
 
 def _kilitli_fiyat(oda, urun):
@@ -5768,67 +5788,77 @@ def pey_ver():
     telefon = (veri.get("telefon") or "").strip()
 
     kullanici = None
-    if musteri_id:
-        try:
-            kullanici = db.session.get(Kullanici, int(musteri_id))
-        except (ValueError, TypeError):
+    try:
+        if musteri_id:
+            try:
+                kullanici = db.session.get(Kullanici, int(musteri_id))
+            except (ValueError, TypeError):
+                return jsonify({
+                    "success": False,
+                    "mesaj": "Geçersiz müşteri bilgisi.",
+                }), 400
+        elif telefon:
+            kullanici = Kullanici.query.filter_by(telefon=telefon).first()
+        elif musteri_adi:
+            saf_istek = saf_isim_temizle(musteri_adi)
+            kullanici = (
+                Kullanici.query.filter(
+                    Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(saf_istek)
+                ).first()
+            )
+
+        if not kullanici or kullanici.silindi_mi:
             return jsonify({
                 "success": False,
-                "mesaj": "Geçersiz müşteri bilgisi.",
-            }), 400
-    elif telefon:
-        kullanici = Kullanici.query.filter_by(telefon=telefon).first()
-    elif musteri_adi:
-        saf_istek = saf_isim_temizle(musteri_adi)
-        kullanici = (
-            Kullanici.query.filter(
-                Kullanici.silindi_mi.is_(False), Kullanici.ad_soyad.ilike(saf_istek)
-            ).first()
-        )
+                "kayit_gerekli": True,
+                "mesaj": KAYIT_PEY_MESAJI,
+            })
 
-    if not kullanici or kullanici.silindi_mi:
-        return jsonify({
-            "success": False,
-            "kayit_gerekli": True,
-            "mesaj": KAYIT_PEY_MESAJI,
-        })
+        if kullanici_banli_mi(kullanici):
+            return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
 
-    if kullanici_banli_mi(kullanici):
-        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+        if not bool(getattr(kullanici, "is_verified", False)):
+            return jsonify({
+                "success": False,
+                "kayit_gerekli": True,
+                "dogrulama_gerekli": True,
+                "mesaj": KAYIT_PEY_MESAJI,
+            })
 
-    if not bool(getattr(kullanici, "is_verified", False)):
-        return jsonify({
-            "success": False,
-            "kayit_gerekli": True,
-            "dogrulama_gerekli": True,
-            "mesaj": KAYIT_PEY_MESAJI,
-        })
+        if kimlik_engeli(
+            kullanici,
+            telefon=telefon,
+            cihaz=istek_cihaz_kodu(veri),
+            ip=client_ip,
+        ):
+            return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
+        if on_odeme_kilitli_mi(kullanici):
+            return on_odeme_yaniti()
 
-    if kimlik_engeli(
-        kullanici,
-        telefon=telefon,
-        cihaz=istek_cihaz_kodu(veri),
-        ip=client_ip,
-    ):
-        return jsonify({"success": False, "ban": True, "mesaj": BAN_MESAJI}), 403
-    if on_odeme_kilitli_mi(kullanici):
-        return on_odeme_yaniti()
+        kullanici_id = int(kullanici.id)
+        kullanici_ad = str(kullanici.ad_soyad or "")
+        etiket_ad = f"[Web] {kullanici_ad}"
+        raw_uid = veri.get("urun_id") or oda["aktif_urun_id"]
+        try:
+            urun_id = int(raw_uid) if raw_uid else oda["aktif_urun_id"]
+        except SATimeoutError:
+            raise
+        except Exception:
+            urun_id = oda["aktif_urun_id"]
 
-    etiket_ad = f"[Web] {kullanici.ad_soyad}"
-    raw_uid = veri.get("urun_id") or oda["aktif_urun_id"]
-    try:
-        urun_id = int(raw_uid) if raw_uid else oda["aktif_urun_id"]
-    except Exception:
-        urun_id = oda["aktif_urun_id"]
+        if not urun_id:
+            return jsonify({
+                "success": False, "mesaj": "Bu dükkanda şu an aktif bir mezat yok!",
+            })
+    except SATimeoutError:
+        db.session.rollback()
+        return _havuz_yogun_yaniti()
 
-    if not urun_id:
-        return jsonify({
-            "success": False, "mesaj": "Bu dükkanda şu an aktif bir mezat yok!",
-        })
+    db.session.remove()
 
     with oda_kilitleri[dukkan]:
         try:
-            kullanici = _yazma_icin_kilitle(Kullanici, kullanici.id)
+            kullanici = _yazma_icin_kilitle(Kullanici, kullanici_id)
             if not kullanici or kullanici.silindi_mi:
                 db.session.rollback()
                 return jsonify({
@@ -6087,6 +6117,13 @@ def pey_ver():
                 })
         except Exception as e:
             db.session.rollback()
+            if isinstance(e, SATimeoutError):
+                return _havuz_yogun_yaniti()
+            if _satir_kilit_cakismasi(e):
+                return jsonify({
+                    "success": False,
+                    "mesaj": "Şu anda başka bir pey işleniyor, lütfen tekrar deneyin.",
+                })
             return jsonify({
                 "success": False, "mesaj": f"Veritabanı hatası: {str(e)}",
             }), 500

@@ -39,14 +39,14 @@ def _sqlalchemy_engine_options(db_url):
             "connect_args": {"timeout": 5},
         }
     return {
-        "pool_size": 15,
-        "max_overflow": 25,
-        "pool_timeout": 10,
+        "pool_size": 25,
+        "max_overflow": 35,
+        "pool_timeout": 15,
         "pool_recycle": 300,
         "pool_pre_ping": True,
         "connect_args": {
             "connect_timeout": 5,
-            "options": "-c lock_timeout=3000 -c statement_timeout=30000",
+            "options": "-c lock_timeout=1500 -c statement_timeout=30000",
         },
     }
 
