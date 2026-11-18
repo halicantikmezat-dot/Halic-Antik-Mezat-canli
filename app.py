@@ -723,6 +723,43 @@ def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
     _dukkan_canli_yayinla()
 
 
+def _otonom_sahneyi_kapat(dukkan):
+    """Otonom durunca lotu sahneden indir. Oda satırı Postgres ve Redis'e Bekliyor yazılır."""
+    oda = odalar.get(dukkan)
+    if oda is None:
+        return
+    with oda_kilitleri[dukkan]:
+        oda["sayac_aktif"] = False
+        oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
+        oda["sayac_kalan"] = 0
+        _gizli_pazarligi_kapat(oda)
+        oda["mevat_asama"] = ""
+        oda["aktif_urun_id"] = None
+        oda["durum"]["durum"] = "Bekliyor"
+        oda["durum"]["sure_bitis"] = 0
+        oda["durum"]["pey"] = 0
+        oda["durum"]["kazanan"] = "Yok"
+        oda["durum"]["kazanan_id"] = None
+        oda.pop("son_satis", None)
+    _sahne_sesini_kes(dukkan)
+    socketio.emit(
+        "sahne_bosta",
+        {
+            "dukkan": dukkan,
+            "neden": "durduruldu",
+            "mesaj": "Mezat durduruldu. Yeni ürün sahneye bekleniyor...",
+            "sesi_koru": False,
+        },
+        room=dukkan,
+    )
+    socketio.emit(
+        "otonom_durum_degisti",
+        {"dukkan": dukkan, "aktif": False, "sahne": "Bekliyor"},
+        room=dukkan,
+    )
+    _dukkan_canli_yayinla()
+
+
 def _son_satisi_yaz(oda, kazanan, fiyat, urun_id=None):
     ad = str(kazanan or "").strip()
     if not ad or ad.lower() in ("yok", "kimse", "none", "-", ""):
@@ -8063,11 +8100,9 @@ def otonom_mezat_kontrol():
             socketio.emit(
                 "otonom_durum_degisti", {"dukkan": d, "aktif": True}, room=d
             )
-        elif oda["otonom_aktif"]:
+        else:
             oda["otonom_aktif"] = False
-            socketio.emit(
-                "otonom_durum_degisti", {"dukkan": d, "aktif": False}, room=d
-            )
+            _otonom_sahneyi_kapat(d)
 
     if durum:
         mesaj = f"{len(baslatilan)} dükkanda otonom tur tetiklendi."

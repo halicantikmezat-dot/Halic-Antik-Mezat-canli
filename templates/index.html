@@ -4484,6 +4484,20 @@
         if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
         sahneyiBosalt(data && data.mesaj, !!(data && data.sesi_koru));
         if (!data || data.neden !== 'satildi') satildiDamgasiniGizle();
+        const digits = document.getElementById('timerDigits');
+        const dial = document.getElementById('futuristicDial');
+        const cockpit = document.getElementById('mezatSayaci');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        if (digits) {
+            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+            digits.innerText = '--';
+        }
+        if (dial) dial.style.strokeDashoffset = 125.6;
+        if (cockpit) cockpit.classList.remove('urgent');
+        if (statusTitle) statusTitle.innerText = 'BEKLİYOR';
+        sonGorulenPey = 0;
+        const kazanan = document.getElementById('aktif_kazanan');
+        if (kazanan) kazanan.innerText = 'Yok';
     });
 
     socket.on('dukkan_canli_durumu', function (data) {
@@ -4491,7 +4505,7 @@
     });
 
     socket.on('pey_guncellendi', function(data) {
-        if (data && data.dukkan === aktifDukkan) {
+        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             let fiyat = parseFloat(data.pey || data.guncel_fiyat || 0);
             let kisi = data.ad || data.kazanan || data.kazanan_ad || "Yok";
             if (fiyat > sonGorulenPey) {
@@ -4631,6 +4645,7 @@
 
     socket.on('pazarlik_kapandi', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (sahneKapali) return;
         serbestArtis = false;
         sahnedekiUrunSatildiMi = false;
         const fiyat = parseFloat(data.pey || 0);
@@ -4645,7 +4660,7 @@
     });
 
     socket.on('sayac_guncelle', function(data) {
-        if (data && data.dukkan === aktifDukkan) {
+        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             const digits = document.getElementById('timerDigits');
             const cockpit = document.getElementById('mezatSayaci');
@@ -4710,7 +4725,7 @@
     });
 
     socket.on('sayac_uzatildi', function(data) {
-        if (data && data.dukkan === aktifDukkan) {
+        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
             const cockpit = document.getElementById('mezatSayaci');
@@ -4725,7 +4740,7 @@
     });
 
     socket.on('sayac_bitti', function(data) {
-        if (data && data.dukkan === aktifDukkan) {
+        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             zoomEfektiDurdur();
             serbestArtis = false;
             const digits = document.getElementById('timerDigits');
