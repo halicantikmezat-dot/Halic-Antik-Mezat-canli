@@ -41,7 +41,7 @@ def gecis_bir_kez(kalan, gecildi):
 
 
 def uzatma_kabul(yerel, redis_kalan, asama):
-    """Donuk Redis saati geri sarmaz. Kararda son 10 sn peyi süreyi 15'e uzatır."""
+    """Donuk Redis saati geri sarmaz. Kararda son 15 sn peyi süreyi 15'e uzatır."""
     try:
         yerel = int(yerel or 0)
     except (TypeError, ValueError):
@@ -50,7 +50,7 @@ def uzatma_kabul(yerel, redis_kalan, asama):
         redis_kalan = int(redis_kalan or 0)
     except (TypeError, ValueError):
         return yerel
-    if asama == "karar" and yerel <= 10 and yerel < redis_kalan <= 15:
+    if asama == "karar" and 0 < yerel <= 15 and yerel < redis_kalan <= 15:
         return redis_kalan
     return yerel
 
@@ -182,6 +182,31 @@ def yeni_tur_acilsin_mi(sayac_aktif, nabiz_taze, kilit_taze):
     return True
 
 
+def satis_kapanis_plani(kazanan, tutar, dukkan, urun_id=None, neden=""):
+    """Erken satış, karar bitişi ve manuel kapanış aynı kaydı üretir.
+
+    Sayaç tikine karışmaz. Ürün havuzdan düşer; yönetici arşivi alıcı,
+    tutar ve dükkan ile `admin_satis_guncelle` olayını bekler.
+    """
+    ad = str(kazanan or "").strip()
+    try:
+        fiyat = float(tutar or 0)
+    except (TypeError, ValueError):
+        fiyat = 0.0
+    if fiyat < 0:
+        fiyat = 0.0
+    return {
+        "satildi": True,
+        "durum": "Satıldı",
+        "kazanan": ad,
+        "fiyat": fiyat,
+        "dukkan": dukkan,
+        "urun_id": urun_id,
+        "neden": neden or "",
+        "olay": "admin_satis_guncelle",
+    }
+
+
 def otonom_tur_simulasyonu(pey_kararda=True):
     """Uyku yok. 180 tik: 120 pazarlık, 60. sn geçiş, 15. sn uyarı, kapanış."""
     olaylar = []
@@ -200,5 +225,8 @@ def otonom_tur_simulasyonu(pey_kararda=True):
         olaylar.append(("sayac_guncelle", paket["kalan"], paket["asama"]))
         kalan -= 1
     olaylar.append("sayac_bitti")
-    olaylar.append("admin_satis_guncelle" if pey_kararda else "pas")
+    if pey_kararda:
+        olaylar.append(satis_kapanis_plani("alici", 1, "gumus", neden="sure")["olay"])
+    else:
+        olaylar.append("pas")
     return olaylar

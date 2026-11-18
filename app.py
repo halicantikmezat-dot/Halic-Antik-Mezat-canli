@@ -77,6 +77,7 @@ from mezat_sayac import (
     sayac_kesilsin_mi,
     sayac_paketi,
     tanitim_anahtari,
+    satis_kapanis_plani,
     uzatma_kabul,
     yeni_tur_acilsin_mi,
 )
@@ -3315,6 +3316,37 @@ def _gizli_pazarligi_kapat(oda):
         oda["mevat_asama"] = ""
 
 
+def _satisi_kesinlestir(oda, urun, kazanan, kazanan_id, tutar, dukkan, urun_id, neden):
+    """Stok düşünce satır Aktif'e dönse de ürün havuzdan düşer, arşiv alanları kalır."""
+    plan = satis_kapanis_plani(kazanan, tutar, dukkan, urun_id, neden)
+    if oda is not None:
+        oda["satildi"] = True
+        oda["aktif_urun_id"] = None
+        if plan["kazanan"]:
+            oda["durum"]["kazanan"] = plan["kazanan"]
+            oda["durum"]["kazanan_id"] = kazanan_id
+            oda["durum"]["pey"] = plan["fiyat"]
+            oda["durum"]["durum"] = plan["durum"]
+    if urun is None:
+        return plan
+    urun.durum = plan["durum"]
+    if plan["kazanan"]:
+        urun.kazanan_adi = plan["kazanan"]
+        urun.kazanan_id = kazanan_id
+    if plan["fiyat"] > 0:
+        urun.guncel_fiyat = plan["fiyat"]
+    try:
+        kolonlar = {kolon.name for kolon in urun.__table__.columns}
+    except Exception:
+        kolonlar = set()
+    if "satildi" in kolonlar:
+        setattr(urun, "satildi", True)
+    if "satildi_mi" in kolonlar:
+        setattr(urun, "satildi_mi", True)
+    db.session.add(urun)
+    return plan
+
+
 def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konusma_adi):
     """Kilidi çağıran tutar. Gizli eşik hiçbir yayına konmaz."""
     if kullanici_id:
@@ -3345,6 +3377,9 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         db.session.add(urun)
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
         stok_satis_sonrasi_dus(urun)
+        _satisi_kesinlestir(
+            oda, urun, etiket_ad, kullanici_id, tutar, dukkan, urun.id, "esik",
+        )
         hedef_sepet = urunu_kazanana_sepete_ekle(
             urun.id, etiket_ad, kullanici_id, commit=False
         )
@@ -3378,6 +3413,10 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         {"dukkan": dukkan, "kazanan": etiket_ad, "fiyat": float(tutar)},
     )
     ahmet_zaferi_seslendir(dukkan, konusma_adi or etiket_ad)
+    if urun is None:
+        _satisi_kesinlestir(
+            oda, None, etiket_ad, kullanici_id, tutar, dukkan, biten_id, "esik",
+        )
     _otonom_disi_satisi_bosalt(dukkan, oda)
     bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
     _admin_satisi_duyur(dukkan, biten_id, etiket_ad, tutar, "esik")
@@ -3918,6 +3957,16 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             db.session.add(urun)
                             OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                             stok_satis_sonrasi_dus(urun)
+                            _satisi_kesinlestir(
+                                oda,
+                                urun,
+                                oda["durum"]["kazanan"],
+                                oda["durum"]["kazanan_id"],
+                                oda["durum"]["pey"],
+                                dukkan,
+                                biten_urun_id,
+                                "sure",
+                            )
                             hedef_sepet = urunu_kazanana_sepete_ekle(
                                 biten_urun_id,
                                 oda["durum"]["kazanan"],
@@ -3941,6 +3990,17 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             db.session.add(urun)
                             db.session.commit()
                             oda["durum"]["durum"] = "Pas"
+                    elif pey_var_mi:
+                        _satisi_kesinlestir(
+                            oda,
+                            None,
+                            oda["durum"]["kazanan"],
+                            oda["durum"]["kazanan_id"],
+                            oda["durum"]["pey"],
+                            dukkan,
+                            biten_urun_id,
+                            "sure",
+                        )
 
             invalidate_vitrin_cache()
             _iki_odayi(
@@ -6341,7 +6401,7 @@ def chat_mesaj_gonder():
                         if (
                             oda.get("mevat_asama") == "karar"
                             and oda["sayac_aktif"]
-                            and oda["sayac_kalan"] <= 10
+                            and 0 < oda["sayac_kalan"] <= 15
                         ):
                             oda["sayac_kalan"] = 15
                             oda["durum"]["sure_bitis"] = time.time() + 15
@@ -7214,9 +7274,10 @@ def pey_ver():
                     )
 
                 if (
-                    oda["sayac_aktif"]
+                    oda.get("mevat_asama") == "karar"
+                    and oda["sayac_aktif"]
                     and not oda.get("gizli_pazarlik_aktif")
-                    and oda["sayac_kalan"] <= 10
+                    and 0 < oda["sayac_kalan"] <= 15
                 ):
                     oda["sayac_kalan"] = 15
                     oda["durum"]["sure_bitis"] = time.time() + 15
@@ -8307,10 +8368,13 @@ def satis_bitir():
         oda["durum"]["sure_bitis"] = 0
         biten_urun_id = oda["aktif_urun_id"]
         oda["aktif_urun_id"] = None
-        _son_satisi_yaz(oda, oda["durum"].get("kazanan"), oda["durum"].get("pey"), biten_urun_id)
 
         satis_lot = ""
         satis_ad = "Eser"
+        try:
+            kapanis_fiyati = float(oda["durum"].get("pey") or 0)
+        except (TypeError, ValueError):
+            kapanis_fiyati = 0.0
         if biten_urun_id:
             if oda["durum"].get("kazanan_id"):
                 _yazma_icin_kilitle(Kullanici, oda["durum"].get("kazanan_id"))
@@ -8318,17 +8382,28 @@ def satis_bitir():
             if urun:
                 satis_lot = urun.lot_no
                 satis_ad = urun.urun_adi or "Eser"
+                if kapanis_fiyati <= 0:
+                    try:
+                        kapanis_fiyati = float(urun.acilis_fiyati or 0)
+                    except (TypeError, ValueError):
+                        kapanis_fiyati = 0.0
                 urun.durum = "Satıldı"
                 urun.kazanan_adi = oda["durum"]["kazanan"]
                 urun.kazanan_id = oda["durum"].get("kazanan_id")
-                urun.guncel_fiyat = (
-                    float(oda["durum"]["pey"])
-                    if float(oda["durum"]["pey"]) > 0
-                    else float(urun.acilis_fiyati or 0)
-                )
+                urun.guncel_fiyat = kapanis_fiyati
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                 stok_satis_sonrasi_dus(urun)
+                _satisi_kesinlestir(
+                    oda,
+                    urun,
+                    oda["durum"]["kazanan"],
+                    oda["durum"].get("kazanan_id"),
+                    kapanis_fiyati,
+                    dukkan,
+                    biten_urun_id,
+                    "satis_bitir",
+                )
                 hedef_sepet = urunu_kazanana_sepete_ekle(
                     biten_urun_id,
                     oda["durum"]["kazanan"],
@@ -8338,7 +8413,33 @@ def satis_bitir():
                 db.session.commit()
                 if hedef_sepet:
                     _kazanan_sepetini_disari_aktar(biten_urun_id, hedef_sepet)
+            else:
+                _satisi_kesinlestir(
+                    oda,
+                    None,
+                    oda["durum"].get("kazanan"),
+                    oda["durum"].get("kazanan_id"),
+                    kapanis_fiyati,
+                    dukkan,
+                    biten_urun_id,
+                    "satis_bitir",
+                )
+        else:
+            _satisi_kesinlestir(
+                oda,
+                None,
+                oda["durum"].get("kazanan"),
+                oda["durum"].get("kazanan_id"),
+                kapanis_fiyati,
+                dukkan,
+                biten_urun_id,
+                "satis_bitir",
+            )
 
+        _son_satisi_yaz(
+            oda, oda["durum"].get("kazanan"), kapanis_fiyati, biten_urun_id
+        )
+        oda["durum"]["pey"] = kapanis_fiyati
         _iki_odayi(
             dukkan,
             "sayac_bitti",
@@ -8348,7 +8449,7 @@ def satis_bitir():
                 "satildi_mi": True,
                 "kazanan": oda["durum"]["kazanan"],
                 "kazanan_id": oda["durum"].get("kazanan_id"),
-                "fiyat": oda["durum"]["pey"],
+                "fiyat": kapanis_fiyati,
             },
         )
         bota_haber_ver(
@@ -8367,7 +8468,11 @@ def satis_bitir():
         )
         bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
         _admin_satisi_duyur(
-            dukkan, biten_urun_id, oda["durum"]["kazanan"], oda["durum"]["pey"], "satis_bitir",
+            dukkan,
+            biten_urun_id,
+            oda["durum"]["kazanan"],
+            kapanis_fiyati,
+            "satis_bitir",
         )
     invalidate_vitrin_cache()
     return jsonify({"success": True, "dukkan": dukkan})
