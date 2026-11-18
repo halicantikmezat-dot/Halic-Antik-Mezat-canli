@@ -2344,9 +2344,11 @@
             const kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             if (data.asama === 'bekliyor') {
                 durum.innerText = 'Bekliyor';
+            } else if (data.asama === 'pazarlik') {
+                const sn = Math.max(0, parseInt(kalan, 10) || 0);
+                durum.innerText = 'Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
             } else {
-                const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
-                durum.innerText = `${etiket}: ${kalan} sn`;
+                durum.innerText = 'Geri Sayım: ' + kalan + ' sn';
             }
         }
     });
@@ -2609,8 +2611,10 @@
                 const durumKutusu = document.getElementById('aktifDurum');
                 if (data.sayac_aktif) {
                     const kalanYazi = data.kalan !== undefined ? data.kalan : data.kalan_sayac;
-                    const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
-                    durumKutusu.innerText = etiket + ': ' + kalanYazi + ' sn';
+                    const sn = Math.max(0, parseInt(kalanYazi, 10) || 0);
+                    durumKutusu.innerText = data.asama === 'pazarlik'
+                        ? ('Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0'))
+                        : ('Geri Sayım: ' + sn + ' sn');
                 } else if (data.asama === 'bekliyor') {
                     durumKutusu.innerText = 'Bekliyor';
                 } else {

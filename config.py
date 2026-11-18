@@ -31,18 +31,30 @@ def _env(*adlar):
             return str(deger).strip()
     return ""
 
+def _havuz_tam_sayi(ad, varsayilan):
+    try:
+        return max(1, int(os.environ.get(ad, varsayilan)))
+    except (TypeError, ValueError):
+        return int(varsayilan)
+
+
 def _sqlalchemy_engine_options(db_url):
-    """Postgres havuzu. SQLite yerelde timeout ile kalır; havuz parametresi almaz."""
+    """Postgres havuzu worker başına tutulur.
+
+    3 Gunicorn worker x (pool_size + max_overflow) toplam bağlantıdır.
+    Varsayılan 10+10 = worker başına 20, üç workerda 60. Bin izleyici sokette
+    durur; havuz pey ve sayaç yazısı içindir, izleyici sayısı kadar açılmaz.
+    """
     if str(db_url or "").startswith("sqlite"):
         return {
-            "pool_timeout": 5,
-            "connect_args": {"timeout": 5},
+            "pool_timeout": 20,
+            "connect_args": {"timeout": 20, "check_same_thread": False},
         }
     return {
-        "pool_size": 25,
-        "max_overflow": 35,
-        "pool_timeout": 15,
-        "pool_recycle": 300,
+        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 10),
+        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 10),
+        "pool_timeout": 10,
+        "pool_recycle": 280,
         "pool_pre_ping": True,
         "connect_args": {
             "connect_timeout": 5,

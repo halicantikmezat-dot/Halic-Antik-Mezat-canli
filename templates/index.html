@@ -4383,7 +4383,7 @@
         if (!sayacAktif || asama === "bekliyor") {
             if (digits) {
                 digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-                digits.innerText = data.aktif_urun ? "3:00" : "--";
+                digits.innerText = data.aktif_urun ? "2:00" : "--";
             }
             if (statusTitle) statusTitle.innerText = data.aktif_urun ? "BEKLİYOR" : "SAHNE BOŞ";
             if (dial) dial.style.strokeDashoffset = data.aktif_urun ? 0 : 125.6;
@@ -4397,7 +4397,7 @@
                 digits.classList.add('pazarlik-sayac');
                 digits.innerText = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
             }
-            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 180)));
+            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 120)));
             if (statusTitle) statusTitle.innerText = sn <= 15 ? "PAZARLIK SON " + sn : "PAZARLIK";
             if (cockpit) cockpit.classList.toggle("urgent", sn <= 15);
             return;
@@ -4504,7 +4504,7 @@
         if (digits) {
             digits.classList.remove('satildi-yazi');
             digits.classList.add('pazarlik-sayac');
-            digits.innerText = "3:00";
+            digits.innerText = "2:00";
         }
         if (statusTitle) statusTitle.innerText = "PAZARLIK";
         if (cockpit) cockpit.classList.remove('urgent');
@@ -4697,6 +4697,14 @@
         if (typeof showToast === 'function') showToast(data.mesaj || 'Pazarlık bitti, son karar süresi başladı');
     });
 
+    socket.on('sahne_durumu', function (data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        canliAsamayiCiz(data);
+        if (!secilenArsivUrunId) {
+            sahneyiGuncelle(data.aktif_urun, data.durum, data.pey, data.kazanan);
+        }
+    });
+
     socket.on('sayac_guncelle', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
@@ -4710,7 +4718,7 @@
                 sahnedekiUrunSatildiMi = false;
                 if (digits) {
                     digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-                    digits.innerText = '3:00';
+                    digits.innerText = '2:00';
                 }
                 if (dial) dial.style.strokeDashoffset = 0;
                 if (cockpit) cockpit.classList.remove('urgent');

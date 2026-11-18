@@ -13,12 +13,15 @@ def _tam_sayi(ad, varsayilan):
 
 
 # Render 1 CPU / 2 GB. WEB_CONCURRENCY varsa o kullanilir.
+# Bin eszamanli izleyici sokettir: worker basina 1000 baglanti, 2-3 worker.
+# Havuz izleyici sayisi kadar buyumemelidir; DB_POOL_SIZE worker basina kalir.
 workers = _tam_sayi("WEB_CONCURRENCY", 3)
 worker_class = "geventwebsocket.gunicorn.workers.GeventWebSocketWorker"
-worker_connections = 1000
-max_requests = 2000
+worker_connections = _tam_sayi("GUNICORN_WORKER_CONNECTIONS", 1000)
+max_requests = 5000
 max_requests_jitter = 250
 timeout = 120
+graceful_timeout = 30
 keepalive = 5
 
 

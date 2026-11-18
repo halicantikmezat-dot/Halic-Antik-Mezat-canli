@@ -6,9 +6,11 @@ Canli hedefe, yerel SQLite kimligi tasimaz. Acik mezat gorulurse pey gondermez.
 """
 from __future__ import annotations
 
+import argparse
 import math
 import os
 import sys
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -334,10 +336,21 @@ def _cerez(gizli, kullanici):
     })
 
 
-def _istek(tur, yontem, url, baslik, govde=None):
+def _metin_baslik(baslik):
+    """requests başlık değeri yalnızca str veya bytes kabul eder."""
+    return {str(ad): str(deger) for ad, deger in (baslik or {}).items()}
+
+
+def _istek(yontem, url, baslik, govde=None):
     bas = time.perf_counter()
     try:
-        yanit = requests.request(yontem, url, headers=baslik, json=govde, timeout=20)
+        yanit = requests.request(
+            str(yontem),
+            str(url),
+            headers=_metin_baslik(baslik),
+            json=govde,
+            timeout=20,
+        )
         sure = (time.perf_counter() - bas) * 1000
         ic = {}
         try:
@@ -346,14 +359,14 @@ def _istek(tur, yontem, url, baslik, govde=None):
             ic = {}
         if yanit.status_code in SUNUCU_HATALARI or yanit.status_code >= 500:
             sonuc = "sunucu_hatasi"
-        elif tur == "GET" and yanit.status_code == 200:
+        elif yontem == "GET" and yanit.status_code == 200:
             sonuc = "basarili"
-        elif tur == "POST" and ic.get("success") is True:
+        elif yontem == "POST" and ic.get("success") is True:
             sonuc = "basarili"
         else:
             sonuc = "gecersiz"
         return {
-            "tur": tur,
+            "tur": yontem,
             "kod": yanit.status_code,
             "ms": round(sure, 1),
             "sonuc": sonuc,
@@ -363,7 +376,7 @@ def _istek(tur, yontem, url, baslik, govde=None):
     except Exception as hata:
         sure = (time.perf_counter() - bas) * 1000
         return {
-            "tur": tur,
+            "tur": yontem,
             "kod": 0,
             "ms": round(sure, 1),
             "sonuc": "ulasim",
@@ -373,24 +386,24 @@ def _istek(tur, yontem, url, baslik, govde=None):
 
 
 def _baslik(cerez):
-    return {
+    return _metin_baslik({
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Cache-Control": "no-store",
         "Pragma": "no-cache",
-        "Cookie": "session=" + cerez,
-    }
+        "Cookie": "session=" + str(cerez),
+    })
 
 
 def _pey_govdesi(dukkan, urun_id, kullanici, miktar):
     return {
-        "dukkan": dukkan,
-        "urun_id": urun_id,
-        "musteri_id": kullanici["id"],
-        "kullanici_id": kullanici["id"],
-        "musteri_adi": kullanici["ad"],
+        "dukkan": str(dukkan),
+        "urun_id": str(urun_id),
+        "musteri_id": str(kullanici["id"]),
+        "kullanici_id": str(kullanici["id"]),
+        "musteri_adi": str(kullanici["ad"]),
         "islem": "pey",
-        "miktar": miktar,
+        "miktar": str(miktar),
         "platform": "Web",
     }
 
@@ -589,13 +602,140 @@ def calistir(hedef):
         engine.dispose()
 
 
+def _argumanlar():
+    ayir = argparse.ArgumentParser(
+        description="Canli mezat korumali pey ve izleyici olcumu. Acik mezata pey yazmaz."
+    )
+    ayir.add_argument("--hedef", default=HEDEF_VARSAYILAN)
+    ayir.add_argument("--izleyici", type=int, default=0, help="Socket.IO izleyici sayisi")
+    ayir.add_argument("--peyci", type=int, default=0, help="Eszamanli peyci. 0 ise varsayilan 50.")
+    ayir.add_argument("--sure", type=int, default=20, help="Izleyicilerin bagli kalacagi saniye")
+    ayir.add_argument("--dukkan", default="", help="Izleyici odasi. Bos ise durumdan secilir.")
+    ayir.add_argument("--dalga", type=int, default=0, help="Pey dalga sayisi. 0 ise varsayilan.")
+    return ayir.parse_args()
+
+
+def _socket_baglan(hedef):
+    import socketio
+
+    son_hata = None
+    for tasima in (["websocket"], ["polling"]):
+        cli = socketio.Client(reconnection=False, logger=False, engineio_logger=False)
+        try:
+            cli.connect(
+                hedef,
+                transports=tasima,
+                wait_timeout=8,
+                socketio_path="socket.io",
+            )
+            return cli, tasima[0]
+        except Exception as hata:
+            son_hata = hata
+            try:
+                cli.disconnect()
+            except Exception:
+                pass
+    raise RuntimeError(son_hata)
+
+
+def _izleyici_olc(hedef, dukkan, adet, sure):
+    """Yalnizca join_dukkan. Pey, siparis ve sahne yazisi yok."""
+    print("IZLEYICI %s oda=%s sure=%ss" % (adet, dukkan, sure))
+    if adet <= 0:
+        return
+    try:
+        import socketio  # noqa: F401
+    except ImportError as hata:
+        print("IZLEYICI olculemedi: python-socketio yok (%s)" % hata)
+        return
+    hazir = []
+    hatalar = []
+    kilit = threading.Lock()
+    bas = time.perf_counter()
+
+    def biri(sira):
+        try:
+            cli, tasima = _socket_baglan(hedef)
+            cli.emit("join_dukkan", {
+                "dukkan": dukkan,
+                "isim": "STRESS IZ %s" % sira,
+            })
+            with kilit:
+                hazir.append((cli, tasima))
+        except Exception as hata:
+            with kilit:
+                hatalar.append(str(hata)[:160])
+
+    havuz = min(adet, 400)
+    with ThreadPoolExecutor(max_workers=havuz) as isci:
+        liste = [isci.submit(biri, i) for i in range(1, adet + 1)]
+        for is_ in as_completed(liste):
+            is_.result()
+    baglanti_ms = round((time.perf_counter() - bas) * 1000, 1)
+    tasimalar = {}
+    for _cli, tasima in hazir:
+        tasimalar[tasima] = tasimalar.get(tasima, 0) + 1
+    print(
+        "IZLEYICI baglanan=%s hata=%s baglanti_ms=%s tasima=%s"
+        % (len(hazir), len(hatalar), baglanti_ms, tasimalar or "-")
+    )
+    if hatalar:
+        print("IZLEYICI ornek_hata: %s" % hatalar[0])
+    return hazir
+
+
+def _izleyici_kapat(hazir):
+    kopan = 0
+    for cli, _tasima in hazir or []:
+        try:
+            cli.disconnect()
+        except Exception:
+            kopan += 1
+    print("IZLEYICI birakilan=%s kopma_hata=%s" % (len(hazir or []), kopan))
+
+
+def _dukkan_sec(govde, istenen):
+    if istenen:
+        return istenen
+    dukkanlar = (govde or {}).get("dukkanlar") or {}
+    for kod, bilgi in dukkanlar.items():
+        if bilgi.get("canli") or int(bilgi.get("kalan_sayac") or 0) > 0:
+            return kod
+    return next(iter(dukkanlar), DUKKAN_YEDEK)
+
+
 def main():
-    hedef = HEDEF_VARSAYILAN
-    argv = sys.argv[1:]
-    if "--hedef" in argv:
-        yer = argv.index("--hedef")
-        hedef = argv[yer + 1]
-    raise SystemExit(calistir(hedef))
+    global KULLANICI_SAYISI, DALGA
+    args = _argumanlar()
+    _cikti_utf8()
+    _ortam_yukle()
+    hedef = args.hedef.rstrip("/")
+    if args.peyci > 0:
+        KULLANICI_SAYISI = args.peyci
+    if args.dalga > 0:
+        DALGA = args.dalga
+    izleyici_isci = None
+    if args.izleyici > 0:
+        durum_ok, govde, durum_not = _durum_oku(hedef)
+        print("DURUM %s" % durum_not)
+        dukkan = _dukkan_sec(govde if durum_ok else {}, args.dukkan)
+        aciklar = _izleyici_olc(hedef, dukkan, args.izleyici, max(1, args.sure))
+
+        def _tut():
+            time.sleep(max(1, args.sure))
+            _izleyici_kapat(aciklar)
+
+        izleyici_isci = threading.Thread(target=_tut, daemon=True)
+        izleyici_isci.start()
+    try:
+        if args.peyci > 0 or args.izleyici == 0:
+            if args.peyci > 0:
+                KULLANICI_SAYISI = args.peyci
+            raise SystemExit(calistir(hedef))
+    finally:
+        if izleyici_isci is not None:
+            izleyici_isci.join()
+    raise SystemExit(0)
 
 
 if __name__ == "__main__":

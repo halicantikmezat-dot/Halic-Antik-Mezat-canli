@@ -63,6 +63,7 @@ from werkzeug.utils import secure_filename
 # Servis Katmanı
 from bizimhesap_service import bizimhesap_siparis_aktar
 from config import Config, _sqlalchemy_engine_options
+from mezat_sayac import gorunen_kalan, sayac_paketi
 
 # Yükleme klasörünü garantiye al
 UPLOADS_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
@@ -956,8 +957,9 @@ def api_tts():
 
 
 def _iki_odayi(dukkan, olay, veri):
-    """Dükkan odası ve yönetici odası. Liste tek sokete bir kez gider."""
-    socketio.emit(olay, veri, room=[dukkan, "admin_room"])
+    """Dükkan odası ve yönetici odası. Oda listesi bazı Redis kuyruklarında düşer."""
+    socketio.emit(olay, veri, room=dukkan)
+    socketio.emit(olay, veri, room="admin_room")
 
 
 def _ses_nesil_yeni():
@@ -2721,6 +2723,7 @@ def _oda_varsayilan():
         "mevat_asama": "",
         "acilis_tabani": 0,
         "karar_pey_geldi": False,
+        "sayac_nabiz": 0,
         "lot_kapanis": "",
         "satis_tebrik_bekleniyor": False,
         "sunucu_lakap": "",
@@ -2820,9 +2823,32 @@ def _oda_belge_oku(kod):
     return _oda_belge_harmanla(gelen), int(satir[1] or 0)
 
 
+_oda_yaz_kilitleri = {}
+_oda_yaz_kilit_ana = threading.Lock()
+
+
+def _oda_yaz_kilidi(kod):
+    """Aynı süreçte iki greenlet mezat_oda satırını ezmesin.
+
+    PostgreSQL FOR UPDATE süreçler arasını tutar. SQLite'ta FOR UPDATE yoktur;
+    sayaç döngüsü ile otonom döngü aynı anda yazınca sayac_aktif geri düşüyordu.
+    """
+    with _oda_yaz_kilit_ana:
+        kilit = _oda_yaz_kilitleri.get(kod)
+        if kilit is None:
+            kilit = threading.Lock()
+            _oda_yaz_kilitleri[kod] = kilit
+        return kilit
+
+
 def _oda_pg_yaz(kod, alan, deger, sil=False):
-    """Tek alan. Satir FOR UPDATE ile kilitlenir; baska alanin yazisi ezilmez."""
+    """Tek alan. Satir kilitliyken yeniden okunur; baska alanin yazisi ezilmez."""
     _oda_sema()
+    with _oda_yaz_kilidi(kod):
+        return _oda_pg_yaz_kilitli(kod, alan, deger, sil)
+
+
+def _oda_pg_yaz_kilitli(kod, alan, deger, sil=False):
     with db.engine.begin() as baglanti:
         if not IS_SQLITE:
             satir = baglanti.execute(
@@ -3207,10 +3233,16 @@ def _pazarligi_hazirla(oda, urun):
     oda["durum"]["sure_bitis"] = time.time() + 180
     oda["sayac_gorev_id"] += 1
     oda["sayac_aktif"] = True
+    oda["sayac_nabiz"] = time.time()
     return oda["sayac_gorev_id"]
 
 
-def _fiyati_acilisa_cek(dukkan, oda):
+def _anonsu_arkada(dukkan, metin, tur="sayac"):
+    """TTS sayaç tikini bekletmesin. 15. sn ve karar anonsu arka planda okunur."""
+    socketio.start_background_task(ahmet_usta_anons_yap, dukkan, metin, True, tur, False)
+
+
+def _fiyati_acilisa_cek(dukkan, oda, konus=True):
     """60 sn kararının başında güncel pey açılış fiyatına döner."""
     urun_id = oda.get("aktif_urun_id")
     acilis = float(oda.get("acilis_tabani") or 0)
@@ -3249,7 +3281,8 @@ def _fiyati_acilisa_cek(dukkan, oda):
         "pazarlik_kapandi",
         {"dukkan": dukkan, "mesaj": duyuru, "pey": acilis, "kazanan": "Yok"},
     )
-    ahmet_usta_anons_yap(dukkan, duyuru, tur="sayac")
+    if konus:
+        _anonsu_arkada(dukkan, duyuru)
     return acilis
 
 
@@ -3329,60 +3362,58 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
 
 
 def _uc_dakikalik_pazarlik(dukkan, gorev_id):
-    """180 sn: ilk 120 pazarlık, son 60 normal karar. Erken satış sayacı ayrıca durdurur."""
+    """180 sn iç saat. Ekran önce 120..1 pazarlık, sonra 60..0 karar görür."""
     oda = odalar[dukkan]
-    oda["sayac_kalan"] = 180
+    kalan = 180
+    oda["sayac_kalan"] = kalan
     oda["sayac_aktif"] = True
     oda["mevat_asama"] = "pazarlik"
     oda["gizli_pazarlik_aktif"] = True
+    oda["sayac_nabiz"] = time.time()
 
     _iki_odayi(
         dukkan,
         "tanitim_basladi",
-        {"dukkan": dukkan, "sure": 180, "sayac_gorunsun": False, "pazarlik": True},
+        {"dukkan": dukkan, "sure": 120, "sayac_gorunsun": True, "pazarlik": True},
     )
 
     son_uyari_yapildi = False
-    while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id and oda["sayac_kalan"] > 0:
+    while oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id) and kalan > 0:
         _sayac_kilidi_canli_tut(dukkan)
-        kalan = int(oda["sayac_kalan"])
+        oda["sayac_nabiz"] = time.time()
+        oda["sayac_kalan"] = kalan
         if kalan <= 60 and oda.get("mevat_asama") == "pazarlik":
             with oda_kilitleri[dukkan]:
-                if oda["sayac_gorev_id"] != gorev_id or not oda["sayac_aktif"]:
+                if int(oda["sayac_gorev_id"] or 0) != int(gorev_id) or not oda["sayac_aktif"]:
                     return False
                 if oda["durum"].get("durum") == "Satıldı":
                     return False
-                _fiyati_acilisa_cek(dukkan, oda)
+                _fiyati_acilisa_cek(dukkan, oda, konus=False)
                 oda["sayac_aktif"] = True
+                oda["sayac_kalan"] = kalan
+                oda["sayac_nabiz"] = time.time()
                 oda["durum"]["durum"] = "Sayim"
                 oda["durum"]["sure_bitis"] = time.time() + kalan
+            _anonsu_arkada(dukkan, "Pazarlık bitti, son karar süresi başladı")
         asama = "karar" if oda.get("mevat_asama") == "karar" else "pazarlik"
         if asama == "karar" and kalan == 15 and not son_uyari_yapildi:
             son_uyari_yapildi = True
             bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
-            ahmet_usta_anons_yap(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
+            _anonsu_arkada(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
         elif kalan > 15:
             son_uyari_yapildi = False
-        _iki_odayi(
-            dukkan,
-            "sayac_guncelle",
-            {
-                "dukkan": dukkan,
-                "kalan": kalan,
-                "kalan_sure": kalan,
-                "toplam": 180,
-                "sayac_gorunsun": True,
-                "asama": asama,
-            },
-        )
+        _iki_odayi(dukkan, "sayac_guncelle", sayac_paketi(dukkan, kalan, asama))
         socketio.sleep(1)
-        if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-            oda["sayac_kalan"] -= 1
+        if oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id):
+            kalan -= 1
+        else:
+            break
 
-    if not (oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id):
+    if not (oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id)):
         return False
     if oda["durum"].get("durum") == "Satıldı":
         return False
+    oda["sayac_kalan"] = 0
     return True
 
 
@@ -3499,10 +3530,11 @@ def _sayac_jetonu(gorev_id):
 
 
 def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart", kilit_jetonu=None):
-    """59b4e98 döngüsü. Redis kilidi yalnızca ikinci worker'ı geri çevirir, sayacı durdurmaz."""
+    """Redis kilidi bu görevde değilse döngü açılmaz. Eski görev numarası yeniye yenilir."""
     token = kilit_jetonu or _sayac_jetonu(gorev_id)
     if kilit_jetonu:
-        _sayac_kilidi_yenile(dukkan, token)
+        if not _sayac_kilidi_yenile(dukkan, token) and _sayac_kilidi_al(dukkan, gorev_id, token) == "dolu":
+            return
     elif _sayac_kilidi_al(dukkan, gorev_id, token) == "dolu":
         return
     _sayac_sahip[dukkan] = (int(gorev_id), token)
@@ -3597,12 +3629,13 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
             if oda["sayac_kalan"] == 15 and not son_uyari_yapildi:
                 son_uyari_yapildi = True
                 bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
-                ahmet_usta_anons_yap(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
+                _anonsu_arkada(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
 
+            oda["sayac_nabiz"] = time.time()
             _iki_odayi(
                 dukkan,
                 "sayac_guncelle",
-                {"dukkan": dukkan, "kalan": oda["sayac_kalan"], "sayac_gorunsun": True, "asama": "karar"},
+                sayac_paketi(dukkan, oda["sayac_kalan"], "karar"),
             )
             socketio.sleep(1)
             if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
@@ -3966,16 +3999,19 @@ def _otonom_donguyu_garantile(dukkan):
 
 
 def _otonom_sayaci_baslat(dukkan, urun):
+    """Kilit, hazırlanan görev numarasını taşır. 0 numaralı jeton yeni turu ezerdi."""
     oda = odalar[dukkan]
-    token = _sayac_jetonu(0)
-    if _sayac_kilidi_al(dukkan, 0, token) == "dolu":
+    if urun is None:
         return False
     with oda_kilitleri[dukkan]:
         if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
-            _sayac_kilidi_birak(dukkan, token)
             return False
         oda["aktif_urun_id"] = urun.id
         gorev = _pazarligi_hazirla(oda, urun)
+    token = _sayac_jetonu(gorev)
+    if _sayac_kilidi_al(dukkan, gorev, token) == "dolu":
+        oda["sayac_aktif"] = False
+        return False
     socketio.start_background_task(
         dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik", token
     )
@@ -4172,6 +4208,12 @@ def dukkan_otonom_dongusu(dukkan, token=None):
                     ):
                         if beklenen % 5 == 0:
                             _otonom_gorev_yenile(dukkan, token)
+                        nabiz = float(oda.get("sayac_nabiz") or 0)
+                        if nabiz > 0 and beklenen > 8 and time.time() - nabiz > 8:
+                            print(f"[OTONOM] sayaç nabzı düştü, tur yenileniyor ({dukkan})", flush=True)
+                            oda["sayac_aktif"] = False
+                            oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
+                            break
                         beklenen += 1
                         socketio.sleep(1)
                     if not oda.get("otonom_aktif"):
@@ -5283,9 +5325,9 @@ def _canli_asama_alanlari(oda):
     asama = str(oda.get("mevat_asama") or "").strip()
     sayac_aktif = bool(oda.get("sayac_aktif"))
     try:
-        kalan = int(oda.get("sayac_kalan") or 0)
+        ham = int(oda.get("sayac_kalan") or 0)
     except (TypeError, ValueError):
-        kalan = 0
+        ham = 0
     if not asama:
         durum = str((oda.get("durum") or {}).get("durum") or "")
         if sayac_aktif:
@@ -5298,7 +5340,8 @@ def _canli_asama_alanlari(oda):
         "sayac_aktif": sayac_aktif,
         "asama": asama,
         "otonom_aktif": bool(oda.get("otonom_aktif")),
-        "kalan": kalan,
+        "kalan": gorunen_kalan(ham, asama) if asama in ("pazarlik", "karar") else ham,
+        "ham_kalan": ham,
     }
 
 
@@ -7893,12 +7936,21 @@ def mezat_baslat():
             gorev = _pazarligi_hazirla(oda, urun)
             akis = "pazarlik"
         else:
-            _fiyati_acilisa_cek(dukkan, oda)
+            _fiyati_acilisa_cek(dukkan, oda, konus=False)
             oda["sayac_aktif"] = True
             oda["sayac_kalan"] = 60
+            oda["sayac_nabiz"] = time.time()
             akis = "karar"
         token = _sayac_jetonu(gorev)
 
+    if _sayac_kilidi_al(dukkan, gorev, token) == "dolu":
+        oda["sayac_aktif"] = False
+        return jsonify({
+            "success": False,
+            "mesaj": "Sayaç başka bir worker'da çalışıyor.",
+        })
+    if akis == "karar":
+        _anonsu_arkada(dukkan, "Pazarlık bitti, son karar süresi başladı")
     socketio.start_background_task(
         dukkan_geri_sayim_gorevi, dukkan, gorev, akis, token
     )
@@ -12130,6 +12182,64 @@ def admin_voice_end(veri=None):
         db.session.remove()
 
 
+def _katilana_sahneyi_ver(dukkan):
+    """Yenileme ve kopma sonrası bu soket sahneyi, kalan saniyeyi ve aşamayı alır."""
+    oda = odalar.get(dukkan)
+    if oda is None:
+        return
+    asama = _canli_asama_alanlari(oda)
+    urun_id = oda.get("aktif_urun_id")
+    urun = None
+    if urun_id:
+        try:
+            urun = db.session.get(Urun, int(urun_id))
+        except (TypeError, ValueError):
+            urun = None
+    paket = urun.to_dict() if urun is not None and not urun.silindi_mi else None
+    if paket:
+        emit("yeni_sahne_urunu", paket)
+    durum = oda.get("durum")
+    try:
+        pey = float(durum.get("pey") or 0) if durum is not None else 0
+    except (TypeError, ValueError):
+        pey = 0
+    kazanan = (durum.get("kazanan") if durum is not None else None) or "Yok"
+    emit(
+        "pey_guncellendi",
+        {
+            "dukkan": dukkan,
+            "urun_id": urun_id,
+            "pey": pey,
+            "kazanan": kazanan,
+            "kazanan_id": durum.get("kazanan_id") if durum is not None else None,
+        },
+    )
+    emit(
+        "sayac_guncelle",
+        {
+            "dukkan": dukkan,
+            "kalan": asama["kalan"],
+            "kalan_sure": asama["kalan"],
+            "ham_kalan": asama.get("ham_kalan", asama["kalan"]),
+            "toplam": 120 if asama["asama"] == "pazarlik" else 60,
+            "sayac_gorunsun": bool(asama["sayac_aktif"]) and asama["asama"] in ("pazarlik", "karar"),
+            "sayac_aktif": asama["sayac_aktif"],
+            "asama": asama["asama"] if asama["sayac_aktif"] else "bekliyor",
+        },
+    )
+    emit(
+        "sahne_durumu",
+        {
+            "dukkan": dukkan,
+            "aktif_urun": paket,
+            "pey": pey,
+            "kazanan": kazanan,
+            "durum": (durum.get("durum") if durum is not None else None) or "Bekliyor",
+            **asama,
+        },
+    )
+
+
 @socketio.on("join_dukkan")
 def handle_join_dukkan(data):
     try:
@@ -12144,6 +12254,7 @@ def handle_join_dukkan(data):
             kayit_no = None
         _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
         join_room(dukkan)
+        _katilana_sahneyi_ver(dukkan)
         izleyici_sayisini_yayinla()
         ozet = _izleyici_ozet()
         if ozet is not None:
@@ -12826,10 +12937,10 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
         oda.pop("son_satis", None)
     if yeni_urun:
         _sahne_sesini_kes(dukkan)
-        socketio.emit(
+        _iki_odayi(
+            dukkan,
             "yeni_urun_sahneye_alindi",
             {"dukkan": dukkan, "urun_id": (urun_paket or {}).get("id")},
-            room=dukkan,
         )
     if urun_paket:
         _iki_odayi(dukkan, "yeni_sahne_urunu", urun_paket)
