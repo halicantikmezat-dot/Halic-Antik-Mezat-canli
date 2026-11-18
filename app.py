@@ -965,10 +965,10 @@ def _sahne_sesini_kes(dukkan):
     nesil = _ses_kuyruk_kes(dukkan)
     if nesil is None:
         return
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "ses_kes",
         {"dukkan": dukkan, "nesil": nesil, "tur": "sahne", "zorunlu": True},
-        room=dukkan,
     )
 
 
@@ -1113,10 +1113,10 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
         return
     nesil, baslat, benim = sonuc
     if zorunlu:
-        socketio.emit(
+        _iki_odayi(
+            dukkan,
             "ses_kes",
             {"dukkan": dukkan, "nesil": nesil, "tur": tur, "zorunlu": True},
-            room=dukkan,
         )
     if baslat:
         socketio.start_background_task(_ses_kuyrugunu_bosalt, dukkan, benim)
@@ -1134,7 +1134,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
             continue
         adres = _mp3_kaydet(veri, oge.get("nesil") or benim)
-        socketio.emit("ses_oynat", {
+        _iki_odayi(dukkan, "ses_oynat", {
             "dukkan": dukkan,
             "nesil": oge.get("nesil") or benim,
             "tur": oge["tur"],
@@ -3196,10 +3196,10 @@ def _fiyati_acilisa_cek(dukkan, oda):
         },
     )
     duyuru = "Pazarlık bitti, son karar süresi başladı"
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "pazarlik_kapandi",
         {"dukkan": dukkan, "mesaj": duyuru, "pey": acilis, "kazanan": "Yok"},
-        room=dukkan,
     )
     ahmet_usta_anons_yap(dukkan, duyuru, tur="sayac")
     return acilis
@@ -3259,7 +3259,8 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
             "kazanan_id": kullanici_id,
         },
     )
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "urun_satildi_erken",
         {
             "dukkan": dukkan,
@@ -3268,7 +3269,6 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
             "fiyat": float(tutar),
             "mesaj": "Tebrikler! Gizli pazarlık tabanı aşıldı, ürün sahibini buldu!",
         },
-        room=dukkan,
     )
     bota_haber_ver(
         "satis_bitti",
@@ -3288,14 +3288,16 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
     oda["mevat_asama"] = "pazarlik"
     oda["gizli_pazarlik_aktif"] = True
 
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "tanitim_basladi",
         {"dukkan": dukkan, "sure": 180, "sayac_gorunsun": False, "pazarlik": True},
-        room=dukkan,
     )
 
     son_uyari_yapildi = False
     while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id and oda["sayac_kalan"] > 0:
+        if not _sayac_benim(dukkan, gorev_id):
+            return False
         kalan = int(oda["sayac_kalan"])
         if kalan <= 60 and oda.get("mevat_asama") == "pazarlik":
             with oda_kilitleri[dukkan]:
@@ -3339,9 +3341,142 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
     return True
 
 
-def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart"):
-    oda = odalar[dukkan]
+_sayac_sahip = {}
+_SAYAC_KILIT_SANIYE = 40
 
+_SAYAC_AL = """
+local v = redis.call('GET', KEYS[1])
+local ben = ARGV[1]
+local ttl = tonumber(ARGV[2])
+local gorev = tonumber(ARGV[3]) or 0
+if not v or v == '' then
+  redis.call('SET', KEYS[1], ben, 'EX', ttl)
+  return 1
+end
+if v == ben then
+  redis.call('EXPIRE', KEYS[1], ttl)
+  return 1
+end
+local eski = tonumber(string.match(v, '^(%d+):')) or 0
+if gorev > eski then
+  redis.call('SET', KEYS[1], ben, 'EX', ttl)
+  return 1
+end
+return 0
+"""
+
+_SAYAC_YENILE = """
+local v = redis.call('GET', KEYS[1])
+local ben = ARGV[1]
+local ttl = tonumber(ARGV[2])
+if not v or v == '' or v == ben then
+  redis.call('SET', KEYS[1], ben, 'EX', ttl)
+  return 1
+end
+return 0
+"""
+
+_SAYAC_BIRAK = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+
+
+def _sayac_kilit_anahtar(dukkan):
+    return "mezat:sayac:" + str(dukkan)
+
+
+def _sayac_kilidi_al(dukkan, gorev_id, token):
+    """ok, dolu veya yok. Beklemez. Yeni görev numarası eski kilidi hemen devralır."""
+    if not REDIS_URL:
+        return "ok"
+    istemci = _redis_al()
+    if istemci is None:
+        return "yok"
+    try:
+        alindi = bool(int(istemci.eval(
+            _SAYAC_AL,
+            1,
+            _sayac_kilit_anahtar(dukkan),
+            token,
+            str(_SAYAC_KILIT_SANIYE),
+            str(int(gorev_id)),
+        ) or 0))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return "yok"
+    return "ok" if alindi else "dolu"
+
+
+def _sayac_kilidi_yenile(dukkan, token):
+    """Kilit düşünce döngü durmaz. Başka görev aldıysa False."""
+    if not REDIS_URL:
+        return True
+    istemci = _redis_al()
+    if istemci is None:
+        return True
+    try:
+        return bool(int(istemci.eval(
+            _SAYAC_YENILE,
+            1,
+            _sayac_kilit_anahtar(dukkan),
+            token,
+            str(_SAYAC_KILIT_SANIYE),
+        ) or 0))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return True
+
+
+def _sayac_kilidi_birak(dukkan, token):
+    if not REDIS_URL or not token:
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.eval(_SAYAC_BIRAK, 1, _sayac_kilit_anahtar(dukkan), token)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _sayac_benim(dukkan, gorev_id):
+    sahip = _sayac_sahip.get(dukkan)
+    if not sahip or int(sahip[0]) != int(gorev_id):
+        return False
+    return _sayac_kilidi_yenile(dukkan, sahip[1])
+
+
+def _sayac_jetonu(gorev_id):
+    return f"{int(gorev_id)}:{uuid.uuid4().hex}"
+
+
+def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart", kilit_jetonu=None):
+    oda = odalar[dukkan]
+    token = kilit_jetonu or _sayac_jetonu(gorev_id)
+    if kilit_jetonu:
+        sahip = _sayac_kilidi_yenile(dukkan, token)
+        redis_yok = False
+    else:
+        durum = _sayac_kilidi_al(dukkan, gorev_id, token)
+        sahip = durum == "ok"
+        redis_yok = durum == "yok"
+    if not sahip:
+        if redis_yok and int(oda.get("sayac_gorev_id") or 0) == int(gorev_id):
+            oda["sayac_aktif"] = False
+        return
+    _sayac_sahip[dukkan] = (int(gorev_id), token)
+    try:
+        _dukkan_geri_sayim_govdesi(dukkan, gorev_id, akis, oda)
+    finally:
+        if _sayac_sahip.get(dukkan) == (int(gorev_id), token):
+            _sayac_sahip.pop(dukkan, None)
+        _sayac_kilidi_birak(dukkan, token)
+
+
+def _dukkan_geri_sayim_govdesi(dukkan, gorev_id, akis, oda):
     if akis == "pazarlik":
         if not _uc_dakikalik_pazarlik(dukkan, gorev_id):
             return
@@ -3357,18 +3492,20 @@ def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart"):
     oda["sayac_kalan"] = 180
     oda["sayac_aktif"] = True
 
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "tanitim_basladi",
         {"dukkan": dukkan, "sure": 120, "sayac_gorunsun": False},
-        room=dukkan,
     )
 
     gizli_sayac = 120
     while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id and gizli_sayac > 0:
-        socketio.emit(
+        if not _sayac_benim(dukkan, gorev_id):
+            return
+        _iki_odayi(
+            dukkan,
             "tanitim_sayac",
             {"dukkan": dukkan, "kalan": gizli_sayac, "sayac_gorunsun": False},
-            room=dukkan,
         )
         socketio.sleep(1)
         gizli_sayac -= 1
@@ -3404,14 +3541,16 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 tur="sayac",
             )
 
-        socketio.emit(
+        _iki_odayi(
+            dukkan,
             "sayac_baslat",
             {"dukkan": dukkan, "kalan": 60, "sayac_gorunsun": True},
-            room=dukkan,
         )
 
         son_uyari_yapildi = False
         while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
+            if not _sayac_benim(dukkan, gorev_id):
+                return
             if oda["sayac_kalan"] <= 0:
                 break
 
@@ -3435,10 +3574,11 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                         oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) - 1
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
+    if not _sayac_benim(dukkan, gorev_id):
+        return
     with oda_kilitleri[dukkan]:
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
             oda["sayac_aktif"] = False
-            oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
             oda["durum"]["sure_bitis"] = 0
             biten_urun_id = oda["aktif_urun_id"]
             oda["aktif_urun_id"] = None
@@ -3495,7 +3635,8 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                             oda["durum"]["durum"] = "Pas"
 
             invalidate_vitrin_cache()
-            socketio.emit(
+            _iki_odayi(
+                dukkan,
                 "sayac_bitti",
                 {
                     "dukkan": dukkan,
@@ -3506,7 +3647,6 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                     "kazanan_id": oda["durum"]["kazanan_id"] if pey_var_mi else None,
                     "fiyat": oda["durum"]["pey"] if pey_var_mi else 0,
                 },
-                room=dukkan,
             )
 
             bota_haber_ver(
@@ -3556,7 +3696,8 @@ def _admin_satisi_duyur(dukkan, urun_id, kazanan, fiyat, neden):
         tutar = float(fiyat or 0)
     except (TypeError, ValueError):
         tutar = 0
-    socketio.emit(
+    _iki_odayi(
+        dukkan,
         "admin_satis_guncelle",
         {
             "dukkan": dukkan,
@@ -3565,7 +3706,6 @@ def _admin_satisi_duyur(dukkan, urun_id, kazanan, fiyat, neden):
             "fiyat": tutar,
             "neden": neden,
         },
-        room="admin_room",
     )
 
 
@@ -3800,7 +3940,15 @@ def _otonom_sayaci_baslat(dukkan, urun):
         oda["aktif_urun_id"] = urun.id
         oda["durum"]["durum"] = "Sayim"
         gorev = _pazarligi_hazirla(oda, urun)
-    socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik")
+        token = _sayac_jetonu(gorev)
+        kilit = _sayac_kilidi_al(dukkan, gorev, token)
+        if kilit != "ok":
+            if kilit == "yok" and int(oda.get("sayac_gorev_id") or 0) == int(gorev):
+                oda["sayac_aktif"] = False
+            return False
+    socketio.start_background_task(
+        dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik", token
+    )
     return True
 
 
@@ -5800,14 +5948,14 @@ def chat_mesaj_gonder():
                         ):
                             oda["sayac_kalan"] = 15
                             oda["durum"]["sure_bitis"] = time.time() + 15
-                            socketio.emit(
+                            _iki_odayi(
+                                dukkan,
                                 "sayac_uzatildi",
                                 {
                                     "dukkan": dukkan,
                                     "kalan": 15,
                                     "mesaj": "Son saniye teklifi nedeniyle süre 15 sn uzatıldı!",
                                 },
-                                room=dukkan,
                             )
                             _iki_odayi(
                                 dukkan,
@@ -6497,7 +6645,6 @@ def pey_ver():
                     hemen_al_fiyat = round(mevcut_pey + artis)
 
                 oda["sayac_aktif"] = False
-                oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
                 _gizli_pazarligi_kapat(oda)
                 urun.durum = "Satıldı"
                 urun.guncel_fiyat = hemen_al_fiyat
@@ -6543,7 +6690,8 @@ def pey_ver():
                         "kazanan_id": kullanici.id,
                     },
                 )
-                socketio.emit(
+                _iki_odayi(
+                    dukkan,
                     "sayac_bitti",
                     {
                         "dukkan": dukkan,
@@ -6553,7 +6701,6 @@ def pey_ver():
                         "kazanan_id": kullanici.id,
                         "fiyat": hemen_al_fiyat,
                     },
-                    room=dukkan,
                 )
                 bota_haber_ver(
                     "satis_bitti",
@@ -6676,14 +6823,14 @@ def pey_ver():
                 ):
                     oda["sayac_kalan"] = 15
                     oda["durum"]["sure_bitis"] = time.time() + 15
-                    socketio.emit(
+                    _iki_odayi(
+                        dukkan,
                         "sayac_uzatildi",
                         {
                             "dukkan": dukkan,
                             "kalan": 15,
                             "mesaj": "Son saniye teklifi nedeniyle süre 15 sn uzatıldı!",
                         },
-                        room=dukkan,
                     )
                     _iki_odayi(
                         dukkan,
@@ -7694,14 +7841,14 @@ def mezat_baslat():
         if pazarlik:
             paket["asama"] = "pazarlik"
         else:
-            socketio.emit(
+            _iki_odayi(
+                dukkan,
                 "sayac_uzatildi",
                 {
                     "dukkan": dukkan,
                     "kalan": kalan,
                     "mesaj": "Süre 15 sn uzatıldı!",
                 },
-                room=dukkan,
             )
         _iki_odayi(dukkan, "sayac_guncelle", paket)
         invalidate_vitrin_cache()
@@ -7722,8 +7869,19 @@ def mezat_baslat():
             oda["sayac_aktif"] = True
             oda["sayac_kalan"] = 60
             akis = "karar"
+        token = _sayac_jetonu(gorev)
+        kilit = _sayac_kilidi_al(dukkan, gorev, token)
+        if kilit != "ok":
+            if kilit == "yok":
+                oda["sayac_aktif"] = False
+            return jsonify({
+                "success": False,
+                "mesaj": "Sayaç kilidi alınamadı. Döngü ikinci kez açılmadı.",
+            })
 
-    socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, akis)
+    socketio.start_background_task(
+        dukkan_geri_sayim_gorevi, dukkan, gorev, akis, token
+    )
     socketio.emit("mezat_basladi_muzik", room=dukkan)
     invalidate_vitrin_cache()
     return jsonify({"success": True, "dukkan": dukkan})
@@ -7775,7 +7933,8 @@ def satis_bitir():
                 if hedef_sepet:
                     _kazanan_sepetini_disari_aktar(biten_urun_id, hedef_sepet)
 
-        socketio.emit(
+        _iki_odayi(
+            dukkan,
             "sayac_bitti",
             {
                 "dukkan": dukkan,
@@ -7785,7 +7944,6 @@ def satis_bitir():
                 "kazanan_id": oda["durum"].get("kazanan_id"),
                 "fiyat": oda["durum"]["pey"],
             },
-            room=dukkan,
         )
         bota_haber_ver(
             "satis_bitti",
@@ -8642,6 +8800,14 @@ def otonom_mezat_kontrol():
             oda["otonom_aktif"] = True
             lot_no = _otonom_baslangic_sahnesi(d)
             _otonom_donguyu_garantile(d)
+            if lot_no is not None and not oda.get("sayac_aktif"):
+                sahne_urun = (
+                    db.session.get(Urun, oda.get("aktif_urun_id"))
+                    if oda.get("aktif_urun_id")
+                    else None
+                )
+                if sahne_urun is not None:
+                    _otonom_sayaci_baslat(d, sahne_urun)
             if lot_no is not None:
                 baslatilan.append({"dukkan": d, "lot": lot_no})
             else:
