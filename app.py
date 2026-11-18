@@ -960,11 +960,31 @@ def _iki_odayi(dukkan, olay, veri):
     socketio.emit(olay, veri, room=[dukkan, "admin_room"])
 
 
+def _ses_nesil_yeni():
+    """59b4e98 nesli. Redis varsa bütün worker'lar aynı numarayı görür."""
+    global _ses_nesil
+    if REDIS_URL:
+        istemci = _redis_al()
+        if istemci is not None:
+            try:
+                return int(istemci.incr("mezat:ses:nesil"))
+            except Exception as hata:
+                _redis_dusur(hata)
+    with _ses_kuyruk_kilit:
+        _ses_nesil += 1
+        return _ses_nesil
+
+
 def _sahne_sesini_kes(dukkan):
     """Satış, pas veya yeni sahne: çalan ve bekleyen anonsları düşür."""
-    nesil = _ses_kuyruk_kes(dukkan)
-    if nesil is None:
-        return
+    nesil = _ses_nesil_yeni()
+    with _ses_kuyruk_kilit:
+        _ses_kuyruk[dukkan] = {
+            "nesil": nesil,
+            "isleyici": nesil,
+            "calisiyor": False,
+            "ogeler": [],
+        }
     _iki_odayi(
         dukkan,
         "ses_kes",
@@ -1100,7 +1120,7 @@ def _otonom_disi_satisi_bosalt(dukkan, oda):
 
 
 def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
-    """Tanıtım kesilmeden kuyruğa girer. Zorunlu kesinti satış ve yeni sahne içindir."""
+    """59b4e98 kuyruğu. Aynı cümle Redis imzasıyla bir kez okunur."""
     temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
     if not temiz:
         return
@@ -1108,10 +1128,31 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
     if _ses_imza_tekrar(imza):
         return
     zorunlu = bool(kesinti) or tur in ("satis", "sahne", "yeni_urun")
-    sonuc = _ses_kuyruga_ekle(dukkan, temiz, tur, zorunlu, gizli)
-    if sonuc is None:
-        return
-    nesil, baslat, benim = sonuc
+    nesil = _ses_nesil_yeni()
+    with _ses_kuyruk_kilit:
+        kayit = _ses_kuyruk.get(dukkan) or {
+            "nesil": 0, "isleyici": 0, "calisiyor": False, "ogeler": [],
+        }
+        kayit.setdefault("ogeler", [])
+        if zorunlu:
+            kayit["ogeler"] = []
+            kayit["nesil"] = nesil
+            kayit["isleyici"] = nesil
+            kayit["calisiyor"] = False
+        elif tur in ("anons", "pey"):
+            kayit["ogeler"] = [
+                oge for oge in kayit["ogeler"]
+                if oge.get("tur") not in ("anons", "pey")
+            ]
+        kayit["ogeler"].append({
+            "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu, "gizli": bool(gizli),
+        })
+        baslat = not kayit.get("calisiyor")
+        if baslat:
+            kayit["calisiyor"] = True
+            kayit["isleyici"] = nesil
+        _ses_kuyruk[dukkan] = kayit
+        benim = kayit.get("isleyici")
     if zorunlu:
         _iki_odayi(
             dukkan,
@@ -1124,19 +1165,26 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
 
 def _ses_kuyrugunu_bosalt(dukkan, benim):
     while True:
-        oge = _ses_kuyruk_cek(dukkan, benim)
-        if not oge:
-            return
+        with _ses_kuyruk_kilit:
+            kayit = _ses_kuyruk.get(dukkan)
+            if not kayit or kayit.get("isleyici") != benim:
+                return
+            if not kayit.get("ogeler"):
+                kayit["calisiyor"] = False
+                return
+            oge = kayit["ogeler"].pop(0)
         veri, kaynak = _tts_uret(oge["metin"])
-        if not _ses_kuyruk_sahip(dukkan, benim):
-            return
-        if not veri:
-            print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
-            continue
-        adres = _mp3_kaydet(veri, oge.get("nesil") or benim)
+        with _ses_kuyruk_kilit:
+            kayit = _ses_kuyruk.get(dukkan)
+            if not kayit or kayit.get("isleyici") != benim:
+                return
+            if not veri:
+                print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
+                continue
+        adres = _mp3_kaydet(veri, oge["nesil"])
         _iki_odayi(dukkan, "ses_oynat", {
             "dukkan": dukkan,
-            "nesil": oge.get("nesil") or benim,
+            "nesil": oge["nesil"],
             "tur": oge["tur"],
             "zorunlu": bool(oge.get("zorunlu")),
             "audio_url": adres,
@@ -3296,8 +3344,7 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
 
     son_uyari_yapildi = False
     while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id and oda["sayac_kalan"] > 0:
-        if not _sayac_benim(dukkan, gorev_id):
-            return False
+        _sayac_kilidi_canli_tut(dukkan)
         kalan = int(oda["sayac_kalan"])
         if kalan <= 60 and oda.get("mevat_asama") == "pazarlik":
             with oda_kilitleri[dukkan]:
@@ -3330,9 +3377,7 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
         )
         socketio.sleep(1)
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-            with oda_kilitleri[dukkan]:
-                if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                    oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) - 1
+            oda["sayac_kalan"] -= 1
 
     if not (oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id):
         return False
@@ -3442,11 +3487,11 @@ def _sayac_kilidi_birak(dukkan, token):
         _redis_dusur(hata)
 
 
-def _sayac_benim(dukkan, gorev_id):
+def _sayac_kilidi_canli_tut(dukkan):
+    """Kilit süresini uzatır. Uzamazsa 59b4e98 döngüsü yine de devam eder."""
     sahip = _sayac_sahip.get(dukkan)
-    if not sahip or int(sahip[0]) != int(gorev_id):
-        return False
-    return _sayac_kilidi_yenile(dukkan, sahip[1])
+    if sahip:
+        _sayac_kilidi_yenile(dukkan, sahip[1])
 
 
 def _sayac_jetonu(gorev_id):
@@ -3454,21 +3499,15 @@ def _sayac_jetonu(gorev_id):
 
 
 def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart", kilit_jetonu=None):
-    oda = odalar[dukkan]
+    """59b4e98 döngüsü. Redis kilidi yalnızca ikinci worker'ı geri çevirir, sayacı durdurmaz."""
     token = kilit_jetonu or _sayac_jetonu(gorev_id)
     if kilit_jetonu:
-        sahip = _sayac_kilidi_yenile(dukkan, token)
-        redis_yok = False
-    else:
-        durum = _sayac_kilidi_al(dukkan, gorev_id, token)
-        sahip = durum == "ok"
-        redis_yok = durum == "yok"
-    if not sahip:
-        if redis_yok and int(oda.get("sayac_gorev_id") or 0) == int(gorev_id):
-            oda["sayac_aktif"] = False
+        _sayac_kilidi_yenile(dukkan, token)
+    elif _sayac_kilidi_al(dukkan, gorev_id, token) == "dolu":
         return
     _sayac_sahip[dukkan] = (int(gorev_id), token)
     try:
+        oda = odalar[dukkan]
         _dukkan_geri_sayim_govdesi(dukkan, gorev_id, akis, oda)
     finally:
         if _sayac_sahip.get(dukkan) == (int(gorev_id), token):
@@ -3500,8 +3539,7 @@ def _dukkan_geri_sayim_govdesi(dukkan, gorev_id, akis, oda):
 
     gizli_sayac = 120
     while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id and gizli_sayac > 0:
-        if not _sayac_benim(dukkan, gorev_id):
-            return
+        _sayac_kilidi_canli_tut(dukkan)
         _iki_odayi(
             dukkan,
             "tanitim_sayac",
@@ -3549,8 +3587,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
 
         son_uyari_yapildi = False
         while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-            if not _sayac_benim(dukkan, gorev_id):
-                return
+            _sayac_kilidi_canli_tut(dukkan)
             if oda["sayac_kalan"] <= 0:
                 break
 
@@ -3569,13 +3606,9 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
             )
             socketio.sleep(1)
             if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                with oda_kilitleri[dukkan]:
-                    if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                        oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) - 1
+                oda["sayac_kalan"] -= 1
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
-    if not _sayac_benim(dukkan, gorev_id):
-        return
     with oda_kilitleri[dukkan]:
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
             oda["sayac_aktif"] = False
@@ -3934,18 +3967,15 @@ def _otonom_donguyu_garantile(dukkan):
 
 def _otonom_sayaci_baslat(dukkan, urun):
     oda = odalar[dukkan]
+    token = _sayac_jetonu(0)
+    if _sayac_kilidi_al(dukkan, 0, token) == "dolu":
+        return False
     with oda_kilitleri[dukkan]:
         if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
+            _sayac_kilidi_birak(dukkan, token)
             return False
         oda["aktif_urun_id"] = urun.id
-        oda["durum"]["durum"] = "Sayim"
         gorev = _pazarligi_hazirla(oda, urun)
-        token = _sayac_jetonu(gorev)
-        kilit = _sayac_kilidi_al(dukkan, gorev, token)
-        if kilit != "ok":
-            if kilit == "yok" and int(oda.get("sayac_gorev_id") or 0) == int(gorev):
-                oda["sayac_aktif"] = False
-            return False
     socketio.start_background_task(
         dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik", token
     )
@@ -4102,10 +4132,8 @@ def _otonom_lotu_islet(dukkan, son_biten_id, token):
         _otonom_sahneye_yayinla(dukkan, urun, acilis, kazanan, kazanan_id)
     if not oda.get("otonom_aktif"):
         return None
-    if _otonom_anons.get(dukkan) != urun.id:
-        _otonom_anons[dukkan] = urun.id
-        _otonom_gorev_yenile(dukkan, token)
-        _otonom_secere_oku(dukkan, urun, acilis)
+    _otonom_gorev_yenile(dukkan, token)
+    _otonom_secere_oku(dukkan, urun, acilis)
     _otonom_sayaci_baslat(dukkan, urun)
     return urun
 
@@ -7870,14 +7898,6 @@ def mezat_baslat():
             oda["sayac_kalan"] = 60
             akis = "karar"
         token = _sayac_jetonu(gorev)
-        kilit = _sayac_kilidi_al(dukkan, gorev, token)
-        if kilit != "ok":
-            if kilit == "yok":
-                oda["sayac_aktif"] = False
-            return jsonify({
-                "success": False,
-                "mesaj": "Sayaç kilidi alınamadı. Döngü ikinci kez açılmadı.",
-            })
 
     socketio.start_background_task(
         dukkan_geri_sayim_gorevi, dukkan, gorev, akis, token
