@@ -735,6 +735,7 @@ def _otonom_sahneyi_kapat(dukkan):
         _gizli_pazarligi_kapat(oda)
         oda["mevat_asama"] = ""
         oda["aktif_urun_id"] = None
+        oda["sahne_nesil"] = int(oda.get("sahne_nesil") or 0) + 1
         oda["durum"]["durum"] = "Bekliyor"
         oda["durum"]["sure_bitis"] = 0
         oda["durum"]["pey"] = 0
@@ -2406,6 +2407,8 @@ def _oda_varsayilan():
         "sayac_gorev_id": 0,
         "otonom_aktif": False,
         "otonom_dongu": False,
+        "sahne_nesil": 0,
+        "sahne_yayin_nesil": 0,
         "izleyici_sayisi": 0,
         "son_teklif_veren_id": None,
         "gizli_pazarlik_aktif": False,
@@ -3383,149 +3386,319 @@ def _otonom_secere_oku(dukkan, urun, acilis):
         ahmet_usta_anons_yap(dukkan, metin, tur="tanitim")
 
 
+_otonom_isleyen = {}
+_otonom_anons = {}
+
+_OTONOM_GOREV_AL = """
+local simdi = tonumber(ARGV[2])
+local v = redis.call('get', KEYS[1])
+if not v then
+    redis.call('set', KEYS[1], ARGV[1] .. ':' .. ARGV[2], 'EX', 90)
+    return 1
+end
+local ts = tonumber(string.match(v, ':(%d+)$') or '0')
+if simdi - ts > 30 then
+    redis.call('set', KEYS[1], ARGV[1] .. ':' .. ARGV[2], 'EX', 90)
+    return 1
+end
+return 0
+"""
+
+_OTONOM_GOREV_YENILE = """
+local v = redis.call('get', KEYS[1])
+local token = ARGV[1]
+local n = string.len(token)
+if v and string.sub(v, 1, n) == token and string.sub(v, n + 1, n + 1) == ':' then
+    redis.call('set', KEYS[1], token .. ':' .. ARGV[2], 'EX', 90)
+    return 1
+end
+return 0
+"""
+
+_OTONOM_GOREV_BIRAK = """
+local v = redis.call('get', KEYS[1])
+local token = ARGV[1]
+local n = string.len(token)
+if v and string.sub(v, 1, n) == token and string.sub(v, n + 1, n + 1) == ':' then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
+
+
+def _otonom_gorev_anahtar(dukkan):
+    return "mezat:otonom:gorev:" + str(dukkan)
+
+
+def _otonom_gorev_al(dukkan, token):
+    istemci = _redis_al()
+    if istemci is None:
+        return True
+    try:
+        return bool(istemci.eval(
+            _OTONOM_GOREV_AL,
+            1,
+            _otonom_gorev_anahtar(dukkan),
+            token,
+            str(int(time.time())),
+        ))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return True
+
+
+def _otonom_gorev_yenile(dukkan, token):
+    if not token:
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.eval(
+            _OTONOM_GOREV_YENILE,
+            1,
+            _otonom_gorev_anahtar(dukkan),
+            token,
+            str(int(time.time())),
+        )
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _otonom_gorev_birak(dukkan, token):
+    if not token:
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.eval(_OTONOM_GOREV_BIRAK, 1, _otonom_gorev_anahtar(dukkan), token)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _otonom_donguyu_garantile(dukkan):
+    """Bu süreçte döngü yoksa başlat. Redis kaydı tek başına 'çalışıyor' sayılmaz."""
+    if _otonom_isleyen.get(dukkan):
+        return
+    token = uuid.uuid4().hex
+    if not _otonom_gorev_al(dukkan, token):
+        return
+    _otonom_isleyen[dukkan] = token
+    try:
+        socketio.start_background_task(dukkan_otonom_dongusu, dukkan, token)
+    except Exception:
+        if _otonom_isleyen.get(dukkan) == token:
+            _otonom_isleyen.pop(dukkan, None)
+        _otonom_gorev_birak(dukkan, token)
+        raise
+
+
 def _otonom_sayaci_baslat(dukkan, urun):
     oda = odalar[dukkan]
     with oda_kilitleri[dukkan]:
         if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
             return False
         oda["aktif_urun_id"] = urun.id
+        oda["durum"]["durum"] = "Sayim"
         gorev = _pazarligi_hazirla(oda, urun)
     socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, "pazarlik")
     return True
 
 
-def dukkan_otonom_dongusu(dukkan):
+def _otonom_siradaki_lot(dukkan, son_biten_id):
+    oda = odalar[dukkan]
+    if oda.get("sayac_aktif") and not oda.get("aktif_urun_id"):
+        oda["sayac_aktif"] = False
+    secilen_urun = None
+    acilis_fiyati = 0
+    kazanan = "Yok"
+    kazanan_id = None
+    yeniden_sahne = True
+
+    if oda.get("aktif_urun_id") and not oda.get("sayac_aktif"):
+        sahnedeki = db.session.get(Urun, oda["aktif_urun_id"])
+        if not _otonom_urun_satildi(sahnedeki):
+            secilen_urun = sahnedeki
+            acilis_fiyati = float(oda["durum"].get("pey") or sahnedeki.acilis_fiyati or 0)
+            kazanan = oda["durum"].get("kazanan") or "Yok"
+            kazanan_id = oda["durum"].get("kazanan_id")
+            yeniden_sahne = int(oda.get("sahne_yayin_nesil") or 0) != int(oda.get("sahne_nesil") or 0)
+        else:
+            oda["aktif_urun_id"] = None
+
+    if secilen_urun is None:
+        en_iyi_ot = (
+            OnTeklif.query.filter_by(dukkan_kodu=dukkan)
+            .order_by(OnTeklif.id.asc())
+            .first()
+        )
+        if en_iyi_ot:
+            on_urun = db.session.get(Urun, en_iyi_ot.urun_id)
+            if (
+                on_urun is not None
+                and not _otonom_urun_satildi(on_urun)
+                and on_urun.id != son_biten_id
+            ):
+                secilen_urun = on_urun
+                acilis_fiyati = float(en_iyi_ot.teklif)
+                kazanan = en_iyi_ot.musteri_adi
+                kazanan_id = en_iyi_ot.musteri_id
+            elif on_urun is not None and _otonom_urun_satildi(on_urun):
+                db.session.delete(en_iyi_ot)
+                db.session.commit()
+
+    if secilen_urun is None:
+        aciklar = _otonom_satilmamis_lotlar(dukkan)
+        if son_biten_id and len(aciklar) > 1:
+            biten = next((u for u in aciklar if u.id == son_biten_id), None)
+            diger = [u for u in aciklar if u.id != son_biten_id]
+            esik = int(biten.lot_no or 0) if biten is not None else -1
+            secilen_urun = next(
+                (u for u in diger if int(u.lot_no or 0) > esik),
+                diger[0] if diger else None,
+            )
+        elif aciklar:
+            secilen_urun = aciklar[0]
+        if secilen_urun is not None and acilis_fiyati == 0 and kazanan == "Yok":
+            acilis_fiyati = float(secilen_urun.acilis_fiyati or 0)
+
+    if secilen_urun is None:
+        return None
+    return secilen_urun, acilis_fiyati, kazanan, kazanan_id, yeniden_sahne
+
+
+def _otonom_sahneye_yayinla(dukkan, secilen_urun, acilis_fiyati, kazanan, kazanan_id):
+    """Lotu mezat_oda, Redis ve izleyici soketine yazar. Sayım sürüyorsa dokunmaz."""
+    oda = odalar[dukkan]
+    with oda_kilitleri[dukkan]:
+        if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
+            return False
+        if (
+            oda.get("aktif_urun_id") == secilen_urun.id
+            and int(oda.get("sahne_yayin_nesil") or -1) == int(oda.get("sahne_nesil") or 0)
+        ):
+            return False
+        oda["aktif_urun_id"] = secilen_urun.id
+        oda["durum"]["durum"] = "Sayim"
+        oda["durum"]["pey"] = acilis_fiyati
+        oda["durum"]["kazanan"] = kazanan
+        oda["durum"]["kazanan_id"] = kazanan_id
+        oda["sahne_yayin_nesil"] = int(oda.get("sahne_nesil") or 0)
+        secilen_urun.guncel_fiyat = acilis_fiyati
+        if not _otonom_urun_satildi(secilen_urun):
+            secilen_urun.durum = "Aktif"
+        db.session.commit()
+        paket = secilen_urun.to_dict()
+        lot_no = secilen_urun.lot_no
+        baslik = secilen_urun.urun_adi
+        hemen_al = secilen_urun.hemen_al_fiyati or 0
+        tanitim = secilen_urun.tanitim_yazisi or ""
+        urun_id = secilen_urun.id
+    for _takip in UrunTakip.query.filter_by(urun_id=urun_id).all():
+        socketio.emit(
+            "urun_takip_bildirimi",
+            {
+                "urun_id": urun_id,
+                "mesaj": f"Takip ettiğiniz Lot #{lot_no} ({baslik}) sahneye alındı!",
+            },
+        )
+    sahneyi_herkese_yayinla(
+        dukkan,
+        paket,
+        {
+            "dukkan": dukkan,
+            "urun_id": urun_id,
+            "pey": acilis_fiyati,
+            "kazanan": kazanan,
+            "kazanan_id": kazanan_id,
+        },
+        yeni_urun=True,
+    )
+    bota_haber_ver(
+        "urun_sahneye_aldi",
+        {
+            "dukkan": dukkan,
+            "lot": lot_no,
+            "baslik": baslik,
+            "acilis": acilis_fiyati,
+            "guncel_fiyat": acilis_fiyati,
+            "hemen_al": hemen_al,
+            "tanitim_yazisi": tanitim,
+        },
+    )
+    return True
+
+
+def _otonom_baslangic_sahnesi(dukkan):
+    """Başlat isteği lotu bekletmeden sahneye yazar ve yayınlar."""
+    oda = odalar[dukkan]
+    if oda.get("aktif_urun_id") and oda.get("sayac_aktif"):
+        urun = db.session.get(Urun, oda["aktif_urun_id"])
+        if not _otonom_urun_satildi(urun):
+            return getattr(urun, "lot_no", None)
+    secim = _otonom_siradaki_lot(dukkan, None)
+    if secim is None:
+        return None
+    urun, acilis, kazanan, kazanan_id, yeniden = secim
+    if yeniden:
+        _otonom_sahneye_yayinla(dukkan, urun, acilis, kazanan, kazanan_id)
+    return getattr(urun, "lot_no", None)
+
+
+def _otonom_lotu_islet(dukkan, son_biten_id, token):
+    oda = odalar[dukkan]
+    secim = _otonom_siradaki_lot(dukkan, son_biten_id)
+    if secim is None:
+        return None
+    urun, acilis, kazanan, kazanan_id, yeniden = secim
+    if yeniden:
+        _otonom_sahneye_yayinla(dukkan, urun, acilis, kazanan, kazanan_id)
+    if not oda.get("otonom_aktif"):
+        return None
+    if _otonom_anons.get(dukkan) != urun.id:
+        _otonom_anons[dukkan] = urun.id
+        _otonom_gorev_yenile(dukkan, token)
+        _otonom_secere_oku(dukkan, urun, acilis)
+    _otonom_sayaci_baslat(dukkan, urun)
+    return urun
+
+
+def dukkan_otonom_dongusu(dukkan, token=None):
     oda = odalar[dukkan]
     kural = DUKKANLAR[dukkan]
+    if not token:
+        token = uuid.uuid4().hex
+        if not _otonom_gorev_al(dukkan, token):
+            return
+    _otonom_isleyen[dukkan] = token
     oda["otonom_dongu"] = True
     son_biten_id = None
     print(f"🤖 [{kural['ad']}] 3 Dakikalık Otonom Mezat Başlatıldı...")
     try:
         while oda.get("otonom_aktif"):
+            _otonom_gorev_yenile(dukkan, token)
             with app.app_context():
                 try:
-                    if oda.get("aktif_urun_id") and oda.get("sayac_aktif"):
-                        pass
-                    else:
-                        yeniden_sahne = True
-                        secilen_urun = None
-                        acilis_fiyati = 0
-                        kazanan = "Yok"
-                        kazanan_id = None
-
-                        if oda.get("aktif_urun_id") and not oda.get("sayac_aktif"):
-                            sahnedeki = db.session.get(Urun, oda["aktif_urun_id"])
-                            if not _otonom_urun_satildi(sahnedeki):
-                                secilen_urun = sahnedeki
-                                acilis_fiyati = float(
-                                    oda["durum"].get("pey") or sahnedeki.acilis_fiyati or 0
-                                )
-                                kazanan = oda["durum"].get("kazanan") or "Yok"
-                                kazanan_id = oda["durum"].get("kazanan_id")
-                                yeniden_sahne = False
-                            else:
-                                oda["aktif_urun_id"] = None
-
-                        if secilen_urun is None:
-                            en_iyi_ot = (
-                                OnTeklif.query.filter_by(dukkan_kodu=dukkan)
-                                .order_by(OnTeklif.id.asc())
-                                .first()
-                            )
-                            if en_iyi_ot:
-                                on_urun = db.session.get(Urun, en_iyi_ot.urun_id)
-                                if (
-                                    not _otonom_urun_satildi(on_urun)
-                                    and on_urun.id != son_biten_id
-                                ):
-                                    secilen_urun = on_urun
-                                    acilis_fiyati = float(en_iyi_ot.teklif)
-                                    kazanan = en_iyi_ot.musteri_adi
-                                    kazanan_id = en_iyi_ot.musteri_id
-                                elif _otonom_urun_satildi(on_urun):
-                                    db.session.delete(en_iyi_ot)
-                                    db.session.commit()
-
-                        if secilen_urun is None:
-                            aciklar = _otonom_satilmamis_lotlar(dukkan)
-                            if son_biten_id and len(aciklar) > 1:
-                                biten = next(
-                                    (u for u in aciklar if u.id == son_biten_id), None
-                                )
-                                diger = [u for u in aciklar if u.id != son_biten_id]
-                                esik = int(biten.lot_no or 0) if biten is not None else -1
-                                secilen_urun = next(
-                                    (u for u in diger if int(u.lot_no or 0) > esik),
-                                    diger[0] if diger else None,
-                                )
-                            elif aciklar:
-                                secilen_urun = aciklar[0]
-                            if secilen_urun is not None and acilis_fiyati == 0 and kazanan == "Yok":
-                                acilis_fiyati = float(secilen_urun.acilis_fiyati or 0)
-
-                        if secilen_urun is None:
+                    if not (oda.get("aktif_urun_id") and oda.get("sayac_aktif")):
+                        secilen_urun = _otonom_lotu_islet(dukkan, son_biten_id, token)
+                        if secilen_urun is None and not (
+                            oda.get("aktif_urun_id") and oda.get("sayac_aktif")
+                        ):
                             socketio.sleep(3)
                             continue
+                        if secilen_urun is not None:
+                            son_biten_id = secilen_urun.id
 
-                        if yeniden_sahne:
-                            with oda_kilitleri[dukkan]:
-                                if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
-                                    continue
-                                oda["aktif_urun_id"] = secilen_urun.id
-                                oda["durum"]["durum"] = "Bekliyor"
-                                oda["durum"]["pey"] = acilis_fiyati
-                                oda["durum"]["kazanan"] = kazanan
-                                oda["durum"]["kazanan_id"] = kazanan_id
-                                secilen_urun.guncel_fiyat = acilis_fiyati
-                                db.session.commit()
-                                paket = secilen_urun.to_dict()
-                                lot_no = secilen_urun.lot_no
-                                baslik = secilen_urun.urun_adi
-                                hemen_al = secilen_urun.hemen_al_fiyati or 0
-                                tanitim = secilen_urun.tanitim_yazisi or ""
-                                urun_id = secilen_urun.id
-                            for _takip in UrunTakip.query.filter_by(urun_id=urun_id).all():
-                                socketio.emit(
-                                    "urun_takip_bildirimi",
-                                    {
-                                        "urun_id": urun_id,
-                                        "mesaj": f"Takip ettiğiniz Lot #{lot_no} ({baslik}) sahneye alındı!",
-                                    },
-                                )
-                            sahneyi_herkese_yayinla(
-                                dukkan,
-                                paket,
-                                {
-                                    "dukkan": dukkan,
-                                    "urun_id": urun_id,
-                                    "pey": acilis_fiyati,
-                                    "kazanan": kazanan,
-                                    "kazanan_id": kazanan_id,
-                                },
-                                yeni_urun=True,
-                            )
-                            bota_haber_ver(
-                                "urun_sahneye_aldi",
-                                {
-                                    "dukkan": dukkan,
-                                    "lot": lot_no,
-                                    "baslik": baslik,
-                                    "acilis": acilis_fiyati,
-                                    "guncel_fiyat": acilis_fiyati,
-                                    "hemen_al": hemen_al,
-                                    "tanitim_yazisi": tanitim,
-                                },
-                            )
-
-                        _otonom_secere_oku(dukkan, secilen_urun, acilis_fiyati)
-                        _otonom_sayaci_baslat(dukkan, secilen_urun)
-                        son_biten_id = secilen_urun.id
-
+                    beklenen = 0
                     while (
                         oda.get("otonom_aktif")
                         and oda.get("aktif_urun_id")
                         and oda.get("sayac_aktif")
                     ):
+                        if beklenen % 5 == 0:
+                            _otonom_gorev_yenile(dukkan, token)
+                        beklenen += 1
                         socketio.sleep(1)
                     if not oda.get("otonom_aktif"):
                         break
@@ -3552,7 +3725,11 @@ def dukkan_otonom_dongusu(dukkan):
                 finally:
                     db.session.remove()
     finally:
+        if _otonom_isleyen.get(dukkan) == token:
+            _otonom_isleyen.pop(dukkan, None)
+        _otonom_gorev_birak(dukkan, token)
         oda["otonom_dongu"] = False
+        _otonom_anons.pop(dukkan, None)
 
 
 # VERİTABANI ONARIMI: Tüm eksik kolonları (ip_adresi dahil) PostgreSQL'e otomatik ekler
@@ -8081,24 +8258,33 @@ def otonom_mezat_kontrol():
         oda = odalar[d]
         if durum:
             oda["otonom_aktif"] = True
-            with oda_kilitleri[d]:
-                if not oda.get("otonom_dongu"):
-                    oda["otonom_dongu"] = True
-                    socketio.start_background_task(dukkan_otonom_dongusu, d)
-            sahnedeki = (
-                db.session.get(Urun, oda.get("aktif_urun_id"))
-                if oda.get("aktif_urun_id")
-                else None
-            )
-            lotlar = _otonom_satilmamis_lotlar(d)
-            if not _otonom_urun_satildi(sahnedeki):
-                baslatilan.append({"dukkan": d, "lot": sahnedeki.lot_no})
-            elif lotlar:
-                baslatilan.append({"dukkan": d, "lot": lotlar[0].lot_no})
+            lot_no = _otonom_baslangic_sahnesi(d)
+            _otonom_donguyu_garantile(d)
+            if lot_no is not None and not oda.get("sayac_aktif") and not _otonom_isleyen.get(d):
+                sahne_urun = (
+                    db.session.get(Urun, oda.get("aktif_urun_id"))
+                    if oda.get("aktif_urun_id")
+                    else None
+                )
+                if sahne_urun is not None:
+                    _otonom_sayaci_baslat(d, sahne_urun)
+            if lot_no is not None:
+                baslatilan.append({"dukkan": d, "lot": lot_no})
             else:
-                lot_yok.append(d)
+                lotlar = _otonom_satilmamis_lotlar(d)
+                if lotlar:
+                    baslatilan.append({"dukkan": d, "lot": lotlar[0].lot_no})
+                else:
+                    lot_yok.append(d)
             socketio.emit(
-                "otonom_durum_degisti", {"dukkan": d, "aktif": True}, room=d
+                "otonom_durum_degisti",
+                {
+                    "dukkan": d,
+                    "aktif": True,
+                    "sahne": oda.get("durum").get("durum") if oda.get("durum") else "Sayim",
+                    "aktif_urun_id": oda.get("aktif_urun_id"),
+                },
+                room=d,
             )
         else:
             oda["otonom_aktif"] = False
