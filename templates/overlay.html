@@ -187,6 +187,39 @@
         sayacEl.style.color = "#ffb703";
     });
 
+    function overlaySayaciDurdur() {
+        if (window.overlaySayacTimer) {
+            clearInterval(window.overlaySayacTimer);
+            window.overlaySayacTimer = null;
+        }
+    }
+
+    function overlayKararYaz(sn) {
+        sayacEl.innerText = "⏱️ KARAR " + String(sn).padStart(2, "0");
+        if (sn > 0 && sn <= 15) {
+            sayacEl.classList.add("alarm");
+        } else {
+            sayacEl.classList.remove("alarm");
+            sayacEl.style.color = "#38bdf8";
+        }
+    }
+
+    function overlayKararSayaciniKur(sn) {
+        overlaySayaciDurdur();
+        window.overlayYerelKararKalan = sn;
+        overlayKararYaz(sn);
+        if (sn <= 0) return;
+        window.overlaySayacTimer = setInterval(function () {
+            const simdiki = Number(window.overlayYerelKararKalan);
+            if (!Number.isFinite(simdiki) || simdiki <= 0) {
+                overlaySayaciDurdur();
+                return;
+            }
+            window.overlayYerelKararKalan = simdiki - 1;
+            overlayKararYaz(window.overlayYerelKararKalan);
+        }, 1000);
+    }
+
     function sayaciYaz(data) {
         if (!data) return;
         const ham = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
@@ -194,25 +227,33 @@
         const sn = Math.max(0, parseInt(ham, 10) || 0);
         const asama = data.asama || "";
         if (!data.sayac_aktif && asama === "bekliyor") {
+            overlaySayaciDurdur();
+            window.overlayYerelKararKalan = null;
             sayacEl.className = "timer";
             sayacEl.style.color = "#ffb703";
             sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
             return;
         }
         if (asama === "pazarlik" || (asama !== "karar" && sn > 60)) {
+            overlaySayaciDurdur();
+            window.overlayYerelKararKalan = null;
             const yazi = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
             sayacEl.classList.remove("alarm");
             sayacEl.style.color = "#ffb703";
             sayacEl.innerText = "⏱️ PAZARLIK " + yazi;
             return;
         }
-        sayacEl.innerText = "⏱️ KARAR " + String(sn).padStart(2, "0");
-        if (sn <= 10) {
-            sayacEl.classList.add("alarm");
-        } else {
-            sayacEl.classList.remove("alarm");
-            sayacEl.style.color = "#38bdf8";
+        if (asama === "karar") {
+            const yerel = Number(window.overlayYerelKararKalan);
+            const yerelVar = Number.isFinite(yerel);
+            if (sn === 0 || !yerelVar || !window.overlaySayacTimer || sn > yerel) {
+                overlayKararSayaciniKur(sn);
+            }
+            return;
         }
+        overlaySayaciDurdur();
+        window.overlayYerelKararKalan = null;
+        overlayKararYaz(sn);
     }
 
     function sahneyiYaz(data) {
@@ -230,10 +271,6 @@
     // 3. Geri Sayım Sayacı
     socket.on('sayac_guncelle', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        if (window.overlaySayacTimer) {
-            clearInterval(window.overlaySayacTimer);
-            window.overlaySayacTimer = null;
-        }
         sayaciYaz(data);
     });
 
@@ -246,6 +283,8 @@
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
         if (data.pey !== undefined) fiyatEl.innerText = paraFormatla(data.pey);
         kazananEl.innerText = "Yok";
+        overlaySayaciDurdur();
+        window.overlayYerelKararKalan = null;
         sayacEl.classList.remove("alarm");
         sayacEl.style.color = "#38bdf8";
         sayacEl.innerText = "⏱️ KARAR 60";
@@ -254,19 +293,17 @@
     // 4. Son Saniye Teklifinde Süre Uzatıldığında
     socket.on('sayac_uzatildi', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        sayacEl.classList.remove('alarm');
-        sayacEl.innerText = `🔥 15 SN UZATILDI!`;
-        sayacEl.style.color = "#f59e0b";
+        let yeniSure = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10);
+        if (!Number.isFinite(yeniSure) || yeniSure <= 0) yeniSure = 15;
+        overlayKararSayaciniKur(yeniSure);
         peyEfektiVer();
     });
 
     // 5. Satış Bittiğinde
     socket.on('sayac_bitti', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        if (window.overlaySayacTimer) {
-            clearInterval(window.overlaySayacTimer);
-            window.overlaySayacTimer = null;
-        }
+        overlaySayaciDurdur();
+        window.overlayYerelKararKalan = null;
         sayacEl.classList.remove('alarm');
         if (data && data.satildi_mi === false) {
             sayacEl.innerText = "PAS";

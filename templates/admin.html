@@ -2335,23 +2335,62 @@
         }
     });
 
-    socket.on('sayac_guncelle', function(data) {
-        if (!data || data.kalan === undefined) return;
+    function adminSayaciDurdur() {
         if (window.adminSayacTimer) {
             clearInterval(window.adminSayacTimer);
             window.adminSayacTimer = null;
+        }
+    }
+
+    function adminKararYaz(sn) {
+        const durum = document.getElementById('aktifDurum');
+        if (!durum) return;
+        durum.classList.remove('satildi-yazi');
+        durum.innerText = sn <= 0 ? 'Süre doldu' : ('Geri Sayım: ' + sn + ' sn');
+    }
+
+    function adminKararSayaciniKur(sn) {
+        adminSayaciDurdur();
+        window.adminYerelKararKalan = sn;
+        adminKararYaz(sn);
+        if (sn <= 0) return;
+        window.adminSayacTimer = setInterval(function () {
+            const simdiki = Number(window.adminYerelKararKalan);
+            if (!Number.isFinite(simdiki) || simdiki <= 0) {
+                adminSayaciDurdur();
+                return;
+            }
+            window.adminYerelKararKalan = simdiki - 1;
+            adminKararYaz(window.adminYerelKararKalan);
+        }, 1000);
+    }
+
+    socket.on('sayac_guncelle', function(data) {
+        if (!data || (data.kalan === undefined && data.kalan_sure === undefined)) return;
+        const kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
+        const sunucuSn = Math.max(0, parseInt(kalan, 10) || 0);
+        if (data.asama === 'karar' && data.dukkan === seciliDukkan) {
+            const yerel = Number(window.adminYerelKararKalan);
+            const yerelVar = Number.isFinite(yerel);
+            if (sunucuSn === 0 || !yerelVar || !window.adminSayacTimer || sunucuSn > yerel) {
+                adminKararSayaciniKur(sunucuSn);
+            }
+            return;
+        }
+        if (data.dukkan === seciliDukkan) {
+            adminSayaciDurdur();
+            window.adminYerelKararKalan = null;
         }
         if (!adminOlayBirKez('sayac', [data.dukkan, data.kalan, data.asama].join('|'))) return;
         if(data.dukkan === seciliDukkan) {
             const durum = document.getElementById('aktifDurum');
             durum.classList.remove('satildi-yazi');
-            const kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             if (data.asama === 'bekliyor') {
                 durum.innerText = 'Bekliyor';
             } else if (data.asama === 'pazarlik') {
                 const sn = Math.max(0, parseInt(kalan, 10) || 0);
                 durum.innerText = 'Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
-            } else if (data.asama === 'karar' && (parseInt(kalan, 10) || 0) <= 0) {
+            } else if ((parseInt(kalan, 10) || 0) <= 0) {
                 durum.innerText = 'Süre doldu';
             } else {
                 durum.innerText = 'Geri Sayım: ' + kalan + ' sn';
@@ -2372,10 +2411,19 @@
         if (!durum) return;
         durum.classList.remove('satildi-yazi');
         if (data.sayac_aktif) {
-            const sn = Math.max(0, parseInt(data.kalan, 10) || 0);
-            durum.innerText = data.asama === 'pazarlik'
-                ? ('Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0'))
-                : ('Geri Sayım: ' + sn + ' sn');
+            const sn = Math.max(0, parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 0);
+            if (data.asama === 'karar') {
+                const yerel = Number(window.adminYerelKararKalan);
+                if (sn === 0 || !Number.isFinite(yerel) || !window.adminSayacTimer || sn > yerel) {
+                    adminKararSayaciniKur(sn);
+                }
+            } else {
+                adminSayaciDurdur();
+                window.adminYerelKararKalan = null;
+                durum.innerText = data.asama === 'pazarlik'
+                    ? ('Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0'))
+                    : ('Geri Sayım: ' + sn + ' sn');
+            }
         } else if (!urun) {
             durum.innerText = 'Bekliyor';
         }
@@ -2410,6 +2458,8 @@
 
     socket.on('sayac_bitti', function(data) {
         if(data && data.dukkan === seciliDukkan) {
+            adminSayaciDurdur();
+            window.adminYerelKararKalan = null;
             const durum = document.getElementById('aktifDurum');
             if (durum) durum.classList.remove('satildi-yazi');
             adminCanliLotuTemizle(data.satildi_mi ? "Satıldı — sıradaki ürün hazırlanıyor" : "Pas — yeni ürün bekleniyor");

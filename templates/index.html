@@ -2935,6 +2935,50 @@
         }
     }
 
+    function yerelKararEkrani(snKarar) {
+        const digits = document.getElementById('timerDigits');
+        const cockpit = document.getElementById('mezatSayaci');
+        const dial = document.getElementById('futuristicDial');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        serbestArtis = false;
+        if (digits) {
+            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+            digits.innerText = String(snKarar).padStart(2, '0');
+        }
+        const progressPercent = Math.max(0, Math.min(1, snKarar / 60));
+        if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
+        if (snKarar <= 0) {
+            if (cockpit) cockpit.classList.remove('urgent');
+            if (statusTitle) statusTitle.innerText = "SÜRE DOLDU";
+            return;
+        }
+        const acilDurum = snKarar <= 15;
+        mekanikTikTakSesiCal(acilDurum);
+        if (acilDurum) {
+            if (cockpit) cockpit.classList.add('urgent');
+            if (statusTitle) statusTitle.innerText = "⚠ SON " + snKarar + " SN!";
+        } else {
+            if (cockpit) cockpit.classList.remove('urgent');
+            if (statusTitle) statusTitle.innerText = "GERİ SAYIM SÜRÜYOR";
+        }
+    }
+
+    function yerelKararSayaciniKur(snKarar) {
+        yerelSayaciDurdur();
+        window.yerelKararKalan = snKarar;
+        yerelKararEkrani(snKarar);
+        if (snKarar <= 0) return;
+        window.yerelSayacTimer = setInterval(function () {
+            const simdiki = Number(window.yerelKararKalan);
+            if (!Number.isFinite(simdiki) || simdiki <= 0) {
+                yerelSayaciDurdur();
+                return;
+            }
+            window.yerelKararKalan = simdiki - 1;
+            yerelKararEkrani(window.yerelKararKalan);
+        }, 1000);
+    }
+
     socket.on('sayac_baslat', function(data) {
         if (data && data.dukkan === aktifDukkan) {
             yerelSayaciDurdur();
@@ -2943,12 +2987,10 @@
             zoomEfektiDurdur();
             serbestArtis = false;
 
-            const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
             const cockpit = document.getElementById('mezatSayaci');
-            const sn = Math.max(0, parseInt(data.kalan, 10) || 60);
-
-            if (digits) digits.innerText = String(sn).padStart(2, '0');
+            const sn = Math.max(0, parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 60);
+            yerelKararSayaciniKur(sn);
             if (statusTitle) statusTitle.innerText = "KARAR ANI: " + sn + " SN";
             if (cockpit) cockpit.classList.remove('urgent');
             sureUzatildiSesiCal();
@@ -4716,7 +4758,6 @@
 
     socket.on('sayac_guncelle', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
-            yerelSayaciDurdur();
             let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             const digits = document.getElementById('timerDigits');
             const cockpit = document.getElementById('mezatSayaci');
@@ -4724,6 +4765,8 @@
             const statusTitle = document.getElementById('timerStatusTitle');
 
             if (data.asama === 'bekliyor') {
+                yerelSayaciDurdur();
+                window.yerelKararKalan = null;
                 serbestArtis = false;
                 sahnedekiUrunSatildiMi = false;
                 if (digits) {
@@ -4737,6 +4780,8 @@
             }
 
             if (data.asama === 'pazarlik' || (data.asama !== 'karar' && kalan > 60)) {
+                yerelSayaciDurdur();
+                window.yerelKararKalan = null;
                 serbestArtis = true;
                 if (digits) {
                     digits.classList.remove('satildi-yazi');
@@ -4753,58 +4798,47 @@
                 return;
             }
 
-            if (digits) digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-            serbestArtis = false;
-
             if (data.sayac_gorunsun === false && data.asama !== 'karar') {
+                yerelSayaciDurdur();
+                window.yerelKararKalan = null;
+                serbestArtis = false;
                 if (digits) digits.innerText = "🔍";
                 if (statusTitle) statusTitle.innerText = "ESER İNCELENİYOR";
                 return;
             }
 
-            const snKarar = Math.max(0, parseInt(kalan, 10) || 0);
-            if (digits) digits.innerText = String(snKarar).padStart(2, '0');
-            let progressPercent = Math.max(0, Math.min(1, snKarar / 60));
-            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
-
-            if (snKarar <= 0) {
-                if (cockpit) cockpit.classList.remove('urgent');
-                if (statusTitle) statusTitle.innerText = "SÜRE DOLDU";
+            if (data.asama === 'karar') {
+                const sunucuSn = Math.max(0, parseInt(kalan, 10) || 0);
+                const yerel = Number(window.yerelKararKalan);
+                const yerelVar = Number.isFinite(yerel);
+                if (sunucuSn === 0 || !yerelVar || !window.yerelSayacTimer || sunucuSn > yerel) {
+                    yerelKararSayaciniKur(sunucuSn);
+                }
                 return;
             }
 
-            if (snKarar > 0) {
-                let acilDurum = (snKarar <= 15);
-                mekanikTikTakSesiCal(acilDurum);
-                if (acilDurum) {
-                    if (cockpit) cockpit.classList.add('urgent');
-                    if (statusTitle) statusTitle.innerText = "⚠ SON " + snKarar + " SN!";
-                } else {
-                    if (cockpit) cockpit.classList.remove('urgent');
-                    if (statusTitle) statusTitle.innerText = "GERİ SAYIM SÜRÜYOR";
-                }
-            }
+            yerelSayaciDurdur();
+            window.yerelKararKalan = null;
+            const snKarar = Math.max(0, parseInt(kalan, 10) || 0);
+            yerelKararEkrani(snKarar);
         }
     });
 
     socket.on('sayac_uzatildi', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
-            const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
-            const cockpit = document.getElementById('mezatSayaci');
-            const dial = document.getElementById('futuristicDial');
             sureUzatildiSesiCal();
-            let yeniSure = data.kalan || 15;
-            if (digits) digits.innerText = String(yeniSure).padStart(2, '0');
+            let yeniSure = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10);
+            if (!Number.isFinite(yeniSure) || yeniSure <= 0) yeniSure = 15;
+            yerelKararSayaciniKur(yeniSure);
             if (statusTitle) statusTitle.innerText = "🔥 15 SN UZATILDI!";
-            if (cockpit) cockpit.classList.remove('urgent');
-            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (15 / 60));
         }
     });
 
     socket.on('sayac_bitti', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
             yerelSayaciDurdur();
+            window.yerelKararKalan = null;
             zoomEfektiDurdur();
             serbestArtis = false;
             const digits = document.getElementById('timerDigits');
