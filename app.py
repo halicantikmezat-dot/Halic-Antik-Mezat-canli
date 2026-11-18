@@ -221,15 +221,50 @@ _vitrin_onbellek = {}
 _vitrin_nesil = 0
 
 
+def _vitrin_redis_surum():
+    """Ortak sürüm. Bir worker artırınca diğerlerinin yerel kopyası düşer."""
+    if not REDIS_URL:
+        return _vitrin_nesil
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        return int(istemci.get("mezat:vitrin:surum") or 0)
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+
+
 def invalidate_vitrin_cache():
     """Pey, ürün, sayaç sıfırlama ve yayın durumu yazılarında vitrin anında düşer.
 
     Düz utf-8 ve önceden sıkıştırılmış gzip kopyası aynı kayıtta durur; ikisi birlikte silinir.
+    Redis sürümü artınca diğer worker'lar eski paketi basmaz.
     """
     global _vitrin_onbellek, _vitrin_nesil
     with _vitrin_kilit:
         _vitrin_nesil += 1
         _vitrin_onbellek = {}
+    if not REDIS_URL:
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.incr("mezat:vitrin:surum")
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _vitrin_kayit_gecerli(kayit, simdi):
+    if kayit is None or (simdi - kayit[0]) >= _VITRIN_TTL:
+        return False
+    if not REDIS_URL:
+        return True
+    surum = _vitrin_redis_surum()
+    if surum is None or len(kayit) < 3:
+        return False
+    return kayit[2] == surum
 
 
 def _bayt_ve_gzip(icerik):
@@ -264,17 +299,19 @@ def _vitrin_tazele(anahtar, uret):
     global _vitrin_onbellek
     simdi = time.monotonic()
     kayit = _vitrin_onbellek.get(anahtar)
-    if kayit is not None and (simdi - kayit[0]) < _VITRIN_TTL:
+    if _vitrin_kayit_gecerli(kayit, simdi):
         return kayit[1]
     nesil = _vitrin_nesil
+    surum = _vitrin_redis_surum() if REDIS_URL else nesil
     deger = uret()
-    if nesil == _vitrin_nesil:
+    simdi_surum = _vitrin_redis_surum() if REDIS_URL else _vitrin_nesil
+    if nesil == _vitrin_nesil and surum == simdi_surum and surum is not None:
         yeni = dict(_vitrin_onbellek)
-        yeni[anahtar] = (time.monotonic(), deger)
+        yeni[anahtar] = (time.monotonic(), deger, surum)
         _vitrin_onbellek = yeni
         return deger
     guncel = _vitrin_onbellek.get(anahtar)
-    if guncel is not None:
+    if _vitrin_kayit_gecerli(guncel, time.monotonic()):
         return guncel[1]
     return deger
 
@@ -287,9 +324,9 @@ def vitrin_mikro_onbellek(anahtar, uret):
     """
     simdi = time.monotonic()
     kayit = _vitrin_onbellek.get(anahtar)
-    if kayit is not None and (simdi - kayit[0]) < _VITRIN_TTL:
+    if _vitrin_kayit_gecerli(kayit, simdi):
         return kayit[1]
-    if kayit is not None:
+    if kayit is not None and not REDIS_URL:
         if not _vitrin_kilit.acquire(blocking=False):
             return kayit[1]
         try:
@@ -507,6 +544,248 @@ _son_ses_paketi = {"imza": "", "an": 0.0}
 _ses_kuyruk = {}
 _ses_kuyruk_kilit = threading.Lock()
 
+_SES_IMZA = """
+local cur = redis.call('GET', KEYS[1])
+if cur == ARGV[1] then
+  return 1
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', 2)
+return 0
+"""
+
+_SES_KES = """
+local nesil = redis.call('HINCRBY', KEYS[1], 'nesil', 1)
+redis.call('DEL', KEYS[2])
+redis.call('HSET', KEYS[1], 'isleyici', tostring(nesil), 'calisiyor', '0')
+redis.call('EXPIRE', KEYS[1], 86400)
+return nesil
+"""
+
+_SES_EKLE = """
+local nesil = redis.call('HINCRBY', KEYS[1], 'nesil', 1)
+local zorunlu = ARGV[1]
+local tur = ARGV[2]
+local oge = ARGV[3]
+if zorunlu == '1' then
+  redis.call('DEL', KEYS[2])
+  redis.call('HSET', KEYS[1], 'isleyici', tostring(nesil), 'calisiyor', '0')
+else
+  if tur == 'anons' or tur == 'pey' then
+    local items = redis.call('LRANGE', KEYS[2], 0, -1)
+    redis.call('DEL', KEYS[2])
+    for i = 1, #items do
+      local satir = string.match(items[i], '^([^\\n]+)')
+      if satir ~= 'anons' and satir ~= 'pey' then
+        redis.call('RPUSH', KEYS[2], items[i])
+      end
+    end
+  end
+end
+redis.call('RPUSH', KEYS[2], tur .. '\\n' .. tostring(nesil) .. '\\n' .. oge)
+redis.call('EXPIRE', KEYS[1], 86400)
+redis.call('EXPIRE', KEYS[2], 86400)
+local calisiyor = redis.call('HGET', KEYS[1], 'calisiyor')
+local baslat = 0
+if calisiyor ~= '1' then
+  redis.call('HSET', KEYS[1], 'calisiyor', '1', 'isleyici', tostring(nesil))
+  baslat = 1
+end
+local benim = redis.call('HGET', KEYS[1], 'isleyici')
+return {tostring(nesil), tostring(baslat), benim or ''}
+"""
+
+_SES_CEK = """
+local isleyici = redis.call('HGET', KEYS[1], 'isleyici')
+if not isleyici or isleyici ~= ARGV[1] then
+  return {'yok'}
+end
+local oge = redis.call('LPOP', KEYS[2])
+if not oge then
+  redis.call('HSET', KEYS[1], 'calisiyor', '0')
+  return {'bos'}
+end
+return {'oge', oge}
+"""
+
+_SES_SAHIP = """
+local isleyici = redis.call('HGET', KEYS[1], 'isleyici')
+if isleyici and isleyici == ARGV[1] then
+  return 1
+end
+return 0
+"""
+
+
+def _ses_anahtar(dukkan):
+    return "mezat:ses:" + str(dukkan)
+
+
+def _ses_kuyruk_anahtar(dukkan):
+    return "mezat:ses:" + str(dukkan) + ":kuyruk"
+
+
+def _ses_imza_tekrar(imza):
+    """Aynı cümle iki worker'da iki kez okunmasın."""
+    if not REDIS_URL:
+        simdi = time.time()
+        if _son_ses_paketi["imza"] == imza and simdi - _son_ses_paketi["an"] < 2:
+            return True
+        _son_ses_paketi["imza"] = imza
+        _son_ses_paketi["an"] = simdi
+        return False
+    istemci = _redis_al()
+    if istemci is None:
+        return True
+    try:
+        return bool(int(istemci.eval(_SES_IMZA, 1, "mezat:ses:imza", imza) or 0))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return True
+
+
+def _ses_oge_sar(oge):
+    return json.dumps(oge, ensure_ascii=False)
+
+
+def _ses_oge_ac(ham):
+    parcalar = str(ham or "").split("\n", 2)
+    if len(parcalar) < 3:
+        return None
+    _tur, nesil, govde = parcalar
+    try:
+        oge = json.loads(govde)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(oge, dict):
+        try:
+            oge["nesil"] = int(nesil)
+        except (TypeError, ValueError):
+            pass
+    return oge
+
+
+def _ses_kuyruk_kes(dukkan):
+    """Ortak nesli bir artırır ve kuyruğu boşaltır."""
+    global _ses_nesil
+    if not REDIS_URL:
+        with _ses_kuyruk_kilit:
+            _ses_nesil += 1
+            nesil = _ses_nesil
+            _ses_kuyruk[dukkan] = {
+                "nesil": nesil,
+                "isleyici": nesil,
+                "calisiyor": False,
+                "ogeler": [],
+            }
+        return nesil
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        return int(istemci.eval(
+            _SES_KES, 2, _ses_anahtar(dukkan), _ses_kuyruk_anahtar(dukkan),
+        ))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+
+
+def _ses_kuyruga_ekle(dukkan, temiz, tur, zorunlu, gizli):
+    """(nesil, baslat, isleyici) veya Redis yoksa None."""
+    global _ses_nesil
+    oge = {
+        "metin": temiz,
+        "tur": tur,
+        "zorunlu": bool(zorunlu),
+        "gizli": bool(gizli),
+    }
+    if not REDIS_URL:
+        with _ses_kuyruk_kilit:
+            _ses_nesil += 1
+            nesil = _ses_nesil
+            kayit = _ses_kuyruk.get(dukkan) or {
+                "nesil": 0, "isleyici": 0, "calisiyor": False, "ogeler": [],
+            }
+            kayit.setdefault("ogeler", [])
+            if zorunlu:
+                kayit["ogeler"] = []
+                kayit["nesil"] = nesil
+                kayit["isleyici"] = nesil
+                kayit["calisiyor"] = False
+            elif tur in ("anons", "pey"):
+                kayit["ogeler"] = [
+                    parca for parca in kayit["ogeler"]
+                    if parca.get("tur") not in ("anons", "pey")
+                ]
+            oge["nesil"] = nesil
+            kayit["ogeler"].append(oge)
+            baslat = not kayit.get("calisiyor")
+            if baslat:
+                kayit["calisiyor"] = True
+                kayit["isleyici"] = nesil
+            _ses_kuyruk[dukkan] = kayit
+            return nesil, baslat, kayit.get("isleyici")
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        nesil, baslat, benim = istemci.eval(
+            _SES_EKLE,
+            2,
+            _ses_anahtar(dukkan),
+            _ses_kuyruk_anahtar(dukkan),
+            "1" if zorunlu else "0",
+            tur,
+            _ses_oge_sar(oge),
+        )
+        return int(nesil), str(baslat) == "1", str(benim)
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+
+
+def _ses_kuyruk_cek(dukkan, benim):
+    """Sahipse sıradaki öğe. Kuyruk bitti veya nesil değiştiyse None."""
+    if not REDIS_URL:
+        with _ses_kuyruk_kilit:
+            kayit = _ses_kuyruk.get(dukkan)
+            if not kayit or kayit.get("isleyici") != benim:
+                return None
+            if not kayit.get("ogeler"):
+                kayit["calisiyor"] = False
+                return None
+            return kayit["ogeler"].pop(0)
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        sonuc = istemci.eval(
+            _SES_CEK, 2, _ses_anahtar(dukkan), _ses_kuyruk_anahtar(dukkan), str(benim),
+        )
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+    if not sonuc or sonuc[0] != "oge":
+        return None
+    return _ses_oge_ac(sonuc[1])
+
+
+def _ses_kuyruk_sahip(dukkan, benim):
+    if not REDIS_URL:
+        with _ses_kuyruk_kilit:
+            kayit = _ses_kuyruk.get(dukkan)
+            return bool(kayit and kayit.get("isleyici") == benim)
+    istemci = _redis_al()
+    if istemci is None:
+        return False
+    try:
+        return bool(int(istemci.eval(
+            _SES_SAHIP, 1, _ses_anahtar(dukkan), str(benim),
+        ) or 0))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return False
+
 
 def _elevenlabs_mp3(text: str) -> bytes | None:
     """Canlı mezat sunucusu. urllib3/requests SSL döngüsüne girmeden ham HTTPS kullanır."""
@@ -683,16 +962,9 @@ def _iki_odayi(dukkan, olay, veri):
 
 def _sahne_sesini_kes(dukkan):
     """Satış, pas veya yeni sahne: çalan ve bekleyen anonsları düşür."""
-    global _ses_nesil
-    with _ses_kuyruk_kilit:
-        _ses_nesil += 1
-        nesil = _ses_nesil
-        _ses_kuyruk[dukkan] = {
-            "nesil": nesil,
-            "isleyici": nesil,
-            "calisiyor": False,
-            "ogeler": [],
-        }
+    nesil = _ses_kuyruk_kes(dukkan)
+    if nesil is None:
+        return
     socketio.emit(
         "ses_kes",
         {"dukkan": dukkan, "nesil": nesil, "tur": "sahne", "zorunlu": True},
@@ -829,43 +1101,17 @@ def _otonom_disi_satisi_bosalt(dukkan, oda):
 
 def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
     """Tanıtım kesilmeden kuyruğa girer. Zorunlu kesinti satış ve yeni sahne içindir."""
-    global _ses_nesil
     temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
     if not temiz:
         return
     imza = f"{dukkan}:{temiz}"
-    simdi = time.time()
-    if _son_ses_paketi["imza"] == imza and simdi - _son_ses_paketi["an"] < 2:
+    if _ses_imza_tekrar(imza):
         return
-    _son_ses_paketi["imza"] = imza
-    _son_ses_paketi["an"] = simdi
     zorunlu = bool(kesinti) or tur in ("satis", "sahne", "yeni_urun")
-    with _ses_kuyruk_kilit:
-        _ses_nesil += 1
-        nesil = _ses_nesil
-        kayit = _ses_kuyruk.get(dukkan) or {
-            "nesil": 0, "isleyici": 0, "calisiyor": False, "ogeler": [],
-        }
-        kayit.setdefault("ogeler", [])
-        if zorunlu:
-            kayit["ogeler"] = []
-            kayit["nesil"] = nesil
-            kayit["isleyici"] = nesil
-            kayit["calisiyor"] = False
-        elif tur in ("anons", "pey"):
-            kayit["ogeler"] = [
-                oge for oge in kayit["ogeler"]
-                if oge.get("tur") not in ("anons", "pey")
-            ]
-        kayit["ogeler"].append({
-            "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu, "gizli": bool(gizli),
-        })
-        baslat = not kayit.get("calisiyor")
-        if baslat:
-            kayit["calisiyor"] = True
-            kayit["isleyici"] = nesil
-        _ses_kuyruk[dukkan] = kayit
-        benim = kayit.get("isleyici")
+    sonuc = _ses_kuyruga_ekle(dukkan, temiz, tur, zorunlu, gizli)
+    if sonuc is None:
+        return
+    nesil, baslat, benim = sonuc
     if zorunlu:
         socketio.emit(
             "ses_kes",
@@ -878,26 +1124,19 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
 
 def _ses_kuyrugunu_bosalt(dukkan, benim):
     while True:
-        with _ses_kuyruk_kilit:
-            kayit = _ses_kuyruk.get(dukkan)
-            if not kayit or kayit.get("isleyici") != benim:
-                return
-            if not kayit.get("ogeler"):
-                kayit["calisiyor"] = False
-                return
-            oge = kayit["ogeler"].pop(0)
+        oge = _ses_kuyruk_cek(dukkan, benim)
+        if not oge:
+            return
         veri, kaynak = _tts_uret(oge["metin"])
-        with _ses_kuyruk_kilit:
-            kayit = _ses_kuyruk.get(dukkan)
-            if not kayit or kayit.get("isleyici") != benim:
-                return
-            if not veri:
-                print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
-                continue
-        adres = _mp3_kaydet(veri, oge["nesil"])
+        if not _ses_kuyruk_sahip(dukkan, benim):
+            return
+        if not veri:
+            print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
+            continue
+        adres = _mp3_kaydet(veri, oge.get("nesil") or benim)
         socketio.emit("ses_oynat", {
             "dukkan": dukkan,
-            "nesil": oge["nesil"],
+            "nesil": oge.get("nesil") or benim,
             "tur": oge["tur"],
             "zorunlu": bool(oge.get("zorunlu")),
             "audio_url": adres,
@@ -2356,7 +2595,8 @@ return 0
 class _WorkerKilidi:
     """Önce bu süreçteki kilit, REDIS_URL varsa worker'lar arası kilit.
 
-    Redis koparsa yerel kilit kalır ve istek düşmez.
+    REDIS_URL varken Redis alınamazsa yerel kilitle devam edilmez.
+    Aynı dükkan iki worker'da birden açılmaz.
     """
 
     def __init__(self, ad):
@@ -2365,15 +2605,20 @@ class _WorkerKilidi:
         self.token = None
         self.anahtar = None
         self.istemci = None
+        self._yerel_acik = False
 
     def __enter__(self):
         self.yerel.acquire()
+        self._yerel_acik = True
         self.token = None
         self.anahtar = None
         self.istemci = None
+        if not REDIS_URL:
+            return self
         istemci = _redis_al()
         if istemci is None:
-            return self
+            self._yerel_birak()
+            raise RuntimeError(f"Redis kilidi alınamadı ({self.ad})")
         token = uuid.uuid4().hex
         anahtar = "mezat:kilit:" + self.ad
         son = time.monotonic() + 12.0
@@ -2382,16 +2627,22 @@ class _WorkerKilidi:
                 alindi = istemci.set(anahtar, token, nx=True, ex=20)
             except Exception as hata:
                 _redis_dusur(hata)
-                return self
+                self._yerel_birak()
+                raise RuntimeError(f"Redis kilidi alınamadı ({self.ad})") from hata
             if alindi:
                 self.token = token
                 self.anahtar = anahtar
                 self.istemci = istemci
                 return self
             if time.monotonic() >= son:
-                print(f"[REDIS] kilit zaman asimi, yerel kilit ({self.ad})", flush=True)
-                return self
+                self._yerel_birak()
+                raise RuntimeError(f"Redis kilidi zaman aşımı ({self.ad})")
             time.sleep(0.05)
+
+    def _yerel_birak(self):
+        if self._yerel_acik:
+            self._yerel_acik = False
+            self.yerel.release()
 
     def __exit__(self, exc_type, exc, tb):
         try:
@@ -2401,7 +2652,7 @@ class _WorkerKilidi:
                 except Exception as hata:
                     _redis_dusur(hata)
         finally:
-            self.yerel.release()
+            self._yerel_birak()
         return False
 
 
@@ -3438,9 +3689,13 @@ def _otonom_gorev_anahtar(dukkan):
 
 
 def _otonom_gorev_al(dukkan, token):
+    """REDIS_URL varken kira alınamazsa döngü başlamaz. Yerel bellek ikinci döngü açmaz."""
+    if not REDIS_URL:
+        return True
     istemci = _redis_al()
     if istemci is None:
-        return True
+        print(f"[OTONOM] redis yok, döngü açılmadı ({dukkan})", flush=True)
+        return False
     try:
         return bool(istemci.eval(
             _OTONOM_GOREV_AL,
@@ -3451,7 +3706,8 @@ def _otonom_gorev_al(dukkan, token):
         ))
     except Exception as hata:
         _redis_dusur(hata)
-        return True
+        print(f"[OTONOM] kira alınamadı, döngü açılmadı ({dukkan})", flush=True)
+        return False
 
 
 def _otonom_gorev_yenile(dukkan, token):
@@ -5257,26 +5513,78 @@ def metin_uygunsuz_mu(metin):
     return False
 
 
+def _kullanici_sid_anahtar(kullanici_id):
+    return "mezat:kullanici_sid:" + str(int(kullanici_id))
+
+
 def sokete_kullanici_bagla(sid, kullanici_id):
     try:
         kid = int(kullanici_id)
     except (TypeError, ValueError):
         return
-    kullanici_soketleri.setdefault(kid, set()).add(sid)
+    if not REDIS_URL:
+        kullanici_soketleri.setdefault(kid, set()).add(sid)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        anahtar = _kullanici_sid_anahtar(kid)
+        istemci.sadd(anahtar, sid)
+        istemci.expire(anahtar, 6 * 3600)
+        istemci.hset("mezat:kullanici:sid", sid, str(kid))
+    except Exception as hata:
+        _redis_dusur(hata)
 
 
 def soketten_kullanici_kopar(sid):
-    for sids in kullanici_soketleri.values():
-        sids.discard(sid)
+    if not REDIS_URL:
+        for sids in kullanici_soketleri.values():
+            sids.discard(sid)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        kid = istemci.hget("mezat:kullanici:sid", sid)
+        if kid:
+            istemci.srem(_kullanici_sid_anahtar(kid), sid)
+        istemci.hdel("mezat:kullanici:sid", sid)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _kullanici_sidleri(kullanici_id):
+    if not REDIS_URL:
+        return list(kullanici_soketleri.get(int(kullanici_id), ()))
+    istemci = _redis_al()
+    if istemci is None:
+        return []
+    try:
+        return list(istemci.smembers(_kullanici_sid_anahtar(kullanici_id)) or [])
+    except Exception as hata:
+        _redis_dusur(hata)
+        return []
 
 
 def kullanici_soketlerini_kes(kullanici_id):
-    for sid in list(kullanici_soketleri.get(int(kullanici_id), ())):
+    paket = {"kullanici_id": int(kullanici_id), "ban": True, "mesaj": BAN_MESAJI}
+    for sid in _kullanici_sidleri(kullanici_id):
+        socketio.emit("kullanici_engellendi", paket, room=sid)
         try:
             socketio.server.disconnect(sid)
         except Exception:
             pass
-    kullanici_soketleri.pop(int(kullanici_id), None)
+    if not REDIS_URL:
+        kullanici_soketleri.pop(int(kullanici_id), None)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.delete(_kullanici_sid_anahtar(kullanici_id))
+    except Exception as hata:
+        _redis_dusur(hata)
 
 
 def kullaniciyi_otomatik_banla(kullanici):
@@ -10673,17 +10981,60 @@ def xml_stok_senkron_calistir(yalniz_id=None):
         _XML_STOK_IS_KILIT.release()
 
 
+_LIDER_AL = """
+local v = redis.call('GET', KEYS[1])
+if not v then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+  return 1
+end
+if v == ARGV[1] then
+  redis.call('EXPIRE', KEYS[1], ARGV[2])
+  return 1
+end
+return 0
+"""
+
+_xml_lider_token = None
+
+
+def _xml_lider_tokenu():
+    global _xml_lider_token
+    if not _xml_lider_token:
+        _xml_lider_token = uuid.uuid4().hex
+    return _xml_lider_token
+
+
+def _redis_lider_mi(anahtar, token, saniye=180):
+    """Anahtar boşsa veya bu token'daysa lider odur. Diğer worker çalışmaz."""
+    if not REDIS_URL:
+        return True
+    istemci = _redis_al()
+    if istemci is None:
+        return False
+    try:
+        return bool(int(istemci.eval(
+            _LIDER_AL, 1, anahtar, token, str(int(saniye)),
+        ) or 0))
+    except Exception as hata:
+        _redis_dusur(hata)
+        return False
+
+
 def _xml_stok_zaman_dongusu():
     socketio.sleep(30)
     while True:
+        lider = False
         try:
-            xml_stok_senkron_calistir()
+            lider = _redis_lider_mi("mezat:lider:xml", _xml_lider_tokenu(), 180)
+            if lider:
+                xml_stok_senkron_calistir()
         except Exception as hata:
             print(f"XML stok senkronu atlandı: {hata}")
-        socketio.sleep(_XML_STOK_ARALIK_SANIYE)
+        socketio.sleep(_XML_STOK_ARALIK_SANIYE if lider else 20)
 
 
 def xml_stok_zamanlayiciyi_baslat():
+    """Her worker bir gözcü açar. Senkronu yalnız mezat:lider:xml kilidini tutan çalıştırır."""
     global _XML_STOK_ZAMANLAYICI_BASLADI
     if _XML_STOK_ZAMANLAYICI_BASLADI:
         return
@@ -11128,12 +11479,14 @@ def wc_orders():
 @socketio.on("connect")
 def handle_connect():
     try:
-        aktif_izleyiciler.add(request.sid)
+        _izleyici_baglandi(request.sid)
         izleyici_sayisini_yayinla()
-        emit(
-            "izleyici_sayisi_guncelle",
-            {"sayi": len(aktif_izleyiciler), "dukkan": "gumus"},
-        )
+        ozet = _izleyici_ozet()
+        if ozet is not None:
+            emit(
+                "izleyici_sayisi_guncelle",
+                {"sayi": ozet[0], "dukkan": "gumus", "isimler": ozet[1]},
+            )
     finally:
         db.session.remove()
 
@@ -11141,10 +11494,9 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     try:
-        aktif_izleyiciler.discard(request.sid)
-        izleyici_adlari.pop(request.sid, None)
         soketten_kullanici_kopar(request.sid)
         _sahne_izleyicisi_sil(request.sid)
+        _izleyici_koptu(request.sid)
         izleyici_sayisini_yayinla()
     finally:
         db.session.remove()
@@ -11598,7 +11950,7 @@ def handle_join_dukkan(data):
         veri = data or {}
         dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
-        izleyici_adlari[request.sid] = ad
+        _izleyici_ad_yaz(request.sid, ad)
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
         try:
             kayit_no = int(veri.get("kullanici_id")) if veri.get("kullanici_id") not in (None, "", "null") else None
@@ -11607,14 +11959,12 @@ def handle_join_dukkan(data):
         _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
         join_room(dukkan)
         izleyici_sayisini_yayinla()
-        emit(
-            "izleyici_sayisi_guncelle",
-            {
-                "dukkan": dukkan,
-                "sayi": len(aktif_izleyiciler),
-                "isimler": list(dict.fromkeys(izleyici_adlari.values())),
-            },
-        )
+        ozet = _izleyici_ozet()
+        if ozet is not None:
+            emit(
+                "izleyici_sayisi_guncelle",
+                {"dukkan": dukkan, "sayi": ozet[0], "isimler": ozet[1]},
+            )
     finally:
         db.session.remove()
 
@@ -11623,10 +11973,7 @@ def handle_join_dukkan(data):
 def handle_leave_dukkan(data):
     dukkan = dukkan_dogrula((data or {}).get("dukkan", "gumus"))
     leave_room(dukkan)
-    with _ozel_kilit:
-        if _sid_dukkan.get(request.sid) == dukkan:
-            _sid_dukkan.pop(request.sid, None)
-            (_dukkan_izleyici.get(dukkan) or {}).pop(request.sid, None)
+    _sahne_izleyicisi_cikar(request.sid, dukkan)
     _ozel_odayi_kapat(request.sid)
 
 
@@ -11637,28 +11984,205 @@ _ozel_davet = {}
 _ozel_oda = {}
 
 
+def _izleyici_dukkan_oku(sid):
+    if not REDIS_URL:
+        return _sid_dukkan.get(sid)
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        return istemci.hget("mezat:izleyici:sid", sid) or None
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+
+
+def _izleyici_bilgi(dukkan, sid):
+    if not REDIS_URL:
+        return (_dukkan_izleyici.get(dukkan) or {}).get(sid) or {}
+    istemci = _redis_al()
+    if istemci is None:
+        return {}
+    try:
+        ham = istemci.hget("mezat:izleyici:" + str(dukkan), sid)
+    except Exception as hata:
+        _redis_dusur(hata)
+        return {}
+    if not ham:
+        return {}
+    try:
+        gelen = json.loads(ham)
+    except (TypeError, ValueError):
+        return {}
+    return gelen if isinstance(gelen, dict) else {}
+
+
+def _izleyici_dukkan_harita(dukkan):
+    if not REDIS_URL:
+        return dict(_dukkan_izleyici.get(dukkan) or {})
+    istemci = _redis_al()
+    if istemci is None:
+        return {}
+    try:
+        ham = istemci.hgetall("mezat:izleyici:" + str(dukkan)) or {}
+    except Exception as hata:
+        _redis_dusur(hata)
+        return {}
+    cikti = {}
+    for sid, govde in ham.items():
+        try:
+            gelen = json.loads(govde)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(gelen, dict):
+            cikti[sid] = gelen
+    return cikti
+
+
 def _sahne_izleyicisi_yaz(sid, dukkan, ad, kullanici_id):
-    with _ozel_kilit:
-        eski = _sid_dukkan.get(sid)
+    kayit = {"ad": str(ad or "Misafir")[:40], "kullanici_id": kullanici_id}
+    if not REDIS_URL:
+        with _ozel_kilit:
+            eski = _sid_dukkan.get(sid)
+            if eski and eski != dukkan:
+                (_dukkan_izleyici.get(eski) or {}).pop(sid, None)
+            _sid_dukkan[sid] = dukkan
+            _dukkan_izleyici.setdefault(dukkan, {})[sid] = kayit
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        eski = istemci.hget("mezat:izleyici:sid", sid)
         if eski and eski != dukkan:
-            (_dukkan_izleyici.get(eski) or {}).pop(sid, None)
-        _sid_dukkan[sid] = dukkan
-        _dukkan_izleyici.setdefault(dukkan, {})[sid] = {
-            "ad": str(ad or "Misafir")[:40],
-            "kullanici_id": kullanici_id,
-        }
+            istemci.hdel("mezat:izleyici:" + eski, sid)
+        istemci.hset("mezat:izleyici:sid", sid, dukkan)
+        istemci.hset(
+            "mezat:izleyici:" + dukkan,
+            sid,
+            json.dumps(kayit, ensure_ascii=False),
+        )
+        istemci.hset("mezat:izleyici:ad", sid, kayit["ad"])
+        istemci.hset("mezat:izleyici:oturum", sid, str(int(time.time())))
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _sahne_izleyicisi_cikar(sid, dukkan):
+    if not REDIS_URL:
+        with _ozel_kilit:
+            if _sid_dukkan.get(sid) == dukkan:
+                _sid_dukkan.pop(sid, None)
+                (_dukkan_izleyici.get(dukkan) or {}).pop(sid, None)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        if istemci.hget("mezat:izleyici:sid", sid) == dukkan:
+            istemci.hdel("mezat:izleyici:sid", sid)
+            istemci.hdel("mezat:izleyici:" + dukkan, sid)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _ozel_indeks_ekle(istemci, sid, kimlik):
+    anahtar = "mezat:ozel:sid:" + sid
+    istemci.sadd(anahtar, kimlik)
+    istemci.expire(anahtar, 6 * 3600)
+
+
+def _ozel_kayit_yaz(tur, kimlik, kayit, omur):
+    if not REDIS_URL:
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    govde = dict(kayit)
+    if "uyeler" in govde:
+        govde["uyeler"] = list(govde["uyeler"])
+    try:
+        istemci.set("mezat:ozel:" + tur + ":" + kimlik, json.dumps(govde, ensure_ascii=False), ex=omur)
+        for sid in govde.get("uyeler") or (govde.get("kimden"), govde.get("kime")):
+            if sid:
+                _ozel_indeks_ekle(istemci, sid, tur + ":" + kimlik)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _ozel_kayit_oku(tur, kimlik):
+    if not REDIS_URL:
+        with _ozel_kilit:
+            kaynak = _ozel_davet if tur == "davet" else _ozel_oda
+            gelen = kaynak.get(kimlik)
+            return dict(gelen) if gelen else None
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        ham = istemci.get("mezat:ozel:" + tur + ":" + kimlik)
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+    if not ham:
+        return None
+    try:
+        gelen = json.loads(ham)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(gelen, dict) and "uyeler" in gelen:
+        gelen["uyeler"] = set(gelen["uyeler"])
+    return gelen
+
+
+def _ozel_kayit_sil(tur, kimlik):
+    if not REDIS_URL:
+        with _ozel_kilit:
+            kaynak = _ozel_davet if tur == "davet" else _ozel_oda
+            return kaynak.pop(kimlik, None)
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        ham = istemci.get("mezat:ozel:" + tur + ":" + kimlik)
+        istemci.delete("mezat:ozel:" + tur + ":" + kimlik)
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
+    if not ham:
+        return None
+    try:
+        return json.loads(ham)
+    except (TypeError, ValueError):
+        return None
 
 
 def _ozel_odayi_kapat(sid):
     kapanan = []
-    with _ozel_kilit:
-        for oda_id, oda in list(_ozel_oda.items()):
-            if sid in oda.get("uyeler", ()):
-                kapanan.append((oda_id, set(oda["uyeler"])))
-                _ozel_oda.pop(oda_id, None)
-        for davet_id, davet in list(_ozel_davet.items()):
-            if sid in (davet.get("kimden"), davet.get("kime")):
-                _ozel_davet.pop(davet_id, None)
+    if not REDIS_URL:
+        with _ozel_kilit:
+            for oda_id, oda in list(_ozel_oda.items()):
+                if sid in oda.get("uyeler", ()):
+                    kapanan.append((oda_id, set(oda["uyeler"])))
+                    _ozel_oda.pop(oda_id, None)
+            for davet_id, davet in list(_ozel_davet.items()):
+                if sid in (davet.get("kimden"), davet.get("kime")):
+                    _ozel_davet.pop(davet_id, None)
+    else:
+        istemci = _redis_al()
+        if istemci is not None:
+            try:
+                kimlikler = list(istemci.smembers("mezat:ozel:sid:" + sid) or [])
+            except Exception as hata:
+                _redis_dusur(hata)
+                kimlikler = []
+            for kimlik in kimlikler:
+                tur, _, oda_id = str(kimlik).partition(":")
+                kayit = _ozel_kayit_sil(tur, oda_id)
+                if tur == "oda" and isinstance(kayit, dict):
+                    uyeler = set(kayit.get("uyeler") or [])
+                    kapanan.append((oda_id, uyeler))
+                istemci.srem("mezat:ozel:sid:" + sid, kimlik)
     for oda_id, uyeler in kapanan:
         for diger in uyeler:
             if diger == sid:
@@ -11671,22 +12195,29 @@ def _ozel_odayi_kapat(sid):
 
 
 def _sahne_izleyicisi_sil(sid):
-    with _ozel_kilit:
-        dukkan = _sid_dukkan.pop(sid, None)
-        if dukkan:
-            (_dukkan_izleyici.get(dukkan) or {}).pop(sid, None)
+    if not REDIS_URL:
+        with _ozel_kilit:
+            dukkan = _sid_dukkan.pop(sid, None)
+            if dukkan:
+                (_dukkan_izleyici.get(dukkan) or {}).pop(sid, None)
+    else:
+        istemci = _redis_al()
+        if istemci is not None:
+            try:
+                _izleyici_redis_sil(istemci, sid)
+            except Exception as hata:
+                _redis_dusur(hata)
     _ozel_odayi_kapat(sid)
 
 
 @socketio.on("ozel_sohbet_liste")
 def ozel_sohbet_liste(veri=None):
-    dukkan = _sid_dukkan.get(request.sid) or dukkan_dogrula((veri or {}).get("dukkan"))
-    with _ozel_kilit:
-        kayitlar = [
-            {"sid": sid, "ad": (bilgi.get("ad") or "İzleyici")}
-            for sid, bilgi in (_dukkan_izleyici.get(dukkan) or {}).items()
-            if sid != request.sid
-        ]
+    dukkan = _izleyici_dukkan_oku(request.sid) or dukkan_dogrula((veri or {}).get("dukkan"))
+    kayitlar = [
+        {"sid": sid, "ad": (bilgi.get("ad") or "İzleyici")}
+        for sid, bilgi in _izleyici_dukkan_harita(dukkan).items()
+        if sid != request.sid
+    ]
     emit("ozel_sohbet_liste", {"dukkan": dukkan, "izleyiciler": kayitlar})
 
 
@@ -11694,14 +12225,18 @@ def ozel_sohbet_liste(veri=None):
 def ozel_sohbet_davet(veri):
     hedef = str((veri or {}).get("hedef_sid") or "")
     ben = request.sid
-    with _ozel_kilit:
-        dukkan = _sid_dukkan.get(ben)
-        if not dukkan or _sid_dukkan.get(hedef) != dukkan or hedef == ben:
-            emit("ozel_sohbet_hata", {"mesaj": "Bu izleyici artık bu sahnede değil."})
-            return
-        davet_id = uuid.uuid4().hex[:12]
-        _ozel_davet[davet_id] = {"kimden": ben, "kime": hedef, "dukkan": dukkan}
-        ad = (_dukkan_izleyici.get(dukkan) or {}).get(ben, {}).get("ad") or "İzleyici"
+    dukkan = _izleyici_dukkan_oku(ben)
+    if not dukkan or _izleyici_dukkan_oku(hedef) != dukkan or hedef == ben:
+        emit("ozel_sohbet_hata", {"mesaj": "Bu izleyici artık bu sahnede değil."})
+        return
+    davet_id = uuid.uuid4().hex[:12]
+    kayit = {"kimden": ben, "kime": hedef, "dukkan": dukkan}
+    if not REDIS_URL:
+        with _ozel_kilit:
+            _ozel_davet[davet_id] = kayit
+    else:
+        _ozel_kayit_yaz("davet", davet_id, kayit, 180)
+    ad = (_izleyici_bilgi(dukkan, ben).get("ad") or "İzleyici")
     socketio.emit(
         "ozel_sohbet_davet",
         {"davet_id": davet_id, "ad": ad},
@@ -11713,27 +12248,32 @@ def ozel_sohbet_davet(veri):
 @socketio.on("ozel_sohbet_yanit")
 def ozel_sohbet_yanit(veri):
     davet_id = str((veri or {}).get("davet_id") or "")
-    with _ozel_kilit:
-        davet = _ozel_davet.get(davet_id)
-        if not davet or davet.get("kime") != request.sid:
-            return
-        _ozel_davet.pop(davet_id, None)
-        if not (veri or {}).get("kabul"):
-            kimden = davet["kimden"]
-            socketio.emit("ozel_sohbet_bilgi", {"mesaj": "Sohbet daveti reddedildi."}, room=kimden)
-            return
-        if _sid_dukkan.get(davet["kimden"]) != davet["dukkan"] or _sid_dukkan.get(davet["kime"]) != davet["dukkan"]:
-            emit("ozel_sohbet_hata", {"mesaj": "Davet artık geçerli değil."})
-            return
-        oda_id = uuid.uuid4().hex[:12]
-        _ozel_oda[oda_id] = {"uyeler": {davet["kimden"], davet["kime"]}, "dukkan": davet["dukkan"]}
-        dukkan = davet["dukkan"]
-        ad_kimden = (_dukkan_izleyici.get(dukkan) or {}).get(davet["kimden"], {}).get("ad") or "İzleyici"
-        ad_kime = (_dukkan_izleyici.get(dukkan) or {}).get(davet["kime"], {}).get("ad") or "İzleyici"
-        kimden = davet["kimden"]
-        kime = davet["kime"]
-    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kime}, room=kimden)
-    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kimden}, room=kime)
+    davet = _ozel_kayit_oku("davet", davet_id)
+    if not davet or davet.get("kime") != request.sid:
+        return
+    _ozel_kayit_sil("davet", davet_id)
+    if not (veri or {}).get("kabul"):
+        socketio.emit("ozel_sohbet_bilgi", {"mesaj": "Sohbet daveti reddedildi."}, room=davet["kimden"])
+        return
+    if (
+        _izleyici_dukkan_oku(davet["kimden"]) != davet["dukkan"]
+        or _izleyici_dukkan_oku(davet["kime"]) != davet["dukkan"]
+    ):
+        emit("ozel_sohbet_hata", {"mesaj": "Davet artık geçerli değil."})
+        return
+    oda_id = uuid.uuid4().hex[:12]
+    uyeler = {davet["kimden"], davet["kime"]}
+    oda = {"uyeler": uyeler, "dukkan": davet["dukkan"]}
+    if not REDIS_URL:
+        with _ozel_kilit:
+            _ozel_oda[oda_id] = oda
+    else:
+        _ozel_kayit_yaz("oda", oda_id, oda, 6 * 3600)
+    dukkan = davet["dukkan"]
+    ad_kimden = _izleyici_bilgi(dukkan, davet["kimden"]).get("ad") or "İzleyici"
+    ad_kime = _izleyici_bilgi(dukkan, davet["kime"]).get("ad") or "İzleyici"
+    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kime}, room=davet["kimden"])
+    socketio.emit("ozel_sohbet_acildi", {"oda_id": oda_id, "karsi_ad": ad_kimden}, room=davet["kime"])
 
 
 @socketio.on("ozel_sohbet_mesaj")
@@ -11745,13 +12285,12 @@ def ozel_sohbet_mesaj(veri):
     if metin_uygunsuz_mu(metin):
         emit("ozel_sohbet_hata", {"mesaj": "Mesaj iletilemedi."})
         return
-    with _ozel_kilit:
-        oda = _ozel_oda.get(oda_id)
-        if not oda or request.sid not in oda.get("uyeler", ()):
-            return
-        dukkan = oda.get("dukkan") or _sid_dukkan.get(request.sid)
-        ad = (_dukkan_izleyici.get(dukkan) or {}).get(request.sid, {}).get("ad") or "İzleyici"
-        uyeler = set(oda["uyeler"])
+    oda = _ozel_kayit_oku("oda", oda_id)
+    uyeler = set((oda or {}).get("uyeler") or [])
+    if not oda or request.sid not in uyeler:
+        return
+    dukkan = oda.get("dukkan") or _izleyici_dukkan_oku(request.sid)
+    ad = _izleyici_bilgi(dukkan, request.sid).get("ad") or "İzleyici"
     for sid in uyeler:
         socketio.emit(
             "ozel_sohbet_mesaj",
@@ -11998,6 +12537,100 @@ def itiraz_duzelt_bildir():
 
 aktif_izleyiciler = set()
 izleyici_adlari = {}
+_IZLEYICI_OMUR = 120
+
+
+def _izleyici_canli_sidler(istemci):
+    simdi = int(time.time())
+    ham = istemci.hgetall("mezat:izleyici:oturum") or {}
+    canli = []
+    for sid, an in ham.items():
+        try:
+            taze = simdi - int(an) <= _IZLEYICI_OMUR
+        except (TypeError, ValueError):
+            taze = False
+        if taze:
+            canli.append(sid)
+        else:
+            _izleyici_redis_sil(istemci, sid)
+    return canli
+
+
+def _izleyici_redis_sil(istemci, sid):
+    dukkan = istemci.hget("mezat:izleyici:sid", sid)
+    if dukkan:
+        istemci.hdel("mezat:izleyici:" + dukkan, sid)
+    istemci.hdel("mezat:izleyici:oturum", sid)
+    istemci.hdel("mezat:izleyici:ad", sid)
+    istemci.hdel("mezat:izleyici:sid", sid)
+
+
+def _izleyici_baglandi(sid):
+    if not REDIS_URL:
+        aktif_izleyiciler.add(sid)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.hset("mezat:izleyici:oturum", sid, str(int(time.time())))
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _izleyici_ad_yaz(sid, ad):
+    temiz = str(ad or "Misafir")[:40]
+    if not REDIS_URL:
+        izleyici_adlari[sid] = temiz
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        istemci.hset("mezat:izleyici:ad", sid, temiz)
+        istemci.hset("mezat:izleyici:oturum", sid, str(int(time.time())))
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _izleyici_koptu(sid):
+    if not REDIS_URL:
+        aktif_izleyiciler.discard(sid)
+        izleyici_adlari.pop(sid, None)
+        return
+    istemci = _redis_al()
+    if istemci is None:
+        return
+    try:
+        _izleyici_redis_sil(istemci, sid)
+    except Exception as hata:
+        _redis_dusur(hata)
+
+
+def _izleyici_ozet():
+    """Canlı soket sayısı, bütün worker'ların toplamıdır."""
+    if not REDIS_URL:
+        isimler = []
+        for ad in izleyici_adlari.values():
+            temiz = str(ad or "").strip()
+            if temiz and temiz not in isimler:
+                isimler.append(temiz)
+        return len(aktif_izleyiciler), isimler
+    istemci = _redis_al()
+    if istemci is None:
+        return None
+    try:
+        canli = _izleyici_canli_sidler(istemci)
+        adlar = istemci.hgetall("mezat:izleyici:ad") or {}
+        isimler = []
+        for sid in canli:
+            temiz = str(adlar.get(sid) or "").strip()
+            if temiz and temiz not in isimler:
+                isimler.append(temiz)
+        return len(canli), isimler
+    except Exception as hata:
+        _redis_dusur(hata)
+        return None
 
 
 def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False):
@@ -12020,12 +12653,10 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
 
 
 def izleyici_sayisini_yayinla():
-    sayi = len(aktif_izleyiciler)
-    isimler = []
-    for ad in izleyici_adlari.values():
-        temiz = str(ad or "").strip()
-        if temiz and temiz not in isimler:
-            isimler.append(temiz)
+    ozet = _izleyici_ozet()
+    if ozet is None:
+        return
+    sayi, isimler = ozet
     for kod in DUKKANLAR:
         socketio.emit(
             "izleyici_sayisi_guncelle",
