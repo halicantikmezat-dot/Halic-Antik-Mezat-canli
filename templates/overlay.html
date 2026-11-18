@@ -187,19 +187,64 @@
         sayacEl.style.color = "#ffb703";
     });
 
+    function sayaciYaz(data) {
+        if (!data) return;
+        const ham = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
+        if (ham === undefined || ham === null || ham === "") return;
+        const sn = Math.max(0, parseInt(ham, 10) || 0);
+        const asama = data.asama || "";
+        if (!data.sayac_aktif && asama === "bekliyor") {
+            sayacEl.className = "timer";
+            sayacEl.style.color = "#ffb703";
+            sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
+            return;
+        }
+        if (asama === "pazarlik" || (asama !== "karar" && sn > 60)) {
+            const yazi = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
+            sayacEl.classList.remove("alarm");
+            sayacEl.style.color = "#ffb703";
+            sayacEl.innerText = "⏱️ PAZARLIK " + yazi;
+            return;
+        }
+        sayacEl.innerText = "⏱️ KARAR " + String(sn).padStart(2, "0");
+        if (sn <= 10) {
+            sayacEl.classList.add("alarm");
+        } else {
+            sayacEl.classList.remove("alarm");
+            sayacEl.style.color = "#38bdf8";
+        }
+    }
+
+    function sahneyiYaz(data) {
+        if (!data) return;
+        const urun = data.aktif_urun;
+        if (urun) {
+            lotEl.innerText = `LOT #${urun.lot} - ${urun.ad}`;
+            const pey = data.pey !== undefined ? data.pey : (urun.guncel_fiyat || urun.fiyat || 0);
+            fiyatEl.innerText = paraFormatla(pey);
+            kazananEl.innerText = data.kazanan || "Yok";
+        }
+        sayaciYaz(data);
+    }
+
     // 3. Geri Sayım Sayacı
     socket.on('sayac_guncelle', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        if (data.kalan !== undefined) {
-            sayacEl.innerText = `⏱️ KALAN SÜRE: ${data.kalan} SN`;
-            
-            if (data.kalan <= 10) {
-                sayacEl.classList.add('alarm');
-            } else {
-                sayacEl.classList.remove('alarm');
-                sayacEl.style.color = "#38bdf8";
-            }
-        }
+        sayaciYaz(data);
+    });
+
+    socket.on('sahne_durumu', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        sahneyiYaz(data);
+    });
+
+    socket.on('pazarlik_kapandi', function(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (data.pey !== undefined) fiyatEl.innerText = paraFormatla(data.pey);
+        kazananEl.innerText = "Yok";
+        sayacEl.classList.remove("alarm");
+        sayacEl.style.color = "#38bdf8";
+        sayacEl.innerText = "⏱️ KARAR 60";
     });
 
     // 4. Son Saniye Teklifinde Süre Uzatıldığında
@@ -215,6 +260,11 @@
     socket.on('sayac_bitti', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
         sayacEl.classList.remove('alarm');
+        if (data && data.satildi_mi === false) {
+            sayacEl.innerText = "PAS";
+            sayacEl.style.color = "#f59e0b";
+            return;
+        }
         let kazanan = (data && data.kazanan && data.kazanan !== "Yok") ? ` (${data.kazanan})` : '';
         sayacEl.innerText = `🔨 SATILDI!${kazanan}`;
         sayacEl.style.color = "#10b981";
@@ -238,6 +288,8 @@
                 if (data.durum === "Satıldı") {
                     sayacEl.innerText = "🔨 SATILDI!";
                     sayacEl.style.color = "#10b981";
+                } else if (data.sayac_aktif && (data.asama === "pazarlik" || data.asama === "karar")) {
+                    sayaciYaz(data);
                 } else if (data.durum === "Sayim") {
                     sayacEl.innerText = "⏱️ MEZAT SÜRÜYOR";
                     sayacEl.style.color = "#38bdf8";

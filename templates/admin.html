@@ -2353,6 +2353,28 @@
         }
     });
 
+    socket.on('sahne_durumu', function(data) {
+        if (!data || data.dukkan !== seciliDukkan) return;
+        const urun = data.aktif_urun;
+        if (urun) {
+            document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(seciliDukkan) + ` LOT #${urun.lot} - ${urun.ad}`;
+            const pey = data.pey !== undefined ? data.pey : (urun.guncel_fiyat || urun.fiyat || 0);
+            document.getElementById('aktifFiyat').innerText = pey + ' TL';
+            document.getElementById('aktifKazanan').innerText = data.kazanan || 'Yok';
+        }
+        const durum = document.getElementById('aktifDurum');
+        if (!durum) return;
+        durum.classList.remove('satildi-yazi');
+        if (data.sayac_aktif) {
+            const sn = Math.max(0, parseInt(data.kalan, 10) || 0);
+            durum.innerText = data.asama === 'pazarlik'
+                ? ('Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0'))
+                : ('Geri Sayım: ' + sn + ' sn');
+        } else if (!urun) {
+            durum.innerText = 'Bekliyor';
+        }
+    });
+
     socket.on('pazarlik_kapandi', function(data) {
         if (!data || data.dukkan !== seciliDukkan) return;
         const durum = document.getElementById('aktifDurum');

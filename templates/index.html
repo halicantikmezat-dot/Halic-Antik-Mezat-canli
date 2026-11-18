@@ -4726,7 +4726,7 @@
                 return;
             }
 
-            if (data.asama === 'pazarlik') {
+            if (data.asama === 'pazarlik' || (data.asama !== 'karar' && kalan > 60)) {
                 serbestArtis = true;
                 if (digits) {
                     digits.classList.remove('satildi-yazi');
@@ -4746,7 +4746,7 @@
             if (digits) digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
             serbestArtis = false;
 
-            if (!data.sayac_gorunsun || kalan > 60) {
+            if (data.sayac_gorunsun === false && data.asama !== 'karar') {
                 if (digits) digits.innerText = "🔍";
                 if (statusTitle) statusTitle.innerText = "ESER İNCELENİYOR";
                 return;
