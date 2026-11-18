@@ -2928,8 +2928,16 @@
         }
     });
 
+    function yerelSayaciDurdur() {
+        if (window.yerelSayacTimer) {
+            clearInterval(window.yerelSayacTimer);
+            window.yerelSayacTimer = null;
+        }
+    }
+
     socket.on('sayac_baslat', function(data) {
         if (data && data.dukkan === aktifDukkan) {
+            yerelSayaciDurdur();
             tanitimModuAktif = false;
             kenBurnsDurdur();
             zoomEfektiDurdur();
@@ -2938,9 +2946,10 @@
             const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
             const cockpit = document.getElementById('mezatSayaci');
+            const sn = Math.max(0, parseInt(data.kalan, 10) || 60);
 
-            if (digits) digits.innerText = "60";
-            if (statusTitle) statusTitle.innerText = "KARAR ANI: 60 SN";
+            if (digits) digits.innerText = String(sn).padStart(2, '0');
+            if (statusTitle) statusTitle.innerText = "KARAR ANI: " + sn + " SN";
             if (cockpit) cockpit.classList.remove('urgent');
             sureUzatildiSesiCal();
         }
@@ -4707,6 +4716,7 @@
 
     socket.on('sayac_guncelle', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
+            yerelSayaciDurdur();
             let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             const digits = document.getElementById('timerDigits');
             const cockpit = document.getElementById('mezatSayaci');
@@ -4752,16 +4762,23 @@
                 return;
             }
 
-            if (digits) digits.innerText = String(kalan).padStart(2, '0');
-            let progressPercent = Math.max(0, Math.min(1, kalan / 60));
+            const snKarar = Math.max(0, parseInt(kalan, 10) || 0);
+            if (digits) digits.innerText = String(snKarar).padStart(2, '0');
+            let progressPercent = Math.max(0, Math.min(1, snKarar / 60));
             if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
 
-            if (kalan > 0) {
-                let acilDurum = (kalan <= 15);
+            if (snKarar <= 0) {
+                if (cockpit) cockpit.classList.remove('urgent');
+                if (statusTitle) statusTitle.innerText = "SÜRE DOLDU";
+                return;
+            }
+
+            if (snKarar > 0) {
+                let acilDurum = (snKarar <= 15);
                 mekanikTikTakSesiCal(acilDurum);
                 if (acilDurum) {
                     if (cockpit) cockpit.classList.add('urgent');
-                    if (statusTitle) statusTitle.innerText = "⚠ SON " + kalan + " SN!";
+                    if (statusTitle) statusTitle.innerText = "⚠ SON " + snKarar + " SN!";
                 } else {
                     if (cockpit) cockpit.classList.remove('urgent');
                     if (statusTitle) statusTitle.innerText = "GERİ SAYIM SÜRÜYOR";
@@ -4787,6 +4804,7 @@
 
     socket.on('sayac_bitti', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
+            yerelSayaciDurdur();
             zoomEfektiDurdur();
             serbestArtis = false;
             const digits = document.getElementById('timerDigits');

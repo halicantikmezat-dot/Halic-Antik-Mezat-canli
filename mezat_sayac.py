@@ -31,6 +31,76 @@ def sayac_paketi(dukkan, ham, asama):
     }
 
 
+def gecis_bir_kez(kalan, gecildi):
+    """60'a inince geçiş yalnız bir kez. Redis yeniden pazarlik dese de tekrarlanmaz."""
+    try:
+        kalan = int(kalan or 0)
+    except (TypeError, ValueError):
+        kalan = 0
+    return (not gecildi) and kalan <= 60
+
+
+def uzatma_kabul(yerel, redis_kalan, asama):
+    """Donuk Redis saati geri sarmaz. Kararda son 10 sn peyi süreyi 15'e uzatır."""
+    try:
+        yerel = int(yerel or 0)
+    except (TypeError, ValueError):
+        yerel = 0
+    try:
+        redis_kalan = int(redis_kalan or 0)
+    except (TypeError, ValueError):
+        return yerel
+    if asama == "karar" and yerel <= 10 and yerel < redis_kalan <= 15:
+        return redis_kalan
+    return yerel
+
+
+def karar_yayin_paketi(dukkan, kalan):
+    """Manuel ve otomatik karar tiki. Ekran 60'tan 0'a bu paketi görür."""
+    try:
+        kalan = int(kalan or 0)
+    except (TypeError, ValueError):
+        kalan = 0
+    if kalan < 0:
+        kalan = 0
+    paket = sayac_paketi(dukkan, kalan, "karar")
+    paket["asama"] = "karar"
+    paket["kalan"] = kalan
+    paket["kalan_sure"] = kalan
+    paket["sayac_gorunsun"] = True
+    paket["sayac_aktif"] = True
+    return paket
+
+
+def takilma_simulasyonu():
+    """Redis asaması pazarlik ve kalan 60'ta donuk kalsa bile geçiş bir, kapanış 0."""
+    gorunen = []
+    gecis = 0
+    gecildi = False
+    kalan = 180
+    while kalan > 0:
+        if gecis_bir_kez(kalan, gecildi):
+            gecis += 1
+            gecildi = True
+        asama = "karar" if gecildi else "pazarlik"
+        if asama == "karar":
+            kalan = uzatma_kabul(kalan, 60, asama)
+        paket = sayac_paketi("gumus", kalan, asama)
+        gorunen.append((paket["asama"], paket["kalan"], paket["sayac_gorunsun"]))
+        kalan -= 1
+    kapanis = karar_yayin_paketi("gumus", 0)
+    manuel = []
+    saniye = 60
+    while saniye >= 0:
+        saniye = uzatma_kabul(saniye, 60, "karar")
+        paket = karar_yayin_paketi("gumus", saniye)
+        manuel.append(paket)
+        if saniye == 0:
+            break
+        saniye -= 1
+    return {"gecis": gecis, "gorunen": gorunen, "kapanis": kapanis, "manuel": manuel}
+
+
 # Tik ile devralma aynı eşiği kullanır. 8 saniye, sağlıklı turu yaklaşık 10. saniyede
 # başa sarıyordu. Nabız 15 saniyeden uzun kesilmedikçe tur devralınmaz.
 NABIZ_ESIK_SANIYE = 15

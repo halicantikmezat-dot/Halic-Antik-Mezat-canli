@@ -66,7 +66,9 @@ from config import Config, _sqlalchemy_engine_options
 from mezat_sayac import (
     NABIZ_ESIK_SANIYE,
     SAYAC_KILIT_SANIYE,
+    gecis_bir_kez,
     gorunen_kalan,
+    karar_yayin_paketi,
     kilit_taze_mi,
     nabiz_anahtari,
     nabiz_coz,
@@ -75,6 +77,7 @@ from mezat_sayac import (
     sayac_kesilsin_mi,
     sayac_paketi,
     tanitim_anahtari,
+    uzatma_kabul,
     yeni_tur_acilsin_mi,
 )
 
@@ -3397,51 +3400,65 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
     )
 
     son_uyari_yapildi = False
-    while oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id) and kalan > 0:
+    karara_gecildi = False
+    while kalan > 0:
+        if _sayac_gorevi_dusman_mi(oda, gorev_id):
+            return False
         _sayac_kilidi_canli_tut(dukkan, gorev_id)
-        try:
-            canli = int(oda.get("sayac_kalan") or 0)
-        except (TypeError, ValueError):
-            canli = 0
-        if canli > kalan:
-            kalan = canli
-            if kalan >= 15:
+        if karara_gecildi:
+            try:
+                canli = int(oda.get("sayac_kalan") or 0)
+            except (TypeError, ValueError):
+                canli = 0
+            uzatilan = uzatma_kabul(kalan, canli, "karar")
+            if uzatilan != kalan:
+                kalan = uzatilan
                 son_uyari_yapildi = False
-        oda["sayac_kalan"] = kalan
-        if kalan <= 60 and oda.get("mevat_asama") == "pazarlik":
+        if gecis_bir_kez(kalan, karara_gecildi):
             with oda_kilitleri[dukkan]:
-                if int(oda["sayac_gorev_id"] or 0) != int(gorev_id) or not oda["sayac_aktif"]:
+                if _sayac_gorevi_dusman_mi(oda, gorev_id):
                     return False
                 if oda["durum"].get("durum") == "Satıldı":
                     return False
-                _fiyati_acilisa_cek(dukkan, oda, konus=False)
-                oda["sayac_aktif"] = True
-                oda["sayac_gorev_id"] = int(gorev_id)
-                oda["sayac_kalan"] = kalan
+                acilis = _fiyati_acilisa_cek(dukkan, oda, konus=False)
+                _karar_fazini_yaz(oda, gorev_id, kalan)
+                oda["durum"]["pey"] = acilis
+                oda["durum"]["kazanan"] = "Yok"
+                oda["durum"]["kazanan_id"] = None
                 oda["durum"]["durum"] = "Sayim"
                 oda["durum"]["sure_bitis"] = time.time() + kalan
+            karara_gecildi = True
             _sayac_kilidi_canli_tut(dukkan, gorev_id)
             _anonsu_arkada(dukkan, "Pazarlık bitti, son karar süresi başladı")
-        asama = "karar" if oda.get("mevat_asama") == "karar" else "pazarlik"
+        elif karara_gecildi:
+            _karar_fazini_yaz(oda, gorev_id, kalan)
+        else:
+            oda["sayac_aktif"] = True
+            oda["sayac_gorev_id"] = int(gorev_id)
+            oda["mevat_asama"] = "pazarlik"
+            oda["sayac_kalan"] = int(kalan)
+        asama = "karar" if karara_gecildi else "pazarlik"
         if asama == "karar" and kalan == 15 and not son_uyari_yapildi:
             son_uyari_yapildi = True
             bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
             _anonsu_arkada(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
         elif kalan > 15:
             son_uyari_yapildi = False
-        _iki_odayi(dukkan, "sayac_guncelle", sayac_paketi(dukkan, kalan, asama))
-        socketio.sleep(1)
-        if oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id):
-            kalan -= 1
+        if asama == "karar":
+            _iki_odayi(dukkan, "sayac_guncelle", karar_yayin_paketi(dukkan, kalan))
         else:
-            break
+            _iki_odayi(dukkan, "sayac_guncelle", sayac_paketi(dukkan, kalan, asama))
+        socketio.sleep(1)
+        if _sayac_gorevi_dusman_mi(oda, gorev_id):
+            return False
+        kalan -= 1
 
-    if not (oda["sayac_aktif"] and int(oda["sayac_gorev_id"] or 0) == int(gorev_id)):
+    if _sayac_gorevi_dusman_mi(oda, gorev_id):
         return False
     if oda["durum"].get("durum") == "Satıldı":
         return False
-    oda["sayac_kalan"] = 0
-    _iki_odayi(dukkan, "sayac_guncelle", sayac_paketi(dukkan, 0, "karar"))
+    _karar_fazini_yaz(oda, gorev_id, 0)
+    _iki_odayi(dukkan, "sayac_guncelle", karar_yayin_paketi(dukkan, 0))
     return True
 
 
@@ -3712,6 +3729,27 @@ def _sayac_jetonu(gorev_id):
     return str(int(gorev_id))
 
 
+def _sayac_gorevi_dusman_mi(oda, gorev_id):
+    """Boş veya okunamayan Redis bu görevi durdurmaz. Yalnız yeni görev keser."""
+    try:
+        gelen = int(oda.get("sayac_gorev_id") or 0)
+    except (TypeError, ValueError):
+        return False
+    if gelen <= 0:
+        return False
+    return gelen != int(gorev_id)
+
+
+def _karar_fazini_yaz(oda, gorev_id, kalan):
+    """Karar fazını RAM ve oda belgesine her tikte yeniden yazar."""
+    oda["mevat_asama"] = "karar"
+    oda["gizli_pazarlik_aktif"] = False
+    oda["gizli_taban_fiyat"] = None
+    oda["sayac_aktif"] = True
+    oda["sayac_gorev_id"] = int(gorev_id)
+    oda["sayac_kalan"] = int(kalan)
+
+
 def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart", kilit_jetonu=None):
     """Redis kilidi bu görevde değilse döngü açılmaz. Eski görev numarası yeniye yenilir."""
     token = kilit_jetonu or _sayac_jetonu(gorev_id)
@@ -3796,38 +3834,58 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 tur="sayac",
             )
 
+        _karar_fazini_yaz(oda, gorev_id, 60)
         _iki_odayi(
             dukkan,
             "sayac_baslat",
-            {"dukkan": dukkan, "kalan": 60, "sayac_gorunsun": True},
+            {
+                "dukkan": dukkan,
+                "kalan": 60,
+                "kalan_sure": 60,
+                "asama": "karar",
+                "sayac_gorunsun": True,
+                "sayac_aktif": True,
+            },
         )
 
         son_uyari_yapildi = False
-        while oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
+        kalan = 60
+        while kalan > 0:
+            if _sayac_gorevi_dusman_mi(oda, gorev_id):
+                return
             _sayac_kilidi_canli_tut(dukkan, gorev_id)
-            if oda["sayac_kalan"] <= 0:
-                break
+            try:
+                canli = int(oda.get("sayac_kalan") or 0)
+            except (TypeError, ValueError):
+                canli = 0
+            uzatilan = uzatma_kabul(kalan, canli, "karar")
+            if uzatilan != kalan:
+                kalan = uzatilan
+                son_uyari_yapildi = False
+            _karar_fazini_yaz(oda, gorev_id, kalan)
 
-            if oda["sayac_kalan"] > 15:
+            if kalan > 15:
                 son_uyari_yapildi = False
 
-            if oda["sayac_kalan"] == 15 and not son_uyari_yapildi:
+            if kalan == 15 and not son_uyari_yapildi:
                 son_uyari_yapildi = True
                 bota_haber_ver("geri_sayim_uyari", {"dukkan": dukkan, "kalan_saniye": 15})
                 _anonsu_arkada(dukkan, "Son 15 saniye dostlar, eser elden gidiyor!")
 
-            _iki_odayi(
-                dukkan,
-                "sayac_guncelle",
-                sayac_paketi(dukkan, oda["sayac_kalan"], "karar"),
-            )
+            _iki_odayi(dukkan, "sayac_guncelle", karar_yayin_paketi(dukkan, kalan))
             socketio.sleep(1)
-            if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                oda["sayac_kalan"] -= 1
+            if _sayac_gorevi_dusman_mi(oda, gorev_id):
+                return
+            kalan -= 1
+        _karar_fazini_yaz(oda, gorev_id, 0)
+        _iki_odayi(dukkan, "sayac_guncelle", karar_yayin_paketi(dukkan, 0))
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
     with oda_kilitleri[dukkan]:
-        if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
+        if not _sayac_gorevi_dusman_mi(oda, gorev_id):
+            if giris in ("karar", "pazarlik") or yalniz_kapat:
+                oda["mevat_asama"] = "karar"
+                oda["gizli_pazarlik_aktif"] = False
             oda["sayac_aktif"] = False
             oda["durum"]["sure_bitis"] = 0
             biten_urun_id = oda["aktif_urun_id"]

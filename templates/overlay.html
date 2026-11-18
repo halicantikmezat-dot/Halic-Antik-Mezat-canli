@@ -230,6 +230,10 @@
     // 3. Geri Sayım Sayacı
     socket.on('sayac_guncelle', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (window.overlaySayacTimer) {
+            clearInterval(window.overlaySayacTimer);
+            window.overlaySayacTimer = null;
+        }
         sayaciYaz(data);
     });
 
@@ -259,6 +263,10 @@
     // 5. Satış Bittiğinde
     socket.on('sayac_bitti', function(data) {
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (window.overlaySayacTimer) {
+            clearInterval(window.overlaySayacTimer);
+            window.overlaySayacTimer = null;
+        }
         sayacEl.classList.remove('alarm');
         if (data && data.satildi_mi === false) {
             sayacEl.innerText = "PAS";

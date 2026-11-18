@@ -2337,6 +2337,10 @@
 
     socket.on('sayac_guncelle', function(data) {
         if (!data || data.kalan === undefined) return;
+        if (window.adminSayacTimer) {
+            clearInterval(window.adminSayacTimer);
+            window.adminSayacTimer = null;
+        }
         if (!adminOlayBirKez('sayac', [data.dukkan, data.kalan, data.asama].join('|'))) return;
         if(data.dukkan === seciliDukkan) {
             const durum = document.getElementById('aktifDurum');
@@ -2347,6 +2351,8 @@
             } else if (data.asama === 'pazarlik') {
                 const sn = Math.max(0, parseInt(kalan, 10) || 0);
                 durum.innerText = 'Pazarlık: ' + Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
+            } else if (data.asama === 'karar' && (parseInt(kalan, 10) || 0) <= 0) {
+                durum.innerText = 'Süre doldu';
             } else {
                 durum.innerText = 'Geri Sayım: ' + kalan + ' sn';
             }
