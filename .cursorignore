@@ -1,0 +1,13 @@
+*.wav
+*.mp3
+*.onnx
+*.sql
+*.db
+*.sqlite3
+*.log
+*.xlsx
+*.csv
+__pycache__/
+instance/
+fb_profile/
+instagram_profile/
