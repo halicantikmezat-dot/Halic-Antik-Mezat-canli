@@ -4017,6 +4017,7 @@
     });
 
     socket.on("pey_gecildi_uyarisi", function(data) {
+        if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
         showToast(`⚠️ ${data.mesaj}`);
         playTone(300, 0.4, 'sawtooth', 0.5);
     });
@@ -4369,6 +4370,47 @@
         }).catch(e=>{});
     }
 
+    function canliAsamayiCiz(data) {
+        if (!data) return;
+        const kalanHam = data.kalan !== undefined ? data.kalan : data.kalan_sayac;
+        const asama = data.asama || "";
+        const sayacAktif = !!data.sayac_aktif;
+        serbestArtis = asama === "pazarlik";
+        const digits = document.getElementById('timerDigits');
+        const statusTitle = document.getElementById('timerStatusTitle');
+        const dial = document.getElementById('futuristicDial');
+        const cockpit = document.getElementById('mezatSayaci');
+        if (!sayacAktif || asama === "bekliyor") {
+            if (digits) {
+                digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+                digits.innerText = data.aktif_urun ? "3:00" : "--";
+            }
+            if (statusTitle) statusTitle.innerText = data.aktif_urun ? "BEKLİYOR" : "SAHNE BOŞ";
+            if (dial) dial.style.strokeDashoffset = data.aktif_urun ? 0 : 125.6;
+            if (cockpit) cockpit.classList.remove('urgent');
+            return;
+        }
+        const sn = Math.max(0, parseInt(kalanHam, 10) || 0);
+        if (asama === "pazarlik") {
+            if (digits) {
+                digits.classList.remove('satildi-yazi');
+                digits.classList.add('pazarlik-sayac');
+                digits.innerText = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
+            }
+            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 180)));
+            if (statusTitle) statusTitle.innerText = sn <= 15 ? "PAZARLIK SON " + sn : "PAZARLIK";
+            if (cockpit) cockpit.classList.toggle("urgent", sn <= 15);
+            return;
+        }
+        if (digits) {
+            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+            digits.innerText = String(sn).padStart(2, "0");
+        }
+        if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 60)));
+        if (statusTitle) statusTitle.innerText = sn > 0 && sn <= 15 ? "⚠ SON " + sn + " SN!" : "GERİ SAYIM SÜRÜYOR";
+        if (cockpit) cockpit.classList.toggle("urgent", sn > 0 && sn <= 15);
+    }
+
     function canliDurumuGetirHafif() {
         fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}`).then(res => res.json()).then(data => {
             if (!data) return;
@@ -4377,12 +4419,7 @@
             document.getElementById('currentBid').innerText = Math.round(gelenPey).toLocaleString('tr-TR');
             document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
             
-            if (data.kalan_sayac !== undefined && data.kalan_sayac > 0) {
-                const digits = document.getElementById('timerDigits');
-                const dial = document.getElementById('futuristicDial');
-                if (digits) digits.innerText = String(data.kalan_sayac).padStart(2, '0');
-                if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (data.kalan_sayac / 60));
-            }
+            canliAsamayiCiz(data);
 
             if (!secilenArsivUrunId) {
                 sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
@@ -4584,6 +4621,7 @@
         }
         peyVermeButonlariniKilitle();
         zaferKutlamasiniAc(data);
+        canliLotAlaniniTemizle();
     });
 
     function zaferKonfetiBirak() {
@@ -4778,9 +4816,22 @@
                     btnHemenAl.innerText = satildi ? "🔒 BU ÜRÜN SATILDI" : "🔒 ÜRÜN GERİ ÇEKİLDİ";
                 }
             }
-            if (!satildi) sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
+            if (satildi) canliLotAlaniniTemizle();
+            else sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
         }
     });
+
+    function canliLotAlaniniTemizle() {
+        const baslik = document.getElementById('aktif_baslik');
+        const bid = document.getElementById('currentBid');
+        const kazanan = document.getElementById('aktif_kazanan');
+        const lot = document.getElementById('cornerLotNo');
+        if (baslik) baslik.innerText = 'Sıradaki ürün hazırlanıyor...';
+        if (bid) bid.innerText = '0';
+        if (kazanan) kazanan.innerText = 'Yok';
+        if (lot) lot.innerText = 'LOT #000';
+        sonGorulenPey = 0;
+    }
 
     function sahneyiBosalt(mesaj, sesiKoru) {
         sahneBeklemeMetni = mesaj || "Sıradaki ürün hazırlanıyor...";

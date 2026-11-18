@@ -1313,9 +1313,15 @@
         upgrade: true,
         rememberUpgrade: true
     });
-    socket.on("connect", function() {
+    let seciliDukkan = 'gumus';
+    function yoneticiOdayaGir() {
         socket.emit("join_admin");
-    });
+        socket.emit("join_dukkan", { dukkan: seciliDukkan });
+    }
+    socket.on("connect", yoneticiOdayaGir);
+    if (socket.io) {
+        socket.io.on("reconnect", yoneticiOdayaGir);
+    }
 
     let adminSesAcik = false;
     let currentAudio = null;
@@ -1382,7 +1388,24 @@
         anonsuCal(data);
     });
 
-    let seciliDukkan = 'gumus';
+    const adminOlayImza = {};
+    function adminOlayBirKez(ad, imza) {
+        const simdi = Date.now();
+        const anahtar = ad + "|" + imza;
+        if (adminOlayImza[anahtar] && simdi - adminOlayImza[anahtar] < 800) return false;
+        adminOlayImza[anahtar] = simdi;
+        return true;
+    }
+    function adminCanliLotuTemizle(mesaj) {
+        const ad = document.getElementById('aktifUrunAdi');
+        const fiyat = document.getElementById('aktifFiyat');
+        const kazanan = document.getElementById('aktifKazanan');
+        const durum = document.getElementById('aktifDurum');
+        if (ad) ad.innerText = 'Sahnede aktif ürün yok';
+        if (fiyat) fiyat.innerText = '0 TL';
+        if (kazanan) kazanan.innerText = 'Yok';
+        if (durum && mesaj) durum.innerText = mesaj;
+    }
     let dukkanlar = {};
     let otonomDurumlari = {};
 
@@ -2184,6 +2207,7 @@
     }
 
     socket.on('otonom_durum_degisti', function(data) {
+        if (!data || !adminOlayBirKez('otonom', [data.dukkan, data.aktif, data.sahne].join('|'))) return;
         if(data.dukkan === seciliDukkan) {
             document.getElementById('btnOtonomBaslat').style.display = data.aktif ? 'none' : 'inline-flex';
             document.getElementById('btnOtonomDurdur').style.display = data.aktif ? 'inline-flex' : 'none';
@@ -2277,7 +2301,8 @@
     });
 
     socket.on('yeni_sahne_urunu', function(urun) {
-        if (urun && urun.dukkan === seciliDukkan) {
+        if (!urun || !adminOlayBirKez('sahne', [urun.dukkan, urun.id, urun.lot, urun.guncel_fiyat, urun.kazanan].join('|'))) return;
+        if (urun.dukkan === seciliDukkan) {
             document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(urun.dukkan) + ` LOT #${urun.lot} - ${urun.ad}`;
             document.getElementById('aktifFiyat').innerText = `${urun.guncel_fiyat || urun.fiyat} TL`;
             document.getElementById('aktifKazanan').innerText = urun.kazanan || "Yok";
@@ -2292,6 +2317,7 @@
         if (!data || !data.dukkan) return;
         const imza = [data.dukkan, data.urun_id, data.pey, data.kazanan].join("|");
         if (imza === sonAdminPeyImza) return;
+        if (!adminOlayBirKez('pey', imza)) return;
         sonAdminPeyImza = imza;
         const etiket = data.dukkan_etiket || dukkanEtiketi(data.dukkan);
         const kazanan = data.kazanan || data.ad || "Yok";
@@ -2310,12 +2336,18 @@
     });
 
     socket.on('sayac_guncelle', function(data) {
-        if(data && data.dukkan === seciliDukkan && data.kalan !== undefined) {
+        if (!data || data.kalan === undefined) return;
+        if (!adminOlayBirKez('sayac', [data.dukkan, data.kalan, data.asama].join('|'))) return;
+        if(data.dukkan === seciliDukkan) {
             const durum = document.getElementById('aktifDurum');
             durum.classList.remove('satildi-yazi');
             const kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
-            const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
-            durum.innerText = `${etiket}: ${kalan} sn`;
+            if (data.asama === 'bekliyor') {
+                durum.innerText = 'Bekliyor';
+            } else {
+                const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
+                durum.innerText = `${etiket}: ${kalan} sn`;
+            }
         }
     });
 
@@ -2333,12 +2365,8 @@
     socket.on('urun_satildi_erken', function(data) {
         if (!data || data.dukkan !== seciliDukkan) return;
         const durum = document.getElementById('aktifDurum');
-        if (durum) {
-            durum.classList.add('satildi-yazi');
-            durum.innerText = 'SATILDI';
-        }
-        if (data.kazanan !== undefined) document.getElementById('aktifKazanan').innerText = data.kazanan || 'Yok';
-        if (data.fiyat !== undefined) document.getElementById('aktifFiyat').innerText = `${data.fiyat} TL`;
+        adminCanliLotuTemizle('SATILDI');
+        if (durum) durum.classList.add('satildi-yazi');
         const detay = document.getElementById('pazarlikPopupDetay');
         if (detay) detay.innerText = data.mesaj || 'Pazarlık Başarılı - Ürün Satıldı!';
         const pop = document.getElementById('pazarlikPopup');
@@ -2352,7 +2380,9 @@
 
     socket.on('sayac_bitti', function(data) {
         if(data && data.dukkan === seciliDukkan) {
-            document.getElementById('aktifDurum').innerText = data.satildi_mi ? "Satıldı — sıradaki ürün hazırlanıyor" : "Pas — yeni ürün bekleniyor";
+            const durum = document.getElementById('aktifDurum');
+            if (durum) durum.classList.remove('satildi-yazi');
+            adminCanliLotuTemizle(data.satildi_mi ? "Satıldı — sıradaki ürün hazırlanıyor" : "Pas — yeni ürün bekleniyor");
             setTimeout(() => {
                 veriCekAdmin();
                 adminUrunAra();
@@ -2362,8 +2392,10 @@
 
     socket.on('sahne_bosta', function(data) {
         if (!data || data.dukkan !== seciliDukkan) return;
+        if (!adminOlayBirKez('bosta', [data.dukkan, data.neden, data.mesaj].join('|'))) return;
         const durum = document.getElementById('aktifDurum');
-        if (durum) durum.innerText = data.mesaj || "Sıradaki ürün hazırlanıyor...";
+        if (durum) durum.classList.remove('satildi-yazi');
+        adminCanliLotuTemizle(data.mesaj || "Sıradaki ürün hazırlanıyor...");
     });
 
     socket.on('yeni_urun_sahneye_alindi', function(data) {
@@ -2574,7 +2606,16 @@
                 if (sonSatir && String(kazananYazi).toLowerCase() !== "yok") {
                     sonSatir.textContent = dukkanEtiketi(istenenDukkan) + " " + kazananYazi + " — " + (data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat) + " TL";
                 }
-                document.getElementById('aktifDurum').innerText = data.durum;
+                const durumKutusu = document.getElementById('aktifDurum');
+                if (data.sayac_aktif) {
+                    const kalanYazi = data.kalan !== undefined ? data.kalan : data.kalan_sayac;
+                    const etiket = data.asama === 'pazarlik' ? 'Pazarlık' : 'Geri Sayım';
+                    durumKutusu.innerText = etiket + ': ' + kalanYazi + ' sn';
+                } else if (data.asama === 'bekliyor') {
+                    durumKutusu.innerText = 'Bekliyor';
+                } else {
+                    durumKutusu.innerText = data.durum;
+                }
             } else {
                 document.getElementById('aktifUrunAdi').innerText = "Sahnede aktif ürün yok";
                 document.getElementById('aktifFiyat').innerText = "0 TL";
