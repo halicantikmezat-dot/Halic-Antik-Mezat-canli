@@ -1,3 +1,4 @@
+import io
 import itertools
 import logging
 import os
@@ -79,7 +80,7 @@ if sys.platform == "win32" and ctypes:
 # 1. AYARLAR VE DÜKKAN YAPILANDIRMASI
 # =====================================================================
 GEMINI_API_KEY = getattr(Config, "GEMINI_API_KEY", None) or os.environ.get("GEMINI_API_KEY")
-MODEL_ADI = "gemini-3.8-flash"
+MODEL_ADI = "gemini-2.5-flash"
 WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000").rstrip("/")
 
 KOK_DIZIN = os.path.abspath(os.path.dirname(__file__))
@@ -111,6 +112,10 @@ DUKKAN_ISIMLERI = {
     "porselen": "Porselen / Seramik",
     "bakir": "Bakır / Pirinç / Madenler",
     "elektronik": "Elektrik / Elektronik",
+    "plak": "Plak / Kaset",
+    "retro": "Hediyelik & Retro",
+    "evyasam": "Ev & Yaşam",
+    "tekstil": "Tekstil",
 }
 
 DUKKAN_TABAN_ARTIS = {
@@ -127,6 +132,10 @@ DUKKAN_TABAN_ARTIS = {
     "porselen": 50.0,
     "bakir": 50.0,
     "elektronik": 50.0,
+    "plak": 50.0,
+    "retro": 50.0,
+    "evyasam": 100.0,
+    "tekstil": 50.0,
 }
 
 DUKKAN_HAFIZALARI = {}
@@ -388,10 +397,31 @@ def _ses_dosyasini_birak():
         pass
 
 def ahmet_sesi_bellege_sentezle(metin):
+    if not speech_config or not AZURE_KEY:
+        return None
+    try:
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+        result = synthesizer.speak_text_async(metin).get()
+        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+            return result.audio_data
+    except Exception as e:
+        print(f"[SES HATA] Azure sentezleme: {e}")
     return None
 
 def bellekten_ses_cal(audio_bytes):
-    return
+    if not audio_bytes or not pygame or not pygame.mixer.get_init():
+        return
+    try:
+        ses_akisi = io.BytesIO(audio_bytes)
+        pygame.mixer.music.load(ses_akisi)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            if stop_signal or patron_konusuyor:
+                pygame.mixer.music.stop()
+                break
+            time.sleep(0.03)
+    except Exception as e:
+        print(f"[SES ÇALMA HATA]: {e}")
 
 def kuyrugu_guvenli_bosalt():
     while not spiker_kuyrugu.empty():
@@ -513,7 +543,7 @@ son_ai_yanit_zamani = 0.0
 
 def ortak_chat_yoneticisi():
     global son_ai_yanit_zamani
-    print("🤖 10 Dükkanlı Çoklu Chat & Pey Motoru Devrede...")
+    print("🤖 17 Dükkanlı Çoklu Chat & Pey Motoru Devrede...")
 
     while True:
         try:
@@ -796,7 +826,7 @@ if __name__ == "__main__":
     print("==================================================")
     print("🚀 HALİÇ ANTİK - CANLI MEZAT SUNUCUSU")
     print("==================================================")
-    print("👉 Model                : gemini-3.8-flash")
+    print(f"👉 Model                : {MODEL_ADI}")
     print("👉 Ses Motoru           : Azure In-Memory Stream (tr-TR-AhmetNeural)")
     print("👉 Entegrasyon Portu    : 5005")
     print("==================================================")

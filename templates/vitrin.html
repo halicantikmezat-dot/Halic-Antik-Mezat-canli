@@ -1515,6 +1515,12 @@
         }
     });
 
+    socket.on('urun_satildi_erken', function (data) {
+        if (!data || !data.dukkan || data.dukkan === aktifDukkan) {
+            vitrinYukle();
+        }
+    });
+
     window.onload = function() {
         dukkanMenuYukle();
         kategorileriYukle();

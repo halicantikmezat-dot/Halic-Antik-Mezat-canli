@@ -2928,70 +2928,19 @@
         }
     });
 
-    function yerelSayaciDurdur() {
-        if (window.yerelSayacTimer) {
-            clearInterval(window.yerelSayacTimer);
-            window.yerelSayacTimer = null;
-        }
-    }
-
-    function yerelKararEkrani(snKarar) {
-        const digits = document.getElementById('timerDigits');
-        const cockpit = document.getElementById('mezatSayaci');
-        const dial = document.getElementById('futuristicDial');
-        const statusTitle = document.getElementById('timerStatusTitle');
-        serbestArtis = false;
-        if (digits) {
-            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-            digits.innerText = String(snKarar).padStart(2, '0');
-        }
-        const progressPercent = Math.max(0, Math.min(1, snKarar / 60));
-        if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
-        if (snKarar <= 0) {
-            if (cockpit) cockpit.classList.remove('urgent');
-            if (statusTitle) statusTitle.innerText = "SÜRE DOLDU";
-            return;
-        }
-        const acilDurum = snKarar <= 15;
-        mekanikTikTakSesiCal(acilDurum);
-        if (acilDurum) {
-            if (cockpit) cockpit.classList.add('urgent');
-            if (statusTitle) statusTitle.innerText = "⚠ SON " + snKarar + " SN!";
-        } else {
-            if (cockpit) cockpit.classList.remove('urgent');
-            if (statusTitle) statusTitle.innerText = "GERİ SAYIM SÜRÜYOR";
-        }
-    }
-
-    function yerelKararSayaciniKur(snKarar) {
-        yerelSayaciDurdur();
-        window.yerelKararKalan = snKarar;
-        yerelKararEkrani(snKarar);
-        if (snKarar <= 0) return;
-        window.yerelSayacTimer = setInterval(function () {
-            const simdiki = Number(window.yerelKararKalan);
-            if (!Number.isFinite(simdiki) || simdiki <= 0) {
-                yerelSayaciDurdur();
-                return;
-            }
-            window.yerelKararKalan = simdiki - 1;
-            yerelKararEkrani(window.yerelKararKalan);
-        }, 1000);
-    }
-
     socket.on('sayac_baslat', function(data) {
         if (data && data.dukkan === aktifDukkan) {
-            yerelSayaciDurdur();
             tanitimModuAktif = false;
             kenBurnsDurdur();
             zoomEfektiDurdur();
             serbestArtis = false;
 
+            const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
             const cockpit = document.getElementById('mezatSayaci');
-            const sn = Math.max(0, parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 60);
-            yerelKararSayaciniKur(sn);
-            if (statusTitle) statusTitle.innerText = "KARAR ANI: " + sn + " SN";
+
+            if (digits) digits.innerText = "60";
+            if (statusTitle) statusTitle.innerText = "KARAR ANI: 60 SN";
             if (cockpit) cockpit.classList.remove('urgent');
             sureUzatildiSesiCal();
         }
@@ -4421,47 +4370,6 @@
         }).catch(e=>{});
     }
 
-    function canliAsamayiCiz(data) {
-        if (!data) return;
-        const kalanHam = data.kalan !== undefined ? data.kalan : data.kalan_sayac;
-        const asama = data.asama || "";
-        const sayacAktif = !!data.sayac_aktif;
-        serbestArtis = asama === "pazarlik";
-        const digits = document.getElementById('timerDigits');
-        const statusTitle = document.getElementById('timerStatusTitle');
-        const dial = document.getElementById('futuristicDial');
-        const cockpit = document.getElementById('mezatSayaci');
-        if (!sayacAktif || asama === "bekliyor") {
-            if (digits) {
-                digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-                digits.innerText = data.aktif_urun ? "2:00" : "--";
-            }
-            if (statusTitle) statusTitle.innerText = data.aktif_urun ? "BEKLİYOR" : "SAHNE BOŞ";
-            if (dial) dial.style.strokeDashoffset = data.aktif_urun ? 0 : 125.6;
-            if (cockpit) cockpit.classList.remove('urgent');
-            return;
-        }
-        const sn = Math.max(0, parseInt(kalanHam, 10) || 0);
-        if (asama === "pazarlik") {
-            if (digits) {
-                digits.classList.remove('satildi-yazi');
-                digits.classList.add('pazarlik-sayac');
-                digits.innerText = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
-            }
-            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 120)));
-            if (statusTitle) statusTitle.innerText = sn <= 15 ? "PAZARLIK SON " + sn : "PAZARLIK";
-            if (cockpit) cockpit.classList.toggle("urgent", sn <= 15);
-            return;
-        }
-        if (digits) {
-            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-            digits.innerText = String(sn).padStart(2, "0");
-        }
-        if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * Math.max(0, Math.min(1, sn / 60)));
-        if (statusTitle) statusTitle.innerText = sn > 0 && sn <= 15 ? "⚠ SON " + sn + " SN!" : "GERİ SAYIM SÜRÜYOR";
-        if (cockpit) cockpit.classList.toggle("urgent", sn > 0 && sn <= 15);
-    }
-
     function canliDurumuGetirHafif() {
         fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}`).then(res => res.json()).then(data => {
             if (!data) return;
@@ -4470,7 +4378,12 @@
             document.getElementById('currentBid').innerText = Math.round(gelenPey).toLocaleString('tr-TR');
             document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
             
-            canliAsamayiCiz(data);
+            if (data.kalan_sayac !== undefined && data.kalan_sayac > 0) {
+                const digits = document.getElementById('timerDigits');
+                const dial = document.getElementById('futuristicDial');
+                if (digits) digits.innerText = String(data.kalan_sayac).padStart(2, '0');
+                if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (data.kalan_sayac / 60));
+            }
 
             if (!secilenArsivUrunId) {
                 sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
@@ -4555,7 +4468,7 @@
         if (digits) {
             digits.classList.remove('satildi-yazi');
             digits.classList.add('pazarlik-sayac');
-            digits.innerText = "2:00";
+            digits.innerText = "3:00";
         }
         if (statusTitle) statusTitle.innerText = "PAZARLIK";
         if (cockpit) cockpit.classList.remove('urgent');
@@ -4568,24 +4481,55 @@
         if (btnHemenAl && btnHemenAl.innerText.indexOf("SATILDI") !== -1) btnHemenAl.innerText = "Hemen Al";
     });
 
+    function canliLotAlaniniTemizle() {
+        sahneKapali = true;
+        const baslik = document.getElementById("aktif_baslik");
+        const fiyat = document.getElementById("currentBid");
+        const kazanan = document.getElementById("aktif_kazanan");
+        const medya = document.getElementById("medyaKapsayici");
+        const lot = document.getElementById("cornerLotNo");
+        if (baslik) baslik.innerText = "Sahnede aktif ürün yok";
+        if (fiyat) fiyat.innerText = "0";
+        if (kazanan) kazanan.innerText = "Yok";
+        if (lot) lot.innerText = "LOT #000";
+        if (medya) medya.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
+        sonGorulenPey = 0;
+    }
+
+    function canliAsamayiCiz(data) {
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+        if (data.aktif_urun) {
+            sahneKapali = false;
+            sahneyiGuncelle(data.aktif_urun, data.durum, data.pey, data.kazanan, "sahne");
+        }
+        const ham = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10);
+        if (!isNaN(ham)) {
+            sayacPaketiniCiz({
+                dukkan: aktifDukkan,
+                kalan: ham,
+                kalan_sure: ham,
+                toplam: data.toplam,
+                asama: data.asama,
+                sayac_gorunsun: data.asama === "pazarlik" || data.asama === "karar"
+            });
+        }
+    }
+
+    socket.on("sahne_durumu", function (data) {
+        canliAsamayiCiz(data);
+    });
+
     socket.on('sahne_bosta', function (data) {
         if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
         sahneyiBosalt(data && data.mesaj, !!(data && data.sesi_koru));
         if (!data || data.neden !== 'satildi') satildiDamgasiniGizle();
         const digits = document.getElementById('timerDigits');
-        const dial = document.getElementById('futuristicDial');
-        const cockpit = document.getElementById('mezatSayaci');
         const statusTitle = document.getElementById('timerStatusTitle');
-        if (digits) {
-            digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
-            digits.innerText = '--';
-        }
-        if (dial) dial.style.strokeDashoffset = 125.6;
-        if (cockpit) cockpit.classList.remove('urgent');
-        if (statusTitle) statusTitle.innerText = 'BEKLİYOR';
+        const cockpit = document.getElementById('mezatSayaci');
+        if (digits) digits.innerText = "--";
+        if (statusTitle) statusTitle.innerText = "BEKLİYOR";
+        if (cockpit) cockpit.classList.remove("urgent");
         sonGorulenPey = 0;
-        const kazanan = document.getElementById('aktif_kazanan');
-        if (kazanan) kazanan.innerText = 'Yok';
     });
 
     socket.on('dukkan_canli_durumu', function (data) {
@@ -4733,8 +4677,7 @@
     }
 
     socket.on('pazarlik_kapandi', function(data) {
-        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        if (sahneKapali) return;
+        if (!data || (data.dukkan && data.dukkan !== aktifDukkan) || sahneKapali) return;
         serbestArtis = false;
         sahnedekiUrunSatildiMi = false;
         const fiyat = parseFloat(data.pey || 0);
@@ -4748,16 +4691,7 @@
         if (typeof showToast === 'function') showToast(data.mesaj || 'Pazarlık bitti, son karar süresi başladı');
     });
 
-    socket.on('sahne_durumu', function (data) {
-        if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
-        canliAsamayiCiz(data);
-        if (!secilenArsivUrunId) {
-            sahneyiGuncelle(data.aktif_urun, data.durum, data.pey, data.kazanan);
-        }
-    });
-
-    socket.on('sayac_guncelle', function(data) {
-        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
+    function sayacPaketiniCiz(data) {
             let kalan = data.kalan_sure !== undefined ? data.kalan_sure : data.kalan;
             const digits = document.getElementById('timerDigits');
             const cockpit = document.getElementById('mezatSayaci');
@@ -4765,8 +4699,6 @@
             const statusTitle = document.getElementById('timerStatusTitle');
 
             if (data.asama === 'bekliyor') {
-                yerelSayaciDurdur();
-                window.yerelKararKalan = null;
                 serbestArtis = false;
                 sahnedekiUrunSatildiMi = false;
                 if (digits) {
@@ -4779,66 +4711,73 @@
                 return;
             }
 
-            if (data.asama === 'pazarlik' || (data.asama !== 'karar' && kalan > 60)) {
-                yerelSayaciDurdur();
-                window.yerelKararKalan = null;
+            if (data.asama === 'pazarlik') {
                 serbestArtis = true;
+                const ham = Math.max(0, parseInt(kalan, 10) || 0);
+                const sn = Math.max(0, ham - 60);
                 if (digits) {
                     digits.classList.remove('satildi-yazi');
                     digits.classList.add('pazarlik-sayac');
-                    const sn = Math.max(0, parseInt(kalan, 10) || 0);
                     digits.innerText = Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
                 }
-                const toplamSure = data.toplam || 120;
-                const progressPercent = Math.max(0, Math.min(1, kalan / toplamSure));
+                const progressPercent = Math.max(0, Math.min(1, sn / 120));
                 if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
-                if (cockpit) cockpit.classList.toggle('urgent', kalan <= 15);
-                if (statusTitle) statusTitle.innerText = kalan <= 15 ? "PAZARLIK SON " + kalan : "PAZARLIK";
-                if (kalan > 0 && kalan <= 15) mekanikTikTakSesiCal(true);
+                if (cockpit) cockpit.classList.toggle('urgent', sn > 0 && sn <= 15);
+                if (statusTitle) statusTitle.innerText = sn <= 15 ? "PAZARLIK SON " + sn : "PAZARLIK";
+                if (sn > 0 && sn <= 15) mekanikTikTakSesiCal(true);
                 return;
             }
 
-            if (data.sayac_gorunsun === false && data.asama !== 'karar') {
-                yerelSayaciDurdur();
-                window.yerelKararKalan = null;
-                serbestArtis = false;
+            if (digits) digits.classList.remove('satildi-yazi', 'pazarlik-sayac');
+            serbestArtis = false;
+
+            if (!data.sayac_gorunsun || kalan > 60) {
                 if (digits) digits.innerText = "🔍";
                 if (statusTitle) statusTitle.innerText = "ESER İNCELENİYOR";
                 return;
             }
 
-            if (data.asama === 'karar') {
-                const sunucuSn = Math.max(0, parseInt(kalan, 10) || 0);
-                const yerel = Number(window.yerelKararKalan);
-                const yerelVar = Number.isFinite(yerel);
-                if (sunucuSn === 0 || !yerelVar || !window.yerelSayacTimer || sunucuSn > yerel) {
-                    yerelKararSayaciniKur(sunucuSn);
-                }
-                return;
-            }
+            if (digits) digits.innerText = String(kalan).padStart(2, '0');
+            let progressPercent = Math.max(0, Math.min(1, kalan / 60));
+            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * progressPercent);
 
-            yerelSayaciDurdur();
-            window.yerelKararKalan = null;
-            const snKarar = Math.max(0, parseInt(kalan, 10) || 0);
-            yerelKararEkrani(snKarar);
-        }
+            if (kalan > 0) {
+                let acilDurum = (kalan <= 15);
+                mekanikTikTakSesiCal(acilDurum);
+                if (acilDurum) {
+                    if (cockpit) cockpit.classList.add('urgent');
+                    if (statusTitle) statusTitle.innerText = "⚠ SON " + kalan + " SN!";
+                } else {
+                    if (cockpit) cockpit.classList.remove('urgent');
+                    if (statusTitle) statusTitle.innerText = "GERİ SAYIM SÜRÜYOR";
+                }
+            }
+    }
+
+    socket.on('sayac_guncelle', function(data) {
+        if (data && data.dukkan === aktifDukkan && !sahneKapali) sayacPaketiniCiz(data);
     });
 
     socket.on('sayac_uzatildi', function(data) {
-        if (data && data.dukkan === aktifDukkan && !sahneKapali) {
+        if (data && data.dukkan === aktifDukkan) {
+            const digits = document.getElementById('timerDigits');
             const statusTitle = document.getElementById('timerStatusTitle');
+            const cockpit = document.getElementById('mezatSayaci');
+            const dial = document.getElementById('futuristicDial');
             sureUzatildiSesiCal();
-            let yeniSure = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10);
-            if (!Number.isFinite(yeniSure) || yeniSure <= 0) yeniSure = 15;
-            yerelKararSayaciniKur(yeniSure);
+            let yeniSure = Number(data.kalan_sure || data.kalan || 15);
+            if (digits) digits.innerText = String(yeniSure).padStart(2, '0');
             if (statusTitle) statusTitle.innerText = "🔥 15 SN UZATILDI!";
+            if (cockpit) {
+                if (yeniSure <= 15) cockpit.classList.add('urgent');
+                else cockpit.classList.remove('urgent');
+            }
+            if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (Math.min(15, yeniSure) / 60));
         }
     });
 
     socket.on('sayac_bitti', function(data) {
         if (data && data.dukkan === aktifDukkan && !sahneKapali) {
-            yerelSayaciDurdur();
-            window.yerelKararKalan = null;
             zoomEfektiDurdur();
             serbestArtis = false;
             const digits = document.getElementById('timerDigits');
@@ -4876,22 +4815,10 @@
                     btnHemenAl.innerText = satildi ? "🔒 BU ÜRÜN SATILDI" : "🔒 ÜRÜN GERİ ÇEKİLDİ";
                 }
             }
-            if (satildi) canliLotAlaniniTemizle();
-            else sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
+            if (!satildi) sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
+            canliLotAlaniniTemizle();
         }
     });
-
-    function canliLotAlaniniTemizle() {
-        const baslik = document.getElementById('aktif_baslik');
-        const bid = document.getElementById('currentBid');
-        const kazanan = document.getElementById('aktif_kazanan');
-        const lot = document.getElementById('cornerLotNo');
-        if (baslik) baslik.innerText = 'Sıradaki ürün hazırlanıyor...';
-        if (bid) bid.innerText = '0';
-        if (kazanan) kazanan.innerText = 'Yok';
-        if (lot) lot.innerText = 'LOT #000';
-        sonGorulenPey = 0;
-    }
 
     function sahneyiBosalt(mesaj, sesiKoru) {
         sahneBeklemeMetni = mesaj || "Sıradaki ürün hazırlanıyor...";

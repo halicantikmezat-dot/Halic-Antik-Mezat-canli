@@ -1,6 +1,6 @@
 from collections import deque
 import re
-import sys
+import threading
 import time
 import requests
 from selenium import webdriver
@@ -8,11 +8,21 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
 # ==========================================================
-# HALİÇ ANTİK MEZAT - FACEBOOK CANLI YAYIN KÖPRÜSÜ (GÜNCELLENMİŞ)
+# HALİÇ ANTİK MEZAT - FACEBOOK CANLI YAYIN KÖPRÜSÜ
 # ==========================================================
 
-okunan_yorumlar = deque(maxlen=2500)
+MAX_YORUM_HAFIZA = 2500
+okunan_yorumlar = deque()
 okunan_yorumlar_set = set()
+
+
+def _arka_plan_post(url, payload):
+    def _gonder():
+        try:
+            requests.post(url, json=payload, timeout=0.8)
+        except Exception:
+            pass
+    threading.Thread(target=_gonder, daemon=True).start()
 
 
 def konsol_ve_sunucu_test(platform, user, text):
@@ -22,35 +32,23 @@ def konsol_ve_sunucu_test(platform, user, text):
 
     # 1. Hemen Al Kontrolü
     if any(h in temiz_kucuk for h in ["hemen al", "aldım", "aldim", "aldık"]):
-        try:
-            requests.post(
-                "http://127.0.0.1:5000/api/hemen-al-tetikle",
-                json={"platform": platform, "username": user},
-                timeout=0.5,
-            )
-        except Exception:
-            pass
+        _arka_plan_post(
+            "http://127.0.0.1:5000/api/hemen-al-tetikle",
+            {"platform": platform, "username": user},
+        )
         return
 
     # 2. Normal Web Panel İletimi (Flask Web Paneli: 5000)
-    try:
-        requests.post(
-            "http://127.0.0.1:5000/api/tiktok-web-chat",
-            json={"platform": platform, "username": user, "message": text},
-            timeout=0.5,
-        )
-    except Exception:
-        pass
+    _arka_plan_post(
+        "http://127.0.0.1:5000/api/tiktok-web-chat",
+        {"platform": platform, "username": user, "message": text},
+    )
 
     # 3. Mezat sunucusu ve pey motoru (Bot Port: 5005)
-    try:
-        requests.post(
-            "http://127.0.0.1:5005/canli_yorum",
-            json={"platform": platform, "user": user, "comment": text},
-            timeout=0.5,
-        )
-    except Exception:
-        pass
+    _arka_plan_post(
+        "http://127.0.0.1:5005/canli_yorum",
+        {"platform": platform, "user": user, "comment": text},
+    )
 
 
 def chrome_baglan():
@@ -72,7 +70,6 @@ def start_listening(callback_func, video_id=None, token=None):
         return
 
     # Canlı yayın sekmesine odaklan (Dashboard, Producer veya aktif Facebook sekmesi)
-    bulundu = False
     for handle in driver.window_handles:
         driver.switch_to.window(handle)
         url_lower = driver.current_url.lower()
@@ -82,7 +79,6 @@ def start_listening(callback_func, video_id=None, token=None):
             or "facebook.com/live" in url_lower
             or "facebook.com" in url_lower
         ):
-            bulundu = True
             break
 
     print("=" * 60)
@@ -91,7 +87,6 @@ def start_listening(callback_func, video_id=None, token=None):
     print("👉 Canlı sohbet taranıyor...")
     print("=" * 60)
 
-    # Panelden veya arayüzden gelen çöp sistem kelimeleri
     gecersiz_kelimeler = {
         "yanıtla",
         "gizle",
@@ -120,12 +115,10 @@ def start_listening(callback_func, video_id=None, token=None):
 
     while True:
         try:
-            # 1. Öncelik: Doğrudan yorum kartları (role='article')
             satirlar = driver.find_elements(
                 By.XPATH, "//div[@role='article'] | //div[@role='feed']//div"
             )
 
-            # 2. Öncelik: Live Chat mesaj kapsayıcıları
             if not satirlar:
                 satirlar = driver.find_elements(
                     By.XPATH,
@@ -137,7 +130,6 @@ def start_listening(callback_func, video_id=None, token=None):
                 if not metin or len(metin) < 2:
                     continue
 
-                # Sistem metinlerini ve buton kalıntılarını temizle
                 parcalar = [
                     p.strip()
                     for p in metin.split("\n")
@@ -151,7 +143,6 @@ def start_listening(callback_func, video_id=None, token=None):
                 kullanici = None
                 mesaj = None
 
-                # Normal format: 1. satır İsim, diğer satırlar Mesaj
                 if len(parcalar) >= 2:
                     kullanici = parcalar[0]
                     mesaj_adaylari = [
@@ -171,14 +162,12 @@ def start_listening(callback_func, video_id=None, token=None):
                 if not kullanici or not mesaj:
                     continue
 
-                # Kendi sayfa adınız, admin duyuruları veya Facebook sistem metinlerini atla
                 kullanici_kucuk = kullanici.lower()
                 mesaj_kucuk = mesaj.lower()
 
                 if "haliç antik" in kullanici_kucuk or "facebook" in kullanici_kucuk:
                     continue
 
-                # Sistem uyarılarını eleme
                 if any(
                     yasak in mesaj_kucuk
                     for yasak in [
@@ -193,7 +182,7 @@ def start_listening(callback_func, video_id=None, token=None):
                 kimlik = f"{kullanici}:{mesaj}"
 
                 if kimlik not in okunan_yorumlar_set:
-                    if len(okunan_yorumlar) >= 2500:
+                    if len(okunan_yorumlar) >= MAX_YORUM_HAFIZA:
                         eski = okunan_yorumlar.popleft()
                         okunan_yorumlar_set.discard(eski)
 

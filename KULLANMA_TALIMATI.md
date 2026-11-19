@@ -41,6 +41,8 @@ Kazandığınız eserler Sepet'inize düşer (%20 KDV + 150 TL sabit kargo; IBAN
 Fotoğraf veya videodan yapay zeka ile otomatik başlık, malzeme, şecere ve fiyat çıkarıp tek tıkla kataloğa aktarın. Manuel Tek Ürün Ekle ile en fazla 10 medya yükleyin. **%XX** gizli eşik otomatik hesaplanır.
 
 ### Tedarikçi ve Ürün Alım Sözleşmesi
+- https://halicantikcanli.com/admin/pazaryeri/
+- https://halicantikcanli.com/admin/pazaryeri/
 
 Tedarikçi ve Kargo modülünden komisyon oranlarını tanımlayın:
 

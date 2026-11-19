@@ -1,6 +1,6 @@
 from collections import deque
 import re
-import sys
+import threading
 import time
 import requests
 from selenium import webdriver
@@ -10,36 +10,44 @@ from selenium.webdriver.chrome.options import Options
 # HALİÇ ANTİK MEZAT - INSTAGRAM KÖPRÜSÜ (NOKTA ATIŞI AYRIŞTIRICI)
 # ==========================================================
 
-okunan_yorumlar = deque(maxlen=2500)
+MAX_YORUM_HAFIZA = 2500
+okunan_yorumlar = deque()
 okunan_yorumlar_set = set()
 
 
+def _arka_plan_post(url, payload):
+    def _gonder():
+        try:
+            requests.post(url, json=payload, timeout=0.8)
+        except Exception:
+            pass
+    threading.Thread(target=_gonder, daemon=True).start()
+
+
 def konsol_ve_sunucu_test(platform, user, text):
-    """Yorumları ekrana basar, mezat sunucusuna ve Flask paneline iletir."""
+    """Yorumları ekrana basar, Flask paneline ve mezat sunucusuna iletir."""
     print(f"💬 [{platform}] {user}: {text}")
     temiz_kucuk = text.lower()
 
     # 1. Hemen Al Kontrolü
     if any(h in temiz_kucuk for h in ["hemen al", "aldım", "aldim", "aldık"]):
-        try:
-            requests.post(
-                "http://127.0.0.1:5000/api/hemen-al-tetikle",
-                json={"platform": platform, "username": user},
-                timeout=0.5,
-            )
-        except Exception:
-            pass
+        _arka_plan_post(
+            "http://127.0.0.1:5000/api/hemen-al-tetikle",
+            {"platform": platform, "username": user},
+        )
         return
 
-    # 2. Mezat sunucusu ve pey motoru (Port 5005)
-    try:
-        requests.post(
-            "http://127.0.0.1:5005/canli_yorum",
-            json={"platform": platform, "user": user, "comment": text},
-            timeout=0.5,
-        )
-    except Exception:
-        pass
+    # 2. Normal Web Panel İletimi (Flask Web Paneli: 5000)
+    _arka_plan_post(
+        "http://127.0.0.1:5000/api/tiktok-web-chat",
+        {"platform": platform, "username": user, "message": text},
+    )
+
+    # 3. Mezat sunucusu ve pey motoru (Bot Port: 5005)
+    _arka_plan_post(
+        "http://127.0.0.1:5005/canli_yorum",
+        {"platform": platform, "user": user, "comment": text},
+    )
 
 
 def chrome_baglan():
@@ -79,7 +87,6 @@ def start_listening(callback_func):
     );
 
     for (let y of yanitlar) {
-        // 'Yanıtla' butonunun ait olduğu satır bloğu
         let blok = y.parentElement;
         for (let i = 0; i < 4; i++) {
             if (blok && blok.parentElement) {
@@ -91,13 +98,10 @@ def start_listening(callback_func):
         }
 
         if (blok) {
-            // Blok içindeki tüm metin parçalarını al
-            let textler = Array.from(blok.querySelectorAll('span, div, a'))
-                .map(e => (e.innerText || '').trim())
-                .filter(t => t.length > 0 && t.toLowerCase() !== 'yanıtla' && !t.includes('katıldı') && t !== '...' && t !== '…');
-            
-            // Satırları birleştirip ilk gelen tekil satırı al
-            let hamSatir = (blok.innerText || '').split('\\n').map(s => s.trim()).filter(s => s.length > 0 && s.toLowerCase() !== 'yanıtla' && s !== '...' && s !== '…');
+            let hamSatir = (blok.innerText || '')
+                .split('\\n')
+                .map(s => s.trim())
+                .filter(s => s.length > 0 && s.toLowerCase() !== 'yanıtla' && s !== '...' && s !== '…');
 
             if (hamSatir.length > 0) {
                 sonuclar.push(hamSatir[0]);
@@ -118,9 +122,7 @@ def start_listening(callback_func):
                 if not metin or len(metin) < 2:
                     continue
 
-                # 'golden34horn 3000' veya 'golden34horn: 3000' veya 'golden34horn Merhaba'
-                # İlk boşluktan veya iki noktadan kullanıcı ve mesajı ikiye böl
-                eslesme = re.match(r"^([a-zA-Z0-9_\.]+)[\\s:](.+)$", metin)
+                eslesme = re.match(r"^([a-zA-Z0-9_\.]+)[\s:]+(.+)$", metin)
                 if eslesme:
                     kullanici = eslesme.group(1).strip()
                     mesaj = eslesme.group(2).strip()
@@ -131,7 +133,6 @@ def start_listening(callback_func):
                     else:
                         continue
 
-                # '...' kalıntısını temizle
                 mesaj = re.sub(r"[\s\.\…]+$", "", mesaj).strip()
                 if not mesaj:
                     continue
@@ -147,7 +148,7 @@ def start_listening(callback_func):
                 kimlik = f"{kullanici}:{mesaj}"
 
                 if kimlik not in okunan_yorumlar_set:
-                    if len(okunan_yorumlar) >= 2500:
+                    if len(okunan_yorumlar) >= MAX_YORUM_HAFIZA:
                         eski = okunan_yorumlar.popleft()
                         okunan_yorumlar_set.discard(eski)
                     okunan_yorumlar.append(kimlik)

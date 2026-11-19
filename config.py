@@ -32,34 +32,27 @@ def _env(*adlar):
     return ""
 
 def _havuz_tam_sayi(ad, varsayilan):
+    """Ortamdaki havuz sayısını okur. Boş, bozuk veya sıfırın altındaki değerde varsayılan kalır."""
     try:
-        return max(1, int(os.environ.get(ad, varsayilan)))
+        deger = int(str(os.environ.get(ad, varsayilan)).strip())
     except (TypeError, ValueError):
         return int(varsayilan)
+    if deger < 1:
+        return int(varsayilan)
+    return deger
 
 
-def _sqlalchemy_engine_options(db_url):
-    """Postgres havuzu worker başına tutulur.
-
-    3 Gunicorn worker x (pool_size + max_overflow) toplam bağlantıdır.
-    Varsayılan 10+10 = worker başına 20, üç workerda 60. Bin izleyici sokette
-    durur; havuz pey ve sayaç yazısı içindir, izleyici sayısı kadar açılmaz.
-    """
-    if str(db_url or "").startswith("sqlite"):
-        return {
-            "pool_timeout": 20,
-            "connect_args": {"timeout": 20, "check_same_thread": False},
-        }
+def _sqlalchemy_engine_options(db_uri):
+    """PostgreSQL için küçük bir bağlantı havuzu. SQLite havuz ayarı istemez."""
+    adres = str(db_uri or "")
+    if adres.startswith("sqlite"):
+        return {}
     return {
-        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 10),
-        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 10),
-        "pool_timeout": 10,
-        "pool_recycle": 280,
         "pool_pre_ping": True,
-        "connect_args": {
-            "connect_timeout": 5,
-            "options": "-c lock_timeout=1500 -c statement_timeout=30000",
-        },
+        "pool_recycle": 280,
+        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 5),
+        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 5),
+        "connect_args": {"options": "-c lock_timeout=5000"},
     }
 
 
@@ -82,8 +75,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _veritabani_adresi()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = _sqlalchemy_engine_options(SQLALCHEMY_DATABASE_URI)
-    
+
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'halic_hamid_antik_mezat_gizli_anahtar_1453'
+    MEZAT_API_KEY = os.environ.get("MEZAT_API_KEY", "")
 
     # Azure Speech. Anahtar yalnızca ortamdan okunur.
     AZURE_SPEECH_KEY = _env("AZURE_SPEECH_KEY", "AZURE_KEY", "SPEECH_KEY")

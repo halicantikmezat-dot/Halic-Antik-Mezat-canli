@@ -1,11 +1,15 @@
 const TikTok = require('tiktok-live-connector');
 const http = require('http');
 
-const tiktokUsername = 'halicantikmezat34';
+const tiktokUsername = (process.env.TIKTOK_USERNAME || 'halicantikmezat34').replace(/^@/, '');
+const FLASK_PORT = Number(process.env.FLASK_PORT || 5000);
+const BOT_PORT = Number(process.env.BOT_PORT || 5005);
+
 const WebcastConnection = TikTok.WebcastPushConnection || TikTok.TikTokLiveConnection || TikTok.default || TikTok;
 
 let tiktokLive = null;
 let isReconnecting = false;
+let reconnectTimer = null;
 
 function postIstegiGonder(port, path, payload) {
     try {
@@ -35,14 +39,15 @@ function postIstegiGonder(port, path, payload) {
 }
 
 const gecersizKelimeler = [
-    'katıldı', 'begendi', 'beğendi', 'paylasti', 'paylaştı', 
-    'followed', 'shared', 'joined', 'tiktok', 'hosgeldin', 'hoş geldin'
+    'katıldı', 'begendi', 'beğendi', 'paylasti', 'paylaştı',
+    'followed', 'shared', 'joined', 'hosgeldin', 'hoş geldin',
+    'beğeni gönderdi', 'gül gönderdi'
 ];
 
 function flaskPeyGonder(user, text) {
     if (!text) return;
     const temizYazi = String(text).trim();
-    const temizKullanici = String(user).trim();
+    const temizKullanici = String(user || 'Misafir').trim();
     const kucuk = temizYazi.toLowerCase();
 
     if (temizYazi.length < 2 || temizYazi.length > 90) return;
@@ -52,7 +57,7 @@ function flaskPeyGonder(user, text) {
 
     // 1. Hemen Al Kontrolü (Port 5000)
     if (kucuk.includes('hemen al') || kucuk.includes('aldim') || kucuk.includes('aldım')) {
-        postIstegiGonder(5000, '/api/hemen-al-tetikle', {
+        postIstegiGonder(FLASK_PORT, '/api/hemen-al-tetikle', {
             platform: 'TikTok',
             username: temizKullanici
         });
@@ -60,14 +65,14 @@ function flaskPeyGonder(user, text) {
     }
 
     // 2. Web Canlı Akışı & Kayan Bant (Port 5000)
-    postIstegiGonder(5000, '/api/tiktok-web-chat', {
+    postIstegiGonder(FLASK_PORT, '/api/tiktok-web-chat', {
         platform: 'TikTok',
         username: temizKullanici,
         message: temizYazi
     });
 
     // 3. Mezat sunucusu ve pey çözücü (Port 5005)
-    postIstegiGonder(5005, '/canli_yorum', {
+    postIstegiGonder(BOT_PORT, '/canli_yorum', {
         platform: 'TikTok',
         user: temizKullanici,
         comment: temizYazi
@@ -76,6 +81,10 @@ function flaskPeyGonder(user, text) {
 
 function baglan() {
     isReconnecting = false;
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
 
     if (tiktokLive) {
         try {
@@ -127,7 +136,7 @@ function baglan() {
 function yenidenBaglan(beklemeSuresiMs) {
     if (isReconnecting) return;
     isReconnecting = true;
-    setTimeout(() => { baglan(); }, beklemeSuresiMs);
+    reconnectTimer = setTimeout(() => { baglan(); }, beklemeSuresiMs);
 }
 
 baglan();
