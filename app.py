@@ -11744,7 +11744,28 @@ try:
     @app.route("/api/canli-yayin/kontrol", methods=["POST"])
     @admin_required
     def api_canli_yayin_kontrol():
-        return _canli_yayin_havuzu.kontrol_yaniti()
+        yanit = _canli_yayin_havuzu.kontrol_yaniti()
+        try:
+            gelen = request.get_json(silent=True) or {}
+            islem = str(gelen.get("islem") or "").strip().lower()
+            if islem in ("baslat", "ac", "start", "durdur", "kapat", "stop"):
+                govde = yanit.get_json(silent=True) if hasattr(yanit, "get_json") else None
+                if isinstance(govde, dict) and govde.get("success"):
+                    durum_payload = {
+                        "aktif": bool(govde.get("aktif")),
+                        "aktif_dukkan": govde.get("aktif_dukkan") or "",
+                        "dukkan_adi": govde.get("dukkan_adi") or "",
+                        "yayin_basligi": govde.get("yayin_basligi") or "",
+                        "yayin_url": govde.get("yayin_url") or "",
+                        "platformlar": govde.get("platformlar") or {},
+                        "baslangic_zamani": govde.get("baslangic_zamani") or "",
+                        "dinleyiciler": govde.get("dinleyiciler") or {},
+                        "push_public_key": govde.get("push_public_key") or "",
+                    }
+                    socketio.emit("aktif_canli_yayin", durum_payload, namespace="/")
+        except Exception as hata:
+            print(f"[CANLI YAYIN] global soket yayini: {hata}", flush=True)
+        return yanit
 
     @app.route("/api/canli-yayin/webhook-yorum", methods=["POST"])
     def api_canli_yayin_webhook_yorum():

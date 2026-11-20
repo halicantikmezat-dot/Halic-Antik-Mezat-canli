@@ -1539,18 +1539,28 @@
         }
         .pwa-indir-yigin {
             position: absolute;
-            left: 0;
+            left: 174px;
             right: 0;
             bottom: calc(100% + 6px);
             height: 32px;
-            width: 100%;
+            width: auto;
             min-width: 0;
-            max-width: 100%;
+            max-width: none;
             margin: 0;
             transform: none;
             z-index: 6;
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
             pointer-events: none;
+        }
+        .pwa-indir-yigin.buton-gizli {
+            display: flex !important;
+            visibility: visible !important;
+            height: 32px !important;
+            min-height: 32px !important;
+            opacity: 1 !important;
         }
         .akis-mesaj-satiri .pwa-indir {
             position: absolute;
@@ -1584,7 +1594,26 @@
         .pwa-indir .pwa-kisa { display: none; }
         @media (max-width: 900px) {
             .mesaj-kutu-yigin { display: block; height: auto; min-height: 0; visibility: visible; }
-            #pwaIndirYigin { display: block; height: 32px; min-height: 32px; visibility: visible; }
+            #pwaIndirYigin { display: flex; height: 32px; min-height: 32px; visibility: visible; }
+        }
+        @media (max-width: 768px) {
+            .mesaj-kutu-yigin {
+                display: block !important;
+                visibility: visible !important;
+                height: auto;
+                min-height: 0;
+            }
+            #pwaIndirYigin,
+            .pwa-indir-yigin,
+            .pwa-indir-yigin.buton-gizli {
+                display: flex !important;
+                visibility: visible !important;
+                height: 32px !important;
+                min-height: 32px !important;
+                max-height: none !important;
+                opacity: 1 !important;
+                overflow: hidden;
+            }
         }
         @media (max-width: 520px) {
             .akis-mesaj-satiri .pwa-indir .pwa-uzun { display: none; }
@@ -1770,10 +1799,13 @@
         #canliYonlendirmeSeridi {
             display: none;
             position: absolute;
-            inset: 0;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
             z-index: 1;
-            width: 100%;
-            min-width: 100%;
+            width: 250px;
+            max-width: 100%;
+            min-width: 0;
             height: 32px;
             box-sizing: border-box;
             margin: 0;
@@ -3636,7 +3668,10 @@
     }
 
     function canliYayinDurumunuAl() {
-        fetch('/api/canli-yayin/durum', { cache: 'no-store' })
+        fetch('/api/canli-yayin/durum?t=' + Date.now(), {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' }
+        })
             .then(function (yanit) { return yanit.json(); })
             .then(function (veri) { canliYayinArayuzunuCiz(veri || {}); })
             .catch(function () {});
@@ -3645,14 +3680,17 @@
     function canliSeritOlcusunuEsitle() {
         const yigin = document.getElementById('pwaIndirYigin');
         const dugme = document.getElementById('pwaIndirPey');
-        const serit = document.getElementById('canliYonlendirmeSeridi');
-        if (!yigin || !serit) return;
+        if (!yigin) return;
         let gizli = !dugme || dugme.hidden;
         if (dugme && !gizli) {
             const stil = window.getComputedStyle(dugme);
             gizli = stil.display === 'none' || stil.visibility === 'hidden';
         }
         yigin.classList.toggle('buton-gizli', !!gizli);
+        yigin.style.display = 'flex';
+        yigin.style.visibility = 'visible';
+        yigin.style.height = '32px';
+        yigin.style.minHeight = '32px';
         yigin.style.width = '';
         yigin.style.removeProperty('--pwa-es-genislik');
     }
@@ -3706,6 +3744,12 @@
     } else {
         canliYayinDurumunuAl();
     }
+    setInterval(canliYayinDurumunuAl, 10000);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') canliYayinDurumunuAl();
+    });
+    window.addEventListener('focus', canliYayinDurumunuAl);
+    window.addEventListener('pageshow', canliYayinDurumunuAl);
     window.addEventListener('resize', canliSeritOlcusunuEsitle);
 
     function cekicVur() {

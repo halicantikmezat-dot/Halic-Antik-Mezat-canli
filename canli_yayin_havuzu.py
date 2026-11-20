@@ -195,7 +195,10 @@ def durum_yaniti():
     paket = herkese_acik_durum()
     if _yonetici_mi():
         paket["ayarlar"] = _ayarlar_paketi()
-    return jsonify(paket)
+    yanit = jsonify(paket)
+    yanit.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    yanit.headers["Pragma"] = "no-cache"
+    return yanit
 
 
 def kontrol_yaniti():
@@ -598,20 +601,18 @@ def _olay_yayinla(kayit):
     if _socketio is None:
         return
     kod = str(kayit.get("aktif_dukkan") or "")
-    _socketio.emit(
-        "aktif_canli_yayin",
-        {
-            "aktif": bool(kod),
-            "aktif_dukkan": kod,
-            "dukkan_adi": _dukkan_adi(kod) if kod else "",
-            "yayin_basligi": kayit.get("yayin_basligi") or "",
-            "yayin_url": kayit.get("yayin_url") or "",
-            "platformlar": _kanallar(kayit),
-            "baslangic_zamani": kayit.get("baslangic_zamani") or "",
-            "dinleyiciler": _dinleyici_ozet(kayit),
-            "push_public_key": _vapid_public() or "",
-        },
-    )
+    durum_payload = {
+        "aktif": bool(kod),
+        "aktif_dukkan": kod,
+        "dukkan_adi": _dukkan_adi(kod) if kod else "",
+        "yayin_basligi": kayit.get("yayin_basligi") or "",
+        "yayin_url": kayit.get("yayin_url") or "",
+        "platformlar": _kanallar(kayit),
+        "baslangic_zamani": kayit.get("baslangic_zamani") or "",
+        "dinleyiciler": _dinleyici_ozet(kayit),
+        "push_public_key": _vapid_public() or "",
+    }
+    _socketio.emit("aktif_canli_yayin", durum_payload, namespace="/")
 
 
 def _otomasyon_sinyali(kayit):

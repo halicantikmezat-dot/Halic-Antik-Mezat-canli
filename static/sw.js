@@ -1,4 +1,4 @@
-var CACHE_NAME = "halic-antik-pwa-v3";
+var CACHE_NAME = "halic-antik-pwa-v4";
 var PWA_ONBELLEK = CACHE_NAME;
 var PWA_DOSYALAR = [
     "/static/img/icon-192.png",
@@ -32,10 +32,11 @@ function pwaOnbellekDosyasi(request) {
 }
 
 self.addEventListener("install", function (event) {
+    self.skipWaiting();
     event.waitUntil(
         caches.open(PWA_ONBELLEK).then(function (cache) {
             return cache.addAll(PWA_DOSYALAR);
-        }).then(function () {
+        }).catch(function () {}).then(function () {
             return self.skipWaiting();
         })
     );
@@ -57,6 +58,10 @@ self.addEventListener("activate", function (event) {
 self.addEventListener("fetch", function (event) {
     var request = event.request;
     if (pwaDogrudanAg(request)) return;
+    if (request.mode === "navigate" || request.destination === "document") {
+        event.respondWith(fetch(request, { cache: "no-store" }));
+        return;
+    }
 
     event.respondWith(
         fetch(request).then(function (response) {
