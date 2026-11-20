@@ -11,3 +11,4 @@ __pycache__/
 instance/
 fb_profile/
 instagram_profile/
+static/ses_cache/
