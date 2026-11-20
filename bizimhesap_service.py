@@ -4,7 +4,7 @@ import requests
 from datetime import datetime
 from config import Config
 
-def bizimhesap_siparis_aktar(alici_ad, telefon, email, adres, urun_adi, lot_no, satis_fiyati):
+def _bizimhesap_siparis_aktar_govde(alici_ad, telefon, email, adres, urun_adi, lot_no, satis_fiyati):
     """
     Haliç Antik Mezat'ta satılan ürünü BizimHesap ön muhasebe sistemine aktarır.
     
@@ -128,3 +128,24 @@ def bizimhesap_siparis_aktar(alici_ad, telefon, email, adres, urun_adi, lot_no, 
         print(f"⚠️ [Kuyruk Kayıt Hatası]: {io_err}")
 
     return aktarim_basarili
+
+
+def bizimhesap_siparis_aktar(alici_ad, telefon, email, adres, urun_adi, lot_no, satis_fiyati):
+    """Satış commit'ini beklemez. Aktarım hatası mezat sayacını durdurmaz."""
+    argumanlar = (alici_ad, telefon, email, adres, urun_adi, lot_no, satis_fiyati)
+    try:
+        import gevent
+        gevent.get_hub().threadpool.spawn(_bizimhesap_siparis_aktar_govde, *argumanlar)
+        return None
+    except Exception as hata:
+        print(f"⚠️ [BizimHesap] Havuz kurulamadı, ayrı iş parçacığı deneniyor: {hata}")
+    try:
+        import threading
+        threading.Thread(
+            target=_bizimhesap_siparis_aktar_govde,
+            args=argumanlar,
+            daemon=True,
+        ).start()
+    except Exception as hata:
+        print(f"⚠️ [BizimHesap] Aktarım başlatılamadı, satış kaydı duruyor: {hata}")
+    return None

@@ -12,8 +12,9 @@ def _tam_sayi(ad, varsayilan):
         return int(varsayilan)
 
 
-# Oda belleği ve Socket.IO tek süreçte kalır. WEB_CONCURRENCY verilirse o kullanılır.
-workers = _tam_sayi("WEB_CONCURRENCY", 1)
+# Sahne sozlugu ve Socket.IO odalari yalniz bu surecte yasar.
+# WEB_CONCURRENCY sureci cogaltip yonetici ile izleyiciyi ayri belleklere dusurmesin.
+workers = 1
 worker_class = "geventwebsocket.gunicorn.workers.GeventWebSocketWorker"
 worker_connections = _tam_sayi("GUNICORN_WORKER_CONNECTIONS", 2000)
 # 0: canlı sayaç sırasında işçi kendini yeniden başlatmaz.

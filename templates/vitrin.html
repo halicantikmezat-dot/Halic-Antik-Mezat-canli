@@ -1509,16 +1509,18 @@
         });
     }
 
+    function vitrinOdayaGir() {
+        socket.emit('join_dukkan', { dukkan: aktifDukkan, isim: 'Vitrin' });
+    }
+    socket.on('connect', vitrinOdayaGir);
+    if (socket.io && socket.io.on) socket.io.on('reconnect', vitrinOdayaGir);
+
     socket.on('sayac_bitti', function(data) {
-        if (!data || data.dukkan === aktifDukkan) {
-            vitrinYukle();
-        }
+        if (data && data.dukkan === aktifDukkan) vitrinYukle();
     });
 
     socket.on('urun_satildi_erken', function (data) {
-        if (!data || !data.dukkan || data.dukkan === aktifDukkan) {
-            vitrinYukle();
-        }
+        if (data && data.dukkan === aktifDukkan) vitrinYukle();
     });
 
     window.onload = function() {

@@ -210,6 +210,37 @@ socketio = SocketIO(
 )
 print("[BOOT] socketio hazir", flush=True)
 
+
+def _ortam_uyarilarini_yaz():
+    """Eksik anahtar mezati durdurmaz; yalniz ilgili entegrasyon yedegine duser."""
+    kontroller = (
+        ("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY"),
+        ("OPENAI_API_KEY", "OPENAI_API_KEY"),
+        ("REDIS_URL", "REDIS_URL"),
+        ("DATABASE_URL", "DATABASE_URL"),
+        ("BIZIMHESAP_TOKEN", "BIZIMHESAP_TOKEN"),
+        ("CLOUDINARY_CLOUD_NAME", "CLOUDINARY_CLOUD_NAME"),
+        ("CLOUDINARY_API_KEY", "CLOUDINARY_API_KEY"),
+        ("CLOUDINARY_API_SECRET", "CLOUDINARY_API_SECRET"),
+        ("GELIVER_API_TOKEN", "GELIVER_API_TOKEN"),
+        ("GELIVER_SENDER_ADDRESS_ID", "GELIVER_SENDER_ADDRESS_ID"),
+        ("SMTP_HOST", "SMTP_HOST"),
+        ("SMTP_USER", "SMTP_USER"),
+        ("SMTP_PASSWORD", "SMTP_PASSWORD"),
+    )
+    eksikler = [etiket for ad, etiket in kontroller if not (os.environ.get(ad) or "").strip()]
+    if not eksikler:
+        print("[ORTAM] Kritik anahtarlar tanimli.", flush=True)
+        return
+    print(
+        "[ORTAM] Eksik anahtar, ilgili ozellik yedekte kalir, mezat surer: "
+        + ", ".join(eksikler),
+        flush=True,
+    )
+
+
+_ortam_uyarilarini_yaz()
+
 try:
     totp = pyotp.TOTP(ADMIN_2FA_SECRET) if ADMIN_2FA_SECRET else None
 except Exception:
@@ -425,6 +456,12 @@ def _openai_mp3(istemci, model, ses, soylenen):
     return b""
 
 
+def _havuzda_calistir(islem, zaman_asimi):
+    """Ag cagrisini gevent hub'indan ayirir. Cagiran yesil, havuz bitene kadar bekler."""
+    import gevent
+    return gevent.get_hub().threadpool.spawn(islem).get(timeout=zaman_asimi)
+
+
 def _edge_tts_mp3(soylenen):
     """OpenAI susunca tarayıcıya düşmeden Emel sesiyle MP3 üretir."""
     metin = str(soylenen or "").strip()
@@ -467,7 +504,11 @@ def _tts_uret(metin):
     if not soylenen:
         return None, ""
     if (getattr(Config, "ELEVENLABS_API_KEY", "") or "").strip():
-        veri = _elevenlabs_mp3(soylenen)
+        try:
+            veri = _havuzda_calistir(lambda: _elevenlabs_mp3(soylenen), 35)
+        except Exception as hata:
+            print(f"[SES HATA] ElevenLabs havuz: {hata}", flush=True)
+            veri = None
         if veri:
             return veri, "elevenlabs"
     istemci = _openai_ses_istemcisi()
@@ -476,7 +517,10 @@ def _tts_uret(metin):
     else:
         model, ses = _ses_modeli()
         try:
-            veri = _openai_mp3(istemci, model, ses, soylenen)
+            veri = _havuzda_calistir(
+                lambda: _openai_mp3(istemci, model, ses, soylenen),
+                15,
+            )
         except Exception as hata:
             print(f"[SES HATA] OpenAI akış: {hata}", flush=True)
             veri = None
@@ -741,16 +785,20 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
                 print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
                 continue
         adres = _mp3_kaydet(veri, oge["nesil"])
-        socketio.emit("ses_oynat", {
-            "dukkan": dukkan,
-            "nesil": oge["nesil"],
-            "tur": oge["tur"],
-            "zorunlu": bool(oge.get("zorunlu")),
-            "audio_url": adres,
-            "metin": "" if oge.get("gizli") else oge["metin"],
-            "gizli": bool(oge.get("gizli")),
-            "motor": kaynak,
-        })
+        _iki_odayi(
+            "ses_oynat",
+            {
+                "dukkan": dukkan,
+                "nesil": oge["nesil"],
+                "tur": oge["tur"],
+                "zorunlu": bool(oge.get("zorunlu")),
+                "audio_url": adres,
+                "metin": "" if oge.get("gizli") else oge["metin"],
+                "gizli": bool(oge.get("gizli")),
+                "motor": kaynak,
+            },
+            dukkan,
+        )
         print(f"[SES] anons yayında, {len(oge['metin'])} karakter, motor {kaynak}", flush=True)
 
 
@@ -2476,7 +2524,12 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
                     return False
                 if oda["durum"].get("durum") == "Satıldı":
                     return False
-                _fiyati_acilisa_cek(dukkan, oda)
+            _fiyati_acilisa_cek(dukkan, oda)
+            with oda_kilitleri[dukkan]:
+                if oda["sayac_gorev_id"] != gorev_id or not oda["sayac_aktif"]:
+                    return False
+                if oda["durum"].get("durum") == "Satıldı":
+                    return False
                 oda["sayac_aktif"] = True
                 oda["durum"]["durum"] = "Sayim"
                 oda["durum"]["sure_bitis"] = time.time() + kalan
@@ -2510,7 +2563,7 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
     return True
 
 
-def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart"):
+def _dukkan_geri_sayim_ic(dukkan, gorev_id, akis="standart"):
     oda = odalar[dukkan]
 
     if akis == "pazarlik":
@@ -2604,113 +2657,168 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 oda["sayac_kalan"] -= 1
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
+    # Kilit yalniz sahne bayraklarini alir. Satis kaydi ve anons kilit disinda kalir.
+    kapanis = None
     with oda_kilitleri[dukkan]:
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
             oda["sayac_aktif"] = False
             oda["durum"]["sure_bitis"] = 0
             biten_urun_id = oda["aktif_urun_id"]
             oda["aktif_urun_id"] = None
-
-            pey_var_mi = (
-                bool(oda.get("karar_pey_geldi"))
-                if oda.get("mevat_asama") == "karar"
-                else (
+            karar_mi = oda.get("mevat_asama") == "karar"
+            if karar_mi:
+                pey_var_mi = bool(oda.get("karar_pey_geldi"))
+            else:
+                pey_var_mi = (
                     oda["durum"]["kazanan"] not in ["Yok", "Kimse", None, "", "-"]
                     and float(oda["durum"]["pey"]) > 0
                 )
-            )
-            satis_lot = ""
-            satis_ad = "Eser"
-
-            with app.app_context():
-                if biten_urun_id:
-                    urun = db.session.get(Urun, biten_urun_id)
-                    if urun:
-                        satis_lot = urun.lot_no
-                        satis_ad = urun.urun_adi or "Eser"
-                        if pey_var_mi:
-                            _satisi_kesinlestir(
-                                urun,
-                                oda["durum"]["kazanan"],
-                                oda["durum"]["kazanan_id"],
-                                oda["durum"]["pey"],
-                            )
-                            db.session.add(urun)
-                            OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
-                            db.session.commit()
-                            urunu_kazanana_sepete_ekle(
-                                biten_urun_id,
-                                oda["durum"]["kazanan"],
-                                oda["durum"]["kazanan_id"],
-                            )
-                            oda["durum"]["durum"] = "Satıldı"
-                            _son_satisi_yaz(
-                                oda,
-                                oda["durum"]["kazanan"],
-                                oda["durum"]["pey"],
-                                biten_urun_id,
-                            )
-                        else:
-                            urun.durum = "Pas" if oda.get("mevat_asama") == "karar" else "Aktif"
-                            urun.kazanan_adi = "Yok"
-                            urun.kazanan_id = None
-                            db.session.add(urun)
-                            db.session.commit()
-                            oda["durum"]["durum"] = "Pas"
-
-            _iki_odayi(
-                "sayac_bitti",
-                {
-                    "dukkan": dukkan,
-                    "urun_id": biten_urun_id,
-                    "mesaj": "Süre doldu!",
-                    "satildi_mi": pey_var_mi,
-                    "kazanan": oda["durum"]["kazanan"] if pey_var_mi else "Yok",
-                    "kazanan_id": oda["durum"]["kazanan_id"] if pey_var_mi else None,
-                    "fiyat": oda["durum"]["pey"] if pey_var_mi else 0,
-                },
-                dukkan,
-            )
-
-            bota_haber_ver(
-                "satis_bitti",
-                {
-                    "dukkan": dukkan,
-                    "kazanan": oda["durum"]["kazanan"] if pey_var_mi else "Yok",
-                    "fiyat": oda["durum"]["pey"] if pey_var_mi else 0,
-                },
-            )
-
-            if pey_var_mi:
-                _satis_kapanisini_isaretle(dukkan, oda)
-                ahmet_usta_anons_yap(
-                    dukkan,
-                    ahmet_satis_cumlesi(satis_lot, satis_ad, oda["durum"]["kazanan"]),
-                    tur="satis",
-                )
-                _otonom_disi_satisi_bosalt(dukkan, oda)
-            else:
-                oda["lot_kapanis"] = "pas"
-                _sahneyi_bosa_al(dukkan, "pas")
-                if oda.get("mevat_asama") == "karar":
-                    ahmet_usta_anons_yap(
-                        dukkan,
-                        "Süre doldu, pey gelmedi. Ürün geri çekildi, pas geçildi.",
-                        tur="sayac",
-                        kesinti=True,
+            kapanis = {
+                "biten_urun_id": biten_urun_id,
+                "pey_var_mi": pey_var_mi,
+                "karar_mi": karar_mi,
+                "kazanan": oda["durum"]["kazanan"],
+                "kazanan_id": oda["durum"].get("kazanan_id"),
+                "pey": oda["durum"]["pey"],
+            }
+    if kapanis is None:
+        return
+    biten_urun_id = kapanis["biten_urun_id"]
+    pey_var_mi = kapanis["pey_var_mi"]
+    satis_lot = ""
+    satis_ad = "Eser"
+    with app.app_context():
+        if biten_urun_id:
+            urun = db.session.get(Urun, biten_urun_id)
+            if urun:
+                satis_lot = urun.lot_no
+                satis_ad = urun.urun_adi or "Eser"
+                if pey_var_mi:
+                    _satisi_kesinlestir(
+                        urun,
+                        kapanis["kazanan"],
+                        kapanis["kazanan_id"],
+                        kapanis["pey"],
+                    )
+                    db.session.add(urun)
+                    OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
+                    db.session.commit()
+                    urunu_kazanana_sepete_ekle(
+                        biten_urun_id,
+                        kapanis["kazanan"],
+                        kapanis["kazanan_id"],
+                    )
+                    oda["durum"]["durum"] = "Satıldı"
+                    _son_satisi_yaz(
+                        oda,
+                        kapanis["kazanan"],
+                        kapanis["pey"],
+                        biten_urun_id,
                     )
                 else:
-                    ahmet_usta_anons_yap(
-                        dukkan,
-                        f"{DUKKANLAR[dukkan]['ad']} reyonunda süre doldu, pey gelmediği için eser ayrılmıştır.",
-                        kesinti=True,
-                    )
+                    urun.durum = "Pas" if kapanis["karar_mi"] else "Aktif"
+                    urun.kazanan_adi = "Yok"
+                    urun.kazanan_id = None
+                    db.session.add(urun)
+                    db.session.commit()
+                    oda["durum"]["durum"] = "Pas"
 
-            bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
-            if pey_var_mi:
-                _admin_satisi_duyur(
-                    dukkan, biten_urun_id, oda["durum"]["kazanan"], oda["durum"]["pey"], "sure",
-                )
+    _iki_odayi(
+        "sayac_bitti",
+        {
+            "dukkan": dukkan,
+            "urun_id": biten_urun_id,
+            "mesaj": "Süre doldu!",
+            "satildi_mi": pey_var_mi,
+            "kazanan": kapanis["kazanan"] if pey_var_mi else "Yok",
+            "kazanan_id": kapanis["kazanan_id"] if pey_var_mi else None,
+            "fiyat": kapanis["pey"] if pey_var_mi else 0,
+        },
+        dukkan,
+    )
+
+    bota_haber_ver(
+        "satis_bitti",
+        {
+            "dukkan": dukkan,
+            "kazanan": kapanis["kazanan"] if pey_var_mi else "Yok",
+            "fiyat": kapanis["pey"] if pey_var_mi else 0,
+        },
+    )
+
+    if pey_var_mi:
+        _satis_kapanisini_isaretle(dukkan, oda)
+        ahmet_usta_anons_yap(
+            dukkan,
+            ahmet_satis_cumlesi(satis_lot, satis_ad, kapanis["kazanan"]),
+            tur="satis",
+        )
+        _otonom_disi_satisi_bosalt(dukkan, oda)
+    else:
+        oda["lot_kapanis"] = "pas"
+        _sahneyi_bosa_al(dukkan, "pas")
+        if kapanis["karar_mi"]:
+            ahmet_usta_anons_yap(
+                dukkan,
+                "Süre doldu, pey gelmedi. Ürün geri çekildi, pas geçildi.",
+                tur="sayac",
+                kesinti=True,
+            )
+        else:
+            ahmet_usta_anons_yap(
+                dukkan,
+                f"{DUKKANLAR[dukkan]['ad']} reyonunda süre doldu, pey gelmediği için eser ayrılmıştır.",
+                kesinti=True,
+            )
+
+    bota_haber_ver("ahmet_sifirla", {"dukkan": dukkan})
+    if pey_var_mi:
+        _admin_satisi_duyur(
+            dukkan, biten_urun_id, kapanis["kazanan"], kapanis["pey"], "sure",
+        )
+
+
+def _sayac_gorevini_birak(dukkan, gorev_id):
+    """Bu tur hâlâ sahipse sayacı düşürür. Yeni turun görev numarasina dokunmaz."""
+    oda = odalar.get(dukkan)
+    if oda is None or oda.get("sayac_gorev_id") != gorev_id:
+        return
+    if not oda.get("sayac_aktif"):
+        return
+    oda["sayac_aktif"] = False
+    oda["sayac_gorev_id"] = int(gorev_id) + 1
+
+
+def dukkan_geri_sayim_gorevi(dukkan, gorev_id, akis="standart"):
+    """Sayaç yeşili hata verirse otonom döngü sayac_aktif içinde beklemesin."""
+    try:
+        with app.app_context():
+            _dukkan_geri_sayim_ic(dukkan, gorev_id, akis)
+    except Exception as hata:
+        print(f"[SAYAC] {dukkan} gorev {gorev_id}: {hata}", flush=True)
+        _sayac_gorevini_birak(dukkan, gorev_id)
+        try:
+            with app.app_context():
+                _otonom_hatayi_bildir(dukkan, hata)
+        except Exception as bildirim:
+            print(f"[SAYAC] hata bildirilemedi: {bildirim}", flush=True)
+    finally:
+        oda = odalar.get(dukkan)
+        if (
+            oda is not None
+            and oda.get("sayac_gorev_id") == gorev_id
+            and oda.get("sayac_aktif")
+        ):
+            _sayac_gorevini_birak(dukkan, gorev_id)
+            try:
+                with app.app_context():
+                    _otonom_hatayi_bildir(dukkan, "Sayaç görevi kapanmadan düştü.")
+            except Exception as bildirim:
+                print(f"[SAYAC] kapanis bildirilemedi: {bildirim}", flush=True)
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 _otonom_dongu_calisiyor = {}
@@ -3034,12 +3142,14 @@ def dukkan_otonom_dongusu(dukkan):
                                 tanitim = secilen_urun.tanitim_yazisi or ""
                                 urun_id = secilen_urun.id
                             for _takip in UrunTakip.query.filter_by(urun_id=urun_id).all():
-                                socketio.emit(
+                                _iki_odayi(
                                     "urun_takip_bildirimi",
                                     {
+                                        "dukkan": dukkan,
                                         "urun_id": urun_id,
                                         "mesaj": f"Takip ettiğiniz Lot #{lot_no} ({baslik}) sahneye alındı!",
                                     },
+                                    dukkan,
                                 )
                             sahneyi_herkese_yayinla(
                                 dukkan,
@@ -3994,6 +4104,13 @@ def canli_durum():
             if oda["aktif_urun_id"]
             else None
         )
+        asama = _sahne_asamasi(oda)
+        try:
+            ham = int(oda.get("sayac_kalan") or 0)
+        except (TypeError, ValueError):
+            ham = 0
+        if ham < 0:
+            ham = 0
         return jsonify({
             "dukkan": dukkan,
             "durum": oda["durum"]["durum"],
@@ -4001,7 +4118,12 @@ def canli_durum():
             "pey": oda["durum"]["pey"],
             "kazanan": oda["durum"]["kazanan"],
             "kazanan_id": oda["durum"].get("kazanan_id"),
-            "kalan_sayac": oda["sayac_kalan"],
+            "kalan_sayac": ham,
+            "ham_kalan": ham,
+            "kalan": ham,
+            "kalan_sure": ham,
+            "asama": asama,
+            "sayac_gorunsun": bool(oda.get("sayac_aktif")),
             "aktif_urun": (
                 aktif_urun_obj.to_dict()
                 if (aktif_urun_obj and not aktif_urun_obj.silindi_mi)
@@ -6706,12 +6828,14 @@ def sahneye_al():
         yeni_urun=True,
     )
     for t in takipciler:
-        socketio.emit(
+        _iki_odayi(
             "urun_takip_bildirimi",
             {
+                "dukkan": dukkan,
                 "urun_id": urun_paket["id"],
                 "mesaj": takip_metin,
             },
+            dukkan,
         )
 
     bota_haber_ver(
@@ -10906,7 +11030,7 @@ def moderator_ses_parcasi(veri):
             ornek_hizi = 16000
         mime = str(veri.get("mime") or "audio/webm;codecs=opus")[:80]
         for dukkan in _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus"):
-            emit(
+            _iki_odayi(
                 "izleyici_moderator_sesi",
                 {
                     "dukkan": dukkan,
@@ -10916,9 +11040,7 @@ def moderator_ses_parcasi(veri):
                     "seq": sira,
                     "sira": sira,
                 },
-                to=dukkan,
-                broadcast=True,
-                include_self=False,
+                dukkan,
             )
     finally:
         db.session.remove()
@@ -10926,7 +11048,7 @@ def moderator_ses_parcasi(veri):
 
 @socketio.on("admin_voice_broadcast")
 def admin_voice_broadcast(veri):
-    """Bas-konuş bitince gelen tek ses kaydını bütün izleyicilere yollar."""
+    """Bas-konuş kaydını yalnız hedef dükkan odasına yollar."""
     try:
         veri = veri or {}
         ses = str(veri.get("audio") or "")
@@ -10935,15 +11057,21 @@ def admin_voice_broadcast(veri):
         if not session.get("is_admin"):
             print("[MIC SOKET] Yönetici oturumu yok, ses iletilmedi.")
             return
-        emit("play_admin_audio_blob", veri, broadcast=True)
-        print("[MIC SOKET] Yönetici sesi izleyicilere iletildi.")
+        hedefler = _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        for dukkan in hedefler:
+            _iki_odayi(
+                "play_admin_audio_blob",
+                {"audio": ses, "dukkan": dukkan, "mime": veri.get("mime") or ""},
+                dukkan,
+            )
+        print("[MIC SOKET] Yönetici sesi dükkan odasına iletildi.")
     finally:
         db.session.remove()
 
 
 @socketio.on("admin_voice_chunk")
 def admin_voice_chunk(veri):
-    """Yönetici mikrofon parçasını gecikmesiz olarak bütün izleyicilere yollar."""
+    """Yönetici mikrofon parçasını yalnız hedef dükkan odasına yollar."""
     try:
         if not session.get("is_admin"):
             return
@@ -10958,16 +11086,18 @@ def admin_voice_chunk(veri):
             sira = int(veri.get("seq") or 0)
         except (TypeError, ValueError):
             sira = 0
-        emit(
-            "play_admin_voice",
-            {
-                "parca": parca,
-                "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
-                "seq": sira,
-            },
-            broadcast=True,
-            include_self=False,
-        )
+        hedefler = _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        for dukkan in hedefler:
+            _iki_odayi(
+                "play_admin_voice",
+                {
+                    "parca": parca,
+                    "mime": str(veri.get("mime") or "audio/webm;codecs=opus")[:80],
+                    "seq": sira,
+                    "dukkan": dukkan,
+                },
+                dukkan,
+            )
     finally:
         db.session.remove()
 
@@ -10977,7 +11107,10 @@ def admin_voice_end(veri=None):
     try:
         if not session.get("is_admin"):
             return
-        emit("play_admin_voice", {"bitti": True}, broadcast=True, include_self=False)
+        veri = veri or {}
+        hedefler = _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        for dukkan in hedefler:
+            _iki_odayi("play_admin_voice", {"bitti": True, "dukkan": dukkan}, dukkan)
     finally:
         db.session.remove()
 

@@ -156,9 +156,13 @@
     }
 
     // Odaya Katılma
-    socket.on('connect', () => {
+    socket.on('connect', odayaGirVeDurumuAl);
+    if (socket.io && socket.io.on) socket.io.on('reconnect', odayaGirVeDurumuAl);
+
+    function odayaGirVeDurumuAl() {
         socket.emit('join_dukkan', { dukkan: aktifDukkan });
-    });
+        ilkDurumuGetir();
+    }
 
     window.addEventListener('beforeunload', () => {
         socket.emit('leave_dukkan', { dukkan: aktifDukkan });
@@ -289,26 +293,32 @@
         fetch(`/canli-durum?dukkan=${aktifDukkan}`)
         .then(res => res.json())
         .then(data => {
-            if (data && data.aktif_urun) {
+            if (!data) return;
+            if (data.aktif_urun) {
                 lotEl.innerText = `LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
                 let aktifPey = data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0;
                 fiyatEl.innerText = paraFormatla(aktifPey);
                 kazananEl.innerText = data.kazanan || "Yok";
-                
-                if (data.durum === "Satıldı") {
-                    sayacEl.innerText = "🔨 SATILDI!";
-                    sayacEl.style.color = "#10b981";
-                } else if (data.durum === "Sayim") {
-                    sayacEl.innerText = "⏱️ MEZAT SÜRÜYOR";
-                    sayacEl.style.color = "#38bdf8";
-                } else {
-                    sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
-                    sayacEl.style.color = "#ffb703";
-                }
             } else {
                 lotEl.innerText = "LOT #000 - MEZAT BEKLENİYOR";
                 fiyatEl.innerText = "0 TL";
                 kazananEl.innerText = "Son Teklif: Yok";
+            }
+            if (data.asama === "pazarlik" || data.asama === "karar") {
+                const ham = parseInt(data.ham_kalan !== undefined ? data.ham_kalan : data.kalan, 10);
+                sayaciYaz({
+                    dukkan: aktifDukkan,
+                    kalan: ham,
+                    kalan_sure: ham,
+                    asama: data.asama,
+                    sayac_gorunsun: !!data.sayac_gorunsun
+                });
+                return;
+            }
+            if (data.durum === "Satıldı") {
+                sayacEl.innerText = "🔨 SATILDI!";
+                sayacEl.style.color = "#10b981";
+            } else {
                 sayacEl.innerText = "⏱️ MEZAT BEKLENİYOR";
                 sayacEl.style.color = "#ffb703";
             }
@@ -316,7 +326,7 @@
         .catch(() => {});
     }
 
-    window.onload = ilkDurumuGetir;
+    window.onload = odayaGirVeDurumuAl;
 </script>
 </body>
 </html>

@@ -2848,12 +2848,13 @@
         kayanBantaEkle(`${rozet.ikon} [${rozet.etiket}] ${escapeHtml(kisaIsim(ad))}: ${formatFiyat(tutar)}`);
     }
 
-    socket.on('connect', odayaKatil);
+    function baglantiyiTazele() {
+        odayaKatil();
+        canliDurumuGetirHafif();
+    }
+    socket.on('connect', baglantiyiTazele);
     if (socket.io) {
-        socket.io.on('reconnect', () => {
-            odayaKatil();
-            canliDurumuGetirHafif();
-        });
+        socket.io.on('reconnect', baglantiyiTazele);
     }
 
     window.addEventListener('beforeunload', () => {
@@ -3923,6 +3924,7 @@
 
     let yoneticiSes = null;
     socket.on("play_admin_audio_blob", function (data) {
+        if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
         console.log("[IZLEYICI MIC] Yönetici ses paketi alındı!");
         if (!data || !data.audio) return;
         iosSesKapisiniAc();
@@ -3954,6 +3956,7 @@
 
     socket.on("play_admin_voice", function (data) {
         if (!data) return;
+        if (data.dukkan && data.dukkan !== aktifDukkan) return;
         if (data.bitti) {
             clearTimeout(moderatorSusma);
             anonsuDevamEt();
@@ -3990,7 +3993,19 @@
     });
 
     var rehberAdimSesi = null;
-    socket.on("rehber_ses", function () {});
+    socket.on("rehber_ses", function (data) {
+        if (!data) return;
+        if (data.mesaj && typeof showToast === "function") showToast(data.mesaj);
+        if (!data.audio_url) return;
+        try {
+            if (rehberAdimSesi) {
+                rehberAdimSesi.onended = null;
+                rehberAdimSesi.pause();
+            }
+            rehberAdimSesi = new Audio(data.audio_url);
+            rehberAdimSesi.play().catch(function () {});
+        } catch (e) {}
+    });
 
     socket.on("ses_oynat", function (data) {
         const dukkan = data && (data.dukkan || data.dukkan_kodu);
@@ -4447,12 +4462,18 @@
             sonGorulenPey = gelenPey;
             document.getElementById('currentBid').innerText = Math.round(gelenPey).toLocaleString('tr-TR');
             document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
-            
-            if (data.kalan_sayac !== undefined && data.kalan_sayac > 0) {
-                const digits = document.getElementById('timerDigits');
-                const dial = document.getElementById('futuristicDial');
-                if (digits) digits.innerText = String(data.kalan_sayac).padStart(2, '0');
-                if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * (data.kalan_sayac / 60));
+
+            if (data.asama === "pazarlik" || data.asama === "karar") {
+                const ham = parseInt(data.ham_kalan !== undefined ? data.ham_kalan : data.kalan, 10);
+                if (!isNaN(ham)) {
+                    sayacPaketiniCiz({
+                        dukkan: aktifDukkan,
+                        kalan: ham,
+                        kalan_sure: ham,
+                        asama: data.asama,
+                        sayac_gorunsun: !!data.sayac_gorunsun
+                    });
+                }
             }
 
             if (!secilenArsivUrunId) {
@@ -4496,7 +4517,11 @@
         canliDurumuGetirHafif();
     };
 
-    socket.on('urun_takip_bildirimi', function(data) { showToast(`🔔 ${data.mesaj}`); playTone(600, 0.2, 'sine', 0.2); });
+    socket.on('urun_takip_bildirimi', function(data) {
+        if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
+        showToast(`🔔 ${data.mesaj}`);
+        playTone(600, 0.2, 'sine', 0.2);
+    });
 
     socket.on('izleyici_sayisi_guncelle', function(data) {
         if(data && (data.dukkan === aktifDukkan || !data.dukkan) && data.sayi !== undefined) {

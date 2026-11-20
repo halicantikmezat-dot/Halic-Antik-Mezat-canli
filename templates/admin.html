@@ -1339,6 +1339,7 @@
     const socket = io(mezatSocketAdresi(), {
         transports: ['websocket', 'polling'],
         secure: mezatSocketAdresi().indexOf('https://') === 0,
+        withCredentials: true,
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
@@ -1346,12 +1347,20 @@
         rememberUpgrade: true
     });
     const adminOlayImzalari = {};
+    function adminImzaTemizle(simdi) {
+        const anahtarlar = Object.keys(adminOlayImzalari);
+        if (anahtarlar.length < 40) return;
+        anahtarlar.forEach(function (anahtar) {
+            if (simdi - adminOlayImzalari[anahtar] > 3000) delete adminOlayImzalari[anahtar];
+        });
+    }
     function adminOlayBirKez(olay, data) {
         let ham = olay;
         try { ham += "|" + JSON.stringify(data || {}); } catch (e) { ham += "|" + String(data); }
         const simdi = Date.now();
         if (adminOlayImzalari[ham] && simdi - adminOlayImzalari[ham] < 450) return false;
         adminOlayImzalari[ham] = simdi;
+        adminImzaTemizle(simdi);
         return true;
     }
 
@@ -1362,23 +1371,11 @@
             adminKararZamanlayici = null;
         }
         if (asama !== "karar") return;
-        let sn = Math.max(0, parseInt(kalan, 10) || 0);
-        const yaz = function () {
-            const durum = document.getElementById("aktifDurum");
-            if (!durum) return;
-            durum.classList.remove("satildi-yazi");
-            durum.innerText = "Karar: " + sn + " sn";
-        };
-        yaz();
-        if (sn <= 0) return;
-        adminKararZamanlayici = setInterval(function () {
-            sn = Math.max(0, sn - 1);
-            yaz();
-            if (sn <= 0) {
-                clearInterval(adminKararZamanlayici);
-                adminKararZamanlayici = null;
-            }
-        }, 1000);
+        const sn = Math.max(0, parseInt(kalan, 10) || 0);
+        const durum = document.getElementById("aktifDurum");
+        if (!durum) return;
+        durum.classList.remove("satildi-yazi");
+        durum.innerText = "Karar: " + sn + " sn";
     }
 
     function adminCanliLotuTemizle() {
@@ -1405,7 +1402,6 @@
         socket.emit("join_dukkan", { dukkan: kod, isim: "Yonetici" });
     }
     socket.on("connect", yoneticiOdayaGir);
-    socket.on("reconnect", yoneticiOdayaGir);
     if (socket.io && socket.io.on) socket.io.on("reconnect", yoneticiOdayaGir);
 
     let adminSesAcik = false;
