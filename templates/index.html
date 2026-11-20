@@ -1533,31 +1533,32 @@
         }
         .pwa-indir-yigin {
             position: absolute;
-            left: 50%;
-            bottom: 44px;
-            transform: translateX(-50%);
-            z-index: 5;
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            width: max-content;
-            max-width: calc(100vw - 16px);
+            left: 168px;
+            right: 4px;
+            bottom: 50px;
+            height: 32px;
+            width: auto;
+            max-width: none;
             margin: 0;
-            margin-left: max(0px, calc(180px - 50% + 84px));
-            pointer-events: auto;
-        }
-        .pwa-indir-yigin.yalniz-serit { width: var(--pwa-es-genislik, 148px); }
-        .akis-mesaj-satiri .pwa-indir {
-            position: static;
-            left: auto;
-            bottom: auto;
             transform: none;
+            z-index: 6;
+            display: block;
+            pointer-events: none;
+        }
+        .akis-mesaj-satiri .pwa-indir {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            transform: translateX(-50%);
+            z-index: 3;
             width: max-content;
+            max-width: 100%;
             box-sizing: border-box;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            height: auto;
+            height: 32px;
             margin: 0;
             padding: 6px 14px;
             font-size: 12px;
@@ -1570,13 +1571,14 @@
             border-radius: 999px;
             cursor: pointer;
             white-space: nowrap;
+            pointer-events: auto;
         }
         .akis-mesaj-satiri .pwa-indir[hidden] { display: none !important; }
         .pwa-indir .pwa-kisa { display: none; }
         @media (max-width: 520px) {
+            .pwa-indir-yigin { left: 148px; right: 2px; bottom: 50px; }
             .akis-mesaj-satiri .pwa-indir .pwa-uzun { display: none; }
             .akis-mesaj-satiri .pwa-indir .pwa-kisa { display: inline; }
-            .pwa-indir-yigin { margin-left: max(0px, calc(180px - 50% + 42px)); }
         }
         #genelMenu button.pwa-indir-menu {
             background: #121622 !important;
@@ -1758,28 +1760,26 @@
         #canliYonlendirmeSeridi {
             display: none;
             position: absolute;
-            left: 0;
-            top: calc(100% + 4px);
+            inset: 0;
+            z-index: 1;
             width: 100%;
+            min-width: 100%;
+            height: 32px;
             box-sizing: border-box;
             margin: 0;
-            padding: 4px 10px;
+            padding: 6px 12px;
             overflow: hidden;
             border: 0;
             border-radius: 999px;
             background: #9f1239;
             color: #fff;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 800;
-            line-height: 1.3;
+            line-height: 20px;
             text-align: left;
             cursor: pointer;
+            pointer-events: auto;
             animation: canliSeritBlink 1.1s steps(1, end) infinite;
-        }
-        .pwa-indir-yigin.yalniz-serit #canliYonlendirmeSeridi {
-            position: static;
-            top: auto;
-            width: 100%;
         }
         #canliYonlendirmeSeridi.gorunur { display: block; }
         #canliYonlendirmeSeridi[hidden] { display: none !important; }
@@ -1787,7 +1787,7 @@
             display: inline-block;
             white-space: nowrap;
             padding-left: 100%;
-            animation: canliKayarYazi 12s linear infinite;
+            animation: canliKayarYazi 20s linear infinite;
         }
         @keyframes canliKayarYazi {
             0% { transform: translateX(0); }
@@ -3640,20 +3640,9 @@
             const stil = window.getComputedStyle(dugme);
             gizli = stil.display === 'none' || stil.visibility === 'hidden';
         }
-        yigin.classList.toggle('yalniz-serit', !!(gizli && !serit.hidden));
-        let gen = 0;
-        if (dugme && !gizli && dugme.offsetWidth) {
-            gen = Math.ceil(dugme.getBoundingClientRect().width);
-        } else if (dugme) {
-            const kopya = dugme.cloneNode(true);
-            kopya.hidden = false;
-            kopya.removeAttribute('hidden');
-            kopya.style.cssText = 'position:fixed;left:-9999px;top:0;display:inline-flex;visibility:hidden;width:max-content;';
-            document.body.appendChild(kopya);
-            gen = Math.ceil(kopya.getBoundingClientRect().width);
-            kopya.remove();
-        }
-        if (gen > 0) yigin.style.setProperty('--pwa-es-genislik', gen + 'px');
+        yigin.classList.toggle('buton-gizli', !!gizli);
+        yigin.style.width = '';
+        yigin.style.removeProperty('--pwa-es-genislik');
     }
 
     function canliYayinSekmeNoktasi() {
