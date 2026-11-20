@@ -395,8 +395,8 @@
         <h2>🏛️ HALİÇ ANTİK MEZAT - YÖNETİCİ PANELİ</h2>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span style="font-size: 13px; margin-right: 5px;">🟢 İzleyici: <b id="izleyiciSayisi">0</b> Kişi</span>
-            <button onclick="tumunuOtonomAyarla(true)" class="btn btn-yellow btn-sm" title="10 dükkanın tamamında otonom satışı başlatır">⚡ Tümünde Otonomu Başlat</button>
-            <button onclick="tumunuOtonomAyarla(false)" class="btn btn-red btn-sm" title="Tüm otonom mezatları durdurur">🛑 Hepsini Durdur</button>
+            <button onclick="tumunuOtonomAyarla(true)" class="btn btn-yellow btn-sm" title="17 salonun tamamında otonom satışı başlatır">⚡ 17 Salonu Başlat</button>
+            <button onclick="tumunuOtonomAyarla(false)" class="btn btn-red btn-sm" title="17 salonun otonom mezatını, sahnesini ve sayacını durdurur">🛑 17 Salonu Durdur</button>
             <button onclick="sozlesmeModalAc()" class="btn btn-sm" style="background:#0d9488; color:#fff;">📜 Ürün Alım Sözleşmesi</button>
             <button onclick="karekodModalAc()" class="btn btn-sm" style="background:#0284c7; color:#fff;">📱 Site Karekodu</button>
             <a href="/admin/pazaryeri/" class="btn btn-yellow btn-sm" style="text-decoration: none; font-weight: bold;">📦 Tedarikçi & Kargo</a>
@@ -1554,6 +1554,9 @@
         document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
 
+        if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
+            otonomButonlariniCiz(!!otonomDurumlari[kod]);
+        }
         veriCekAdmin(true);
         adminUrunAra();
     }
@@ -2242,43 +2245,64 @@
         });
     }
 
-    function otonomAyarla(durum) {
+    function otonomButonlariniCiz(aktif) {
+        const baslat = document.getElementById('btnOtonomBaslat');
+        const durdur = document.getElementById('btnOtonomDurdur');
+        if (baslat) baslat.style.display = aktif ? 'none' : 'inline-flex';
+        if (durdur) durdur.style.display = aktif ? 'inline-flex' : 'none';
+    }
+
+    function otonomKontrolGonder(durum, dukkan) {
         playClickSound();
         fetch('/api/admin/otonom-mezat-kontrol', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ dukkan: seciliDukkan, aktif: durum })
+            body: JSON.stringify({ dukkan: dukkan, aktif: durum })
         })
-        .then(r => r.json())
-        .then(res => {
-            alert(res.mesaj);
-            otonomDurumlari[seciliDukkan] = durum;
-            document.getElementById('btnOtonomBaslat').style.display = durum ? 'none' : 'inline-flex';
-            document.getElementById('btnOtonomDurdur').style.display = durum ? 'inline-flex' : 'none';
+        .then(function (r) {
+            return r.text().then(function (yazi) {
+                let res = null;
+                try { res = yazi ? JSON.parse(yazi) : null; } catch (e) { res = null; }
+                return { ok: r.ok, res: res };
+            });
+        })
+        .then(function (paket) {
+            const res = paket.res || {};
+            if (!paket.ok || res.success !== true) {
+                alert(res.mesaj || 'Otonom mezat işlemi tamamlanamadı.');
+                veriCekAdmin(true);
+                return;
+            }
+            if (dukkan === 'tumu') {
+                Object.keys(dukkanlar).forEach(function (k) { otonomDurumlari[k] = durum; });
+            } else {
+                otonomDurumlari[seciliDukkan] = durum;
+            }
+            otonomButonlariniCiz(!!durum);
+            alert(res.mesaj || 'İşlem tamam.');
+        })
+        .catch(function () {
+            alert('Bağlantı hatası: otonom mezat isteği sunucuya ulaşamadı.');
         });
+    }
+
+    function otonomAyarla(durum) {
+        otonomKontrolGonder(durum, seciliDukkan);
     }
 
     function tumunuOtonomAyarla(durum) {
-        playClickSound();
-        fetch('/api/admin/otonom-mezat-kontrol', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ dukkan: 'tumu', aktif: durum })
-        })
-        .then(r => r.json())
-        .then(res => {
-            alert(res.mesaj);
-            for(let k in dukkanlar) { otonomDurumlari[k] = durum; }
-            document.getElementById('btnOtonomBaslat').style.display = durum ? 'none' : 'inline-flex';
-            document.getElementById('btnOtonomDurdur').style.display = durum ? 'inline-flex' : 'none';
-        });
+        otonomKontrolGonder(durum, 'tumu');
     }
 
     socket.on('otonom_durum_degisti', function(data) {
-        if(data.dukkan === seciliDukkan) {
-            document.getElementById('btnOtonomBaslat').style.display = data.aktif ? 'none' : 'inline-flex';
-            document.getElementById('btnOtonomDurdur').style.display = data.aktif ? 'inline-flex' : 'none';
-        }
+        if (!data || !data.dukkan) return;
+        otonomDurumlari[data.dukkan] = !!data.aktif;
+        if (data.dukkan === seciliDukkan) otonomButonlariniCiz(!!data.aktif);
+    });
+
+    socket.on('otonom_hata', function(data) {
+        const yer = data && data.dukkan ? data.dukkan + ': ' : '';
+        alert(yer + ((data && data.mesaj) || 'Otonom döngü hata verdi.'));
     });
 
     function manuelKarUygula() {
@@ -2690,6 +2714,10 @@
         .then(res => res.json())
         .then(data => {
             if (istek !== veriIstekNo || istenenDukkan !== seciliDukkan) return;
+            if (data && typeof data.otonom_aktif !== "undefined") {
+                otonomDurumlari[istenenDukkan] = !!data.otonom_aktif;
+                otonomButonlariniCiz(!!data.otonom_aktif);
+            }
             if(data.aktif_urun) {
                 document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(istenenDukkan) + ` LOT #${data.aktif_urun.lot} - ${data.aktif_urun.ad}`;
                 document.getElementById('aktifFiyat').innerText = `${data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat} TL`;

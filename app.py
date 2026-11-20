@@ -539,8 +539,50 @@ def _iki_odayi(olay, veri, dukkan):
     socketio.emit(olay, paket, room="admin_room")
 
 
+_canli_otorite = set()
+_otonom_sahipleri = set()
+_son_otonom_hata = {}
+
+
+def _yerel_canli_mi(oda):
+    """Canlılık kuralı: sahnede ürün var ve durumu Satıldı değil."""
+    if not oda:
+        return False
+    sahne = str((oda.get("durum") or {}).get("durum") or "")
+    if sahne == "Satıldı":
+        return False
+    return bool(oda.get("aktif_urun_id"))
+
+
+def dukkan_otonom_mu(kod):
+    """Otonom bayrağının tek kaynağı kalıcı kayıttır."""
+    if dukkan_kalici_durum is not None:
+        try:
+            return bool(dukkan_kalici_durum.otonom_mu(kod))
+        except Exception:
+            pass
+    return bool((odalar.get(kod) or {}).get("otonom_aktif"))
+
+
+def dukkan_canli_mi(kod):
+    """Yerel sahne bu sürecin otoritesindeyse o esastır; değilse kalıcı kayıt."""
+    oda = odalar.get(kod) or {}
+    if kod in _canli_otorite:
+        return _yerel_canli_mi(oda)
+    if _yerel_canli_mi(oda):
+        _canli_otorite.add(kod)
+        return True
+    if dukkan_kalici_durum is None:
+        return False
+    try:
+        return bool(dukkan_kalici_durum.canli_mi(kod))
+    except Exception:
+        return False
+
+
 def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
     """Ürün satılınca veya geri çekilince sahneyi boşalt. Satış tebriği kuyruktayken ses kesilmez."""
+    _canli_otorite.add(dukkan)
     oda = odalar.get(dukkan)
     if oda is not None:
         oda["aktif_urun_id"] = None
@@ -579,15 +621,20 @@ def _son_satisi_yaz(oda, kazanan, fiyat, urun_id=None):
 
 
 def _dukkan_canli_haritasi():
-    cikti = {}
-    for kod, oda in odalar.items():
-        sahne = str((oda.get("durum") or {}).get("durum") or "")
-        cikti[kod] = bool(oda.get("aktif_urun_id")) and sahne != "Satıldı"
-    return cikti
+    return {kod: dukkan_canli_mi(kod) for kod in odalar}
 
 
 def _dukkan_canli_yayinla():
-    socketio.emit("dukkan_canli_durumu", {"dukkanlar": _dukkan_canli_haritasi()})
+    harita = _dukkan_canli_haritasi()
+    if dukkan_kalici_durum is not None:
+        for kod, canli in harita.items():
+            try:
+                dukkan_kalici_durum.kaydet(kod, canli_durum=canli)
+            except Exception as hata:
+                print(f"[DUKKAN DURUM] canli yazilamadi {kod}: {hata}", flush=True)
+    paket = {"dukkanlar": harita}
+    socketio.emit("dukkan_canli_durumu", paket)
+    socketio.emit("dukkan_canli_durumu", paket, room="admin_room")
 
 
 def _satis_kapanisini_isaretle(dukkan, oda):
@@ -2049,6 +2096,18 @@ for kod in DUKKANLAR.keys():
     }
     oda_kilitleri[kod] = BoundedSemaphore(1)
 
+try:
+    import dukkan_kalici_durum
+
+    with app.app_context():
+        dukkan_kalici_durum.bagla(db)
+        for _kod in DUKKANLAR:
+            odalar[_kod]["otonom_aktif"] = dukkan_kalici_durum.acilista_yukle(_kod)
+    print("[BOOT] dukkan durumlari veritabanindan yuklendi", flush=True)
+except Exception as _dukkan_durum_hata:
+    dukkan_kalici_durum = None
+    print(f"[BOOT] dukkan durum deposu atlandi: {_dukkan_durum_hata}", flush=True)
+
 
 def _baslik_tekrarini_sil(metin, urun_adi):
     temiz = re.sub(r"\s+", " ", str(metin or "")).strip()
@@ -2762,16 +2821,138 @@ def _otonom_sayaci_baslat(dukkan, urun):
     return True
 
 
+def _otonom_hatayi_bildir(dukkan, hata):
+    metin = str(hata)
+    simdi = time.time()
+    onceki = _son_otonom_hata.get(dukkan)
+    print(f"[OTONOM] {dukkan}: {metin}", flush=True)
+    if onceki and onceki[0] == metin and simdi - onceki[1] < 30:
+        return
+    _son_otonom_hata[dukkan] = (metin, simdi)
+    if dukkan_kalici_durum is not None:
+        try:
+            dukkan_kalici_durum.kaydet(dukkan, son_hata=metin)
+        except Exception as yazma_hata:
+            print(f"[OTONOM] hata kaydi yazilamadi: {yazma_hata}", flush=True)
+    paket = {"dukkan": dukkan, "mesaj": metin}
+    socketio.emit("otonom_hata", paket, room=dukkan)
+    socketio.emit("otonom_hata", paket, room="admin_room")
+
+
+def _otonom_musait_lot(dukkan, oda):
+    if oda.get("aktif_urun_id"):
+        sahnedeki = db.session.get(Urun, oda.get("aktif_urun_id"))
+        if not _otonom_urun_satildi(sahnedeki):
+            return sahnedeki.lot_no
+    urun = (
+        Urun.query.filter(
+            Urun.dukkan_kodu == dukkan,
+            or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+            Urun.durum.notin_(["Satıldı", "satildi", "SATILDI"]),
+        )
+        .order_by(Urun.lot_no.asc(), Urun.id.asc())
+        .first()
+    )
+    if urun is None:
+        return None
+    return urun.lot_no
+
+
+def _otonom_durum_duyur(dukkan, aktif):
+    paket = {"dukkan": dukkan, "aktif": bool(aktif)}
+    socketio.emit("otonom_durum_degisti", paket, room=dukkan)
+    socketio.emit("otonom_durum_degisti", paket, room="admin_room")
+
+
+def _otonom_sahneyi_indir(dukkan):
+    """Otonom kapanınca sayaç görevini düşürür, sahneyi boşaltır ve canlılığı kapatır."""
+    oda = odalar.get(dukkan)
+    if oda is not None:
+        with oda_kilitleri[dukkan]:
+            oda["otonom_aktif"] = False
+            oda["sayac_aktif"] = False
+            oda["sayac_gorev_id"] += 1
+            oda["sayac_kalan"] = 0
+            _gizli_pazarligi_kapat(oda)
+    _canli_otorite.add(dukkan)
+    if dukkan_kalici_durum is not None:
+        dukkan_kalici_durum.kaydet(dukkan, otonom_aktif=False, canli_durum=False)
+    _sahneyi_bosa_al(dukkan, "durduruldu", sesi_kes=True)
+    _otonom_durum_duyur(dukkan, False)
+
+
+def _otonom_donguyu_garantile(dukkan):
+    if _otonom_dongu_calisiyor.get(dukkan):
+        return
+    if dukkan_kalici_durum is not None and not dukkan_kalici_durum.lider_ol(dukkan):
+        return
+    _otonom_sahipleri.add(dukkan)
+    _otonom_dongu_calisiyor[dukkan] = True
+    socketio.start_background_task(dukkan_otonom_dongusu, dukkan)
+
+
+def _otonomu_baslat(dukkan):
+    oda = odalar[dukkan]
+    lot = _otonom_musait_lot(dukkan, oda)
+    if dukkan_kalici_durum is not None:
+        dukkan_kalici_durum.kaydet(dukkan, otonom_aktif=True, son_hata="")
+    oda["otonom_aktif"] = True
+    _otonom_donguyu_garantile(dukkan)
+    _otonom_durum_duyur(dukkan, True)
+    return lot
+
+
+def _otonomu_durdur(dukkan):
+    if dukkan_kalici_durum is not None:
+        dukkan_kalici_durum.kaydet(dukkan, otonom_aktif=False)
+    oda = odalar.get(dukkan)
+    if oda is not None:
+        oda["otonom_aktif"] = False
+    sahip = dukkan in _otonom_sahipleri or bool(_otonom_dongu_calisiyor.get(dukkan))
+    if sahip or (oda is not None and (oda.get("aktif_urun_id") or oda.get("sayac_aktif")) and dukkan in _canli_otorite):
+        _otonom_sahipleri.discard(dukkan)
+        _otonom_sahneyi_indir(dukkan)
+        return
+    _otonom_durum_duyur(dukkan, False)
+
+
+def _otonom_gozcusu():
+    while True:
+        try:
+            with app.app_context():
+                for kod in list(DUKKANLAR.keys()):
+                    if dukkan_kalici_durum is None:
+                        break
+                    aktif = dukkan_kalici_durum.otonom_mu(kod)
+                    oda = odalar.get(kod)
+                    if oda is not None and bool(oda.get("otonom_aktif")) != aktif:
+                        oda["otonom_aktif"] = aktif
+                    if aktif:
+                        _otonom_donguyu_garantile(kod)
+        except Exception as hata:
+            print(f"[OTONOM] gozcu: {hata}", flush=True)
+        socketio.sleep(2)
+
+
 def dukkan_otonom_dongusu(dukkan):
     oda = odalar[dukkan]
     kural = DUKKANLAR[dukkan]
     _otonom_dongu_calisiyor[dukkan] = True
+    _otonom_sahipleri.add(dukkan)
     son_biten_id = None
+    liderlik_dustu = False
     print(f"🤖 [{kural['ad']}] 3 Dakikalık Otonom Mezat Başlatıldı...")
     try:
         while oda.get("otonom_aktif"):
             with app.app_context():
                 try:
+                    if dukkan_kalici_durum is not None:
+                        if not dukkan_kalici_durum.otonom_mu(dukkan):
+                            oda["otonom_aktif"] = False
+                            break
+                        if not dukkan_kalici_durum.lider_ol(dukkan):
+                            liderlik_dustu = True
+                            break
                     if oda.get("aktif_urun_id") and oda.get("sayac_aktif"):
                         pass
                     else:
@@ -2894,7 +3075,18 @@ def dukkan_otonom_dongusu(dukkan):
                         and oda.get("aktif_urun_id")
                         and oda.get("sayac_aktif")
                     ):
+                        if dukkan_kalici_durum is not None:
+                            if not dukkan_kalici_durum.lider_ol(dukkan):
+                                liderlik_dustu = True
+                                break
+                            if not dukkan_kalici_durum.otonom_mu(dukkan):
+                                oda["otonom_aktif"] = False
+                                oda["sayac_aktif"] = False
+                                oda["sayac_gorev_id"] += 1
+                                break
                         socketio.sleep(1)
+                    if liderlik_dustu or not oda.get("otonom_aktif"):
+                        break
                     if not oda.get("otonom_aktif"):
                         break
                     kapanis = ""
@@ -2915,12 +3107,24 @@ def dukkan_otonom_dongusu(dukkan):
                         socketio.sleep(6)
                 except Exception as hata:
                     db.session.rollback()
-                    print(f"[OTONOM] {dukkan}: {hata}")
+                    _otonom_hatayi_bildir(dukkan, hata)
                     socketio.sleep(3)
                 finally:
                     db.session.remove()
     finally:
         _otonom_dongu_calisiyor[dukkan] = False
+        if liderlik_dustu:
+            _otonom_sahipleri.discard(dukkan)
+        else:
+            try:
+                with app.app_context():
+                    if dukkan_kalici_durum is not None:
+                        dukkan_kalici_durum.lider_birak(dukkan)
+                        if not dukkan_kalici_durum.otonom_mu(dukkan):
+                            _otonom_sahipleri.discard(dukkan)
+                            _otonom_sahneyi_indir(dukkan)
+            except Exception as hata:
+                _otonom_hatayi_bildir(dukkan, hata)
 
 
 # VERİTABANI ONARIMI: Tüm eksik kolonları (ip_adresi dahil) PostgreSQL'e otomatik ekler
@@ -3517,10 +3721,11 @@ def overlay_view():
 def api_dukkanlar():
     cikti = {}
     for kod, bilgi in DUKKANLAR.items():
-        oda = odalar.get(kod) or {}
-        sahne = (oda.get("durum") or {}).get("durum")
-        canli = bool(oda.get("aktif_urun_id")) and sahne != "Satıldı"
-        cikti[kod] = {**bilgi, "canli": canli}
+        cikti[kod] = {
+            **bilgi,
+            "canli": dukkan_canli_mi(kod),
+            "otonom_aktif": dukkan_otonom_mu(kod),
+        }
     return jsonify({"success": True, "dukkanlar": cikti})
 
 
@@ -3857,7 +4062,8 @@ def api_durum():
                 "durum": durum.get("durum") or "Bekliyor",
                 "kazanan": durum.get("kazanan") or "Yok",
                 "sayac_aktif": bool(oda.get("sayac_aktif")),
-                "canli": bool(oda.get("sayac_aktif") or urun_id),
+                "otonom_aktif": dukkan_otonom_mu(kod),
+                "canli": dukkan_canli_mi(kod),
             }
         return jsonify({"success": True, "dukkanlar": ozet})
     finally:
@@ -4009,6 +4215,13 @@ def durum_getir():
             "gruplanmis_dosyalar": list(gruplanmis_dosyalar.values()),
             "on_teklifler": on_teklifler,
             "muzik_listesi": muzikler,
+            "otonom_aktif": dukkan_otonom_mu(dukkan),
+            "canli": dukkan_canli_mi(dukkan),
+            "otonom_hata": (
+                (dukkan_kalici_durum.oku(dukkan).get("son_hata") or "")
+                if dukkan_kalici_durum is not None
+                else ""
+            ),
         })
     except Exception as e:
         db.session.rollback()
@@ -7494,56 +7707,71 @@ def cop_kutusunu_kalici_bosalt():
 @app.route("/api/admin/otonom-mezat-kontrol", methods=["POST"])
 @admin_required
 def otonom_mezat_kontrol():
-    veri = request.json or {}
-    hedef = veri.get("dukkan", "tumu")
-    durum = bool(veri.get("aktif", False))
+    try:
+        veri = request.json or {}
+        hedef = str(veri.get("dukkan", "tumu") or "tumu").strip().lower()
+        durum = bool(veri.get("aktif", False))
+        hedefler = list(DUKKANLAR.keys()) if hedef == "tumu" else [dukkan_dogrula(hedef)]
+        baslatilan = []
+        lot_yok = []
+        hatalar = []
 
-    hedefler = list(DUKKANLAR.keys()) if hedef == "tumu" else [dukkan_dogrula(hedef)]
-    baslatilan = []
-    lot_yok = []
+        for d in hedefler:
+            try:
+                if durum:
+                    lot = _otonomu_baslat(d)
+                    if lot is None:
+                        lot_yok.append(d)
+                    else:
+                        baslatilan.append({"dukkan": d, "lot": lot})
+                else:
+                    _otonomu_durdur(d)
+            except Exception as hata:
+                db.session.rollback()
+                hatalar.append({"dukkan": d, "mesaj": str(hata)})
+                _otonom_hatayi_bildir(d, hata)
 
-    for d in hedefler:
-        oda = odalar[d]
+        def _ad(kod):
+            return (DUKKANLAR.get(kod) or {}).get("ad") or kod
+
         if durum:
-            oda["otonom_aktif"] = True
-            if not _otonom_dongu_calisiyor.get(d):
-                _otonom_dongu_calisiyor[d] = True
-                socketio.start_background_task(dukkan_otonom_dongusu, d)
-            sahnedeki = (
-                db.session.get(Urun, oda.get("aktif_urun_id"))
-                if oda.get("aktif_urun_id")
-                else None
-            )
-            lotlar = _otonom_satilmamis_lotlar(d)
-            if not _otonom_urun_satildi(sahnedeki):
-                baslatilan.append({"dukkan": d, "lot": sahnedeki.lot_no})
-            elif lotlar:
-                baslatilan.append({"dukkan": d, "lot": lotlar[0].lot_no})
-            else:
-                lot_yok.append(d)
-            socketio.emit(
-                "otonom_durum_degisti", {"dukkan": d, "aktif": True}, room=d
-            )
-        elif oda["otonom_aktif"]:
-            oda["otonom_aktif"] = False
-            socketio.emit(
-                "otonom_durum_degisti", {"dukkan": d, "aktif": False}, room=d
+            mesaj = f"{len(baslatilan)} salonda otonom tur tetiklendi."
+            if lot_yok:
+                mesaj += " Satılmamış lotu olmayan salonlar: " + ", ".join(_ad(k) for k in lot_yok) + "."
+        else:
+            kapanan = _ad(hedef) if hedef != "tumu" else f"{len(hedefler)} salon"
+            mesaj = f"Otonom mezat durduruldu: {kapanan}. Sahneler ve sayaçlar kapatıldı."
+
+        if hatalar:
+            mesaj += " Hata: " + "; ".join(
+                f"{_ad(h['dukkan'])}: {h['mesaj']}" for h in hatalar
             )
 
-    if durum:
-        mesaj = f"{len(baslatilan)} dükkanda otonom tur tetiklendi."
-        if lot_yok:
-            mesaj += " Lot bulunamayan: " + ", ".join(lot_yok) + "."
-    else:
-        mesaj = f"Otonom mezat durduruldu: {hedef.upper()}"
+        durumlar = {}
+        for kod in DUKKANLAR:
+            if dukkan_kalici_durum is not None:
+                try:
+                    durumlar[kod] = dukkan_kalici_durum.otonom_mu(kod)
+                    continue
+                except Exception:
+                    pass
+            durumlar[kod] = bool(odalar[kod].get("otonom_aktif"))
 
-    return jsonify({
-        "success": True,
-        "mesaj": mesaj,
-        "baslatilan_dukkanlar": baslatilan,
-        "lot_bulunamayan": lot_yok,
-        "durumlar": {d: odalar[d]["otonom_aktif"] for d in DUKKANLAR.keys()},
-    })
+        cevap = {
+            "success": not hatalar,
+            "mesaj": mesaj,
+            "baslatilan_dukkanlar": baslatilan,
+            "lot_bulunamayan": lot_yok,
+            "hatalar": hatalar,
+            "durumlar": durumlar,
+        }
+        return jsonify(cevap), (200 if not hatalar else 500)
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "mesaj": f"Otonom kontrol başarısız: {hata}",
+        }), 500
 
 
 MUZIK_VARSAYILAN_VIDEO = "j12l7mQANFU"
@@ -11267,6 +11495,8 @@ def _arkaplan_agir_baslangic():
             _pazaryeri_semasi(app, db)
         print("[BOOT] xml senkron zamanlayicisi", flush=True)
         xml_stok_zamanlayiciyi_baslat()
+        print("[BOOT] otonom gozcu", flush=True)
+        socketio.start_background_task(_otonom_gozcusu)
     except Exception as hata:
         print(f"[BOOT] gecikmeli baslangic atlandi: {hata}", flush=True)
     if getattr(Config, "ELEVENLABS_API_KEY", ""):
