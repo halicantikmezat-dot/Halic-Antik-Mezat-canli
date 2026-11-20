@@ -11,6 +11,7 @@ import os
 import re
 import threading
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, unquote, urlparse
 
 from flask import jsonify, request, session
 from sqlalchemy import text
@@ -107,6 +108,7 @@ _TABLO = "canli_yayin_havuz"
 _PUSH_TABLO = "canli_yayin_push"
 _DINLEYICI_KILIT = threading.RLock()
 _DINLEYICI_DURUM = {"youtube": "kapali", "tiktok": "kapali"}
+_DINLEYICI_MESAJ = {"youtube": "", "tiktok": ""}
 _DINLEYICI_HEDEF = {"youtube": "", "tiktok": ""}
 _DINLEYICI_DUKKAN = {"youtube": "", "tiktok": ""}
 _DINLEYICI_DUR = {"youtube": None, "tiktok": None}
@@ -1058,10 +1060,16 @@ def platform_dinleyici_baslat(kayit=None):
         platform_dinleyici_durdur()
         return _dinleyici_ozet(kayit)
     kanallar = kayit.get("kanallar") or {}
-    yt = _youtube_video_id(kanallar.get("youtube") or "", kayit.get("yayin_url") or "")
-    tt = _tiktok_kullanici(kanallar.get("tiktok") or "")
+    yt_ham = str(kanallar.get("youtube") or "")
+    yt = _youtube_video_id(yt_ham, kayit.get("yayin_url") or "")
+    tt_ham = str(kanallar.get("tiktok") or "")
+    tt = _tiktok_kullanici(tt_ham)
     _dinleyici_yenile("youtube", yt, kod, _youtube_dongu)
     _dinleyici_yenile("tiktok", tt, kod, _tiktok_dongu)
+    if (yt_ham.strip() or str(kayit.get("yayin_url") or "").strip()) and not yt:
+        _dinleyici_mesaj_yaz("youtube", "YouTube video kimliği ayıklanamadı")
+    if tt_ham.strip() and not tt:
+        _dinleyici_mesaj_yaz("tiktok", "TikTok kullanıcı adı ayıklanamadı")
     return _dinleyici_ozet(kayit)
 
 
@@ -1092,23 +1100,34 @@ def _dinleyici_yenile(ad, hedef, dukkan, fn):
         _DINLEYICI_DUKKAN[ad] = dukkan or ""
         if not hedef or fn is None:
             _DINLEYICI_DURUM[ad] = "kapali"
+            _DINLEYICI_MESAJ[ad] = ""
             _DINLEYICI_IS[ad] = None
             _DINLEYICI_DUR[ad] = None
         else:
             dur = threading.Event()
             _DINLEYICI_DUR[ad] = dur
             _DINLEYICI_DURUM[ad] = "kapali"
+            _DINLEYICI_MESAJ[ad] = "Bağlanıyor"
 
             def govde(hedef=hedef, dukkan=dukkan, dur=dur, fn=fn, ad=ad):
                 try:
                     fn(hedef, dukkan, dur)
                 except Exception as hata:
-                    print(f"[CANLI YAYIN] {ad} dinleyici: {hata}", flush=True)
+                    _dinleyici_mesaj_yaz(ad, _hata_ozeti(hata), hedef)
                 finally:
+                    yayinla = False
                     with _DINLEYICI_KILIT:
                         if _DINLEYICI_HEDEF.get(ad) == hedef and _DINLEYICI_DUR.get(ad) is dur:
-                            _DINLEYICI_DURUM[ad] = "kapali"
+                            if _DINLEYICI_DURUM.get(ad) == "bagli":
+                                _DINLEYICI_DURUM[ad] = "kapali"
+                                if (_DINLEYICI_MESAJ.get(ad) or "") == "Sohbet bağlı":
+                                    _DINLEYICI_MESAJ[ad] = "Dinleyici kapandı"
+                                yayinla = True
+                            else:
+                                _DINLEYICI_DURUM[ad] = "kapali"
                     _dinleyici_kalici()
+                    if yayinla:
+                        _olcum_yayinla(zorla=True)
 
             isci = threading.Thread(target=govde, name="canli-" + ad, daemon=True)
             _DINLEYICI_IS[ad] = isci
@@ -1123,17 +1142,19 @@ def _dinleyici_yenile(ad, hedef, dukkan, fn):
 def _youtube_dongu(video_id, dukkan, dur):
     if not _PYTCHAT_VAR or pytchat is None:
         _pasif_uyar("youtube", "[CANLI YAYIN] pytchat kurulu degil, YouTube dinleyici pasif")
+        _dinleyici_mesaj_yaz("youtube", "pytchat kurulu değil", video_id)
         return
     try:
         chat = pytchat.create(video_id=video_id)
     except Exception as hata:
-        print(f"[CANLI YAYIN] youtube baglanamadi: {hata}", flush=True)
+        _dinleyici_mesaj_yaz("youtube", "YouTube bağlanamadı: " + _hata_ozeti(hata), video_id)
         return
     _dinleyici_durum_yaz("youtube", "bagli")
     try:
         while not dur.is_set():
             try:
                 if hasattr(chat, "is_alive") and not chat.is_alive():
+                    _dinleyici_mesaj_yaz("youtube", "YouTube yayını veya sohbeti şu an kapalı", video_id)
                     break
                 demet = chat.get()
                 ogeler = demet.sync_items() if hasattr(demet, "sync_items") else []
@@ -1144,7 +1165,7 @@ def _youtube_dongu(video_id, dukkan, dur):
                     ad = getattr(yazar, "name", None) or "YouTube"
                     _dinleyici_yorum_isle(dukkan, "youtube", ad, getattr(satir, "message", "") or "")
             except Exception as hata:
-                print(f"[CANLI YAYIN] youtube okuma: {hata}", flush=True)
+                _dinleyici_mesaj_yaz("youtube", "YouTube okuma hatası: " + _hata_ozeti(hata), video_id)
                 break
             if dur.wait(1.0):
                 break
@@ -1161,14 +1182,15 @@ def _youtube_dongu(video_id, dukkan, dur):
 
 
 def _tiktok_dongu(kullanici, dukkan, dur):
+    unique = str(kullanici or "").strip().lstrip("@")
     if not _TIKTOK_VAR or TikTokLiveClient is None:
         _pasif_uyar("tiktok", "[CANLI YAYIN] TikTokLive kurulu degil, TikTok dinleyici pasif")
+        _dinleyici_mesaj_yaz("tiktok", "TikTokLive kurulu değil", unique)
         return
-    unique = kullanici if str(kullanici).startswith("@") else "@" + str(kullanici)
     try:
         client = TikTokLiveClient(unique_id=unique)
     except Exception as hata:
-        print(f"[CANLI YAYIN] tiktok istemci: {hata}", flush=True)
+        _dinleyici_mesaj_yaz("tiktok", "TikTok bağlanamadı: " + _hata_ozeti(hata), unique)
         return
     with _DINLEYICI_KILIT:
         _DINLEYICI_ISTEMCI["tiktok"] = client
@@ -1193,7 +1215,7 @@ def _tiktok_dongu(kullanici, dukkan, dur):
             client.on("comment")(_yorum)
             client.on("connect")(_baglandi)
         except Exception as hata:
-            print(f"[CANLI YAYIN] tiktok olay kaydi: {hata}", flush=True)
+            _dinleyici_mesaj_yaz("tiktok", "TikTok olay kaydı kurulamadı: " + _hata_ozeti(hata), unique)
             return
 
     def _izle():
@@ -1203,6 +1225,8 @@ def _tiktok_dongu(kullanici, dukkan, dur):
     threading.Thread(target=_izle, name="canli-tiktok-kapat", daemon=True).start()
     try:
         client.run()
+    except Exception as hata:
+        _dinleyici_mesaj_yaz("tiktok", "TikTok bağlantı hatası: " + _hata_ozeti(hata), unique)
     finally:
         with _DINLEYICI_KILIT:
             if _DINLEYICI_ISTEMCI.get("tiktok") is client:
@@ -1271,9 +1295,42 @@ def _istemci_kapat(client):
 
 def _dinleyici_durum_yaz(ad, durum):
     with _DINLEYICI_KILIT:
-        _DINLEYICI_DURUM[ad] = "bagli" if durum == "bagli" else "kapali"
+        bagli = durum == "bagli"
+        _DINLEYICI_DURUM[ad] = "bagli" if bagli else "kapali"
+        if bagli:
+            _DINLEYICI_MESAJ[ad] = "Sohbet bağlı"
     _dinleyici_kalici()
     _olcum_yayinla(zorla=True)
+
+
+def _dinleyici_mesaj_yaz(ad, metin, hedef=None):
+    kisa = _kisa_durum(metin)
+    with _DINLEYICI_KILIT:
+        if hedef is not None and (_DINLEYICI_HEDEF.get(ad) or "") != hedef:
+            return
+        _DINLEYICI_MESAJ[ad] = kisa
+        _DINLEYICI_DURUM[ad] = "kapali"
+    if kisa:
+        print(f"[CANLI YAYIN] {ad}: {kisa}", flush=True)
+    _dinleyici_kalici()
+    _olcum_yayinla(zorla=True)
+
+
+def _kisa_durum(metin):
+    return " ".join(str(metin or "").split())[:160]
+
+
+def _hata_ozeti(hata):
+    ad = type(hata).__name__
+    metin = _kisa_durum(hata)
+    birlesik = (ad + " " + metin).lower()
+    if "offline" in birlesik or "not online" in birlesik or "is offline" in birlesik:
+        return "Yayın şu an kapalı"
+    if "no module" in birlesik or "not installed" in birlesik or "modulenotfound" in birlesik:
+        return "Gerekli paket kurulu değil"
+    if not metin:
+        return ad[:160]
+    return metin
 
 
 def _dinleyici_anlik():
@@ -1281,6 +1338,8 @@ def _dinleyici_anlik():
         return {
             "youtube": _DINLEYICI_DURUM.get("youtube") or "kapali",
             "tiktok": _DINLEYICI_DURUM.get("tiktok") or "kapali",
+            "youtube_mesaj": _DINLEYICI_MESAJ.get("youtube") or "",
+            "tiktok_mesaj": _DINLEYICI_MESAJ.get("tiktok") or "",
             "toplam_yorum": int(_OLCUM.get("toplam_yorum") or 0),
             "otomatik_pey": int(_OLCUM.get("otomatik_pey") or 0),
         }
@@ -1295,6 +1354,8 @@ def _dinleyici_ozet(kayit=None):
         "tiktoklive": _TIKTOK_VAR,
         "youtube": anlik["youtube"] if anlik["youtube"] in ("bagli", "kapali") else "kapali",
         "tiktok": anlik["tiktok"] if anlik["tiktok"] in ("bagli", "kapali") else "kapali",
+        "youtube_mesaj": anlik.get("youtube_mesaj") or "",
+        "tiktok_mesaj": anlik.get("tiktok_mesaj") or "",
         "webhook": "bagli" if _webhook_adresi(kayit) else "kapali",
         "push_abone": _push_sayisi(),
         "toplam_yorum": anlik["toplam_yorum"],
@@ -1383,14 +1444,36 @@ def _redis_json(anahtar):
 
 
 def _youtube_video_id(*adaylar):
+    """Tam YouTube adresinden veya çıplak kimlikten 11 karakterlik video ID döndürür."""
     for ham in adaylar:
-        metin = str(ham or "").strip()
+        metin = unquote(str(ham or "").strip())
         if not metin:
             continue
         if re.fullmatch(r"[A-Za-z0-9_-]{11}", metin):
             return metin
+        try:
+            parca = urlparse(metin if "://" in metin else "https://" + metin)
+        except ValueError:
+            parca = None
+        if parca is not None:
+            for anahtar in ("v", "vi"):
+                for deger in parse_qs(parca.query).get(anahtar) or []:
+                    if re.fullmatch(r"[A-Za-z0-9_-]{11}", deger):
+                        return deger
+            yol = unquote(parca.path or "")
+            eslesen_yol = re.search(
+                r"/(?:live|embed|shorts|v|e)/([A-Za-z0-9_-]{11})(?:[/?#]|$)",
+                yol,
+                flags=re.IGNORECASE,
+            )
+            if eslesen_yol:
+                return eslesen_yol.group(1)
+            if "youtu.be" in (parca.netloc or "").lower():
+                aday = yol.strip("/").split("/")[0]
+                if re.fullmatch(r"[A-Za-z0-9_-]{11}", aday):
+                    return aday
         eslesen = re.search(
-            r"(?:v=|vi=|youtu\.be/|youtube\.com/(?:live|embed|shorts|v)/)([A-Za-z0-9_-]{11})",
+            r"(?:[?&]v=|[?&]vi=|youtu\.be/|youtube\.com/(?:live|embed|shorts|v|e)/)([A-Za-z0-9_-]{11})",
             metin,
             flags=re.IGNORECASE,
         )
@@ -1409,14 +1492,21 @@ def _youtube_kaynak(deger):
 
 
 def _tiktok_kullanici(ham):
-    metin = str(ham or "").strip()
+    """Tam TikTok adresinden veya @ad girişinden @ işaretsiz kullanıcı adını döndürür."""
+    metin = unquote(str(ham or "").strip())
     if not metin:
         return ""
-    eslesen = re.search(r"tiktok\.com/@([A-Za-z0-9._]{2,32})", metin, flags=re.IGNORECASE)
+    metin = metin.split("?")[0].split("#")[0].strip()
+    eslesen = re.search(
+        r"tiktok\.com/@([A-Za-z0-9._]{2,32})(?:/|$)",
+        metin,
+        flags=re.IGNORECASE,
+    )
     if eslesen:
         return eslesen.group(1)
-    if re.fullmatch(r"@?[A-Za-z0-9._]{2,32}", metin):
-        return metin.lstrip("@")
+    sade = metin.rstrip("/").split("/")[0].strip()
+    if re.fullmatch(r"@?[A-Za-z0-9._]{2,32}", sade):
+        return sade.lstrip("@")
     return ""
 
 

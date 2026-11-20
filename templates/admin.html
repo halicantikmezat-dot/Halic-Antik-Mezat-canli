@@ -1691,8 +1691,18 @@
         const webhook = document.getElementById('cyRozetWebhook');
         const push = document.getElementById('cyRozetPush');
         const sayac = document.getElementById('cyHavuzSayac');
-        if (youtube) youtube.textContent = 'YouTube: ' + (din.youtube === 'bagli' ? 'bağlı' : 'kapalı');
-        if (tiktok) tiktok.textContent = 'TikTok: ' + (din.tiktok === 'bagli' ? 'bağlı' : 'kapalı');
+        if (youtube) {
+            const ytBagli = din.youtube === 'bagli';
+            const ytMesaj = String(din.youtube_mesaj || '').trim();
+            youtube.textContent = 'YouTube: ' + (ytBagli ? 'bağlı' : 'kapalı');
+            youtube.title = ytMesaj || (ytBagli ? 'YouTube sohbeti bağlı' : 'YouTube dinleyici kapalı');
+        }
+        if (tiktok) {
+            const ttBagli = din.tiktok === 'bagli';
+            const ttMesaj = String(din.tiktok_mesaj || '').trim();
+            tiktok.textContent = 'TikTok: ' + (ttBagli ? 'bağlı' : 'kapalı');
+            tiktok.title = ttMesaj || (ttBagli ? 'TikTok sohbeti bağlı' : 'TikTok dinleyici kapalı');
+        }
         if (webhook) webhook.textContent = 'Webhook: ' + (din.webhook === 'bagli' ? 'bağlı' : 'kapalı');
         canliRozetBoyasi(youtube, din.youtube === 'bagli');
         canliRozetBoyasi(tiktok, din.tiktok === 'bagli');

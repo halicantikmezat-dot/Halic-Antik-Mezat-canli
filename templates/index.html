@@ -3787,16 +3787,33 @@
         menu.innerHTML = '';
         const platformlar = (sonCanliYayin && sonCanliYayin.platformlar) || {};
         TUM_KANALLAR.forEach(function (cift) {
-            const adres = platformlar[cift[0]];
-            const oge = document.createElement(adres ? 'a' : 'span');
+            const adres = kanalBaglantisi(cift[0], platformlar[cift[0]]);
+            if (!adres) return;
+            const oge = document.createElement('a');
+            oge.href = adres;
+            oge.target = '_blank';
+            oge.rel = 'noopener noreferrer';
             oge.textContent = cift[1];
-            if (adres) {
-                oge.href = adres;
-                oge.target = '_blank';
-                oge.rel = 'noopener noreferrer';
-            }
             menu.appendChild(oge);
         });
+        if (!menu.childElementCount) {
+            const bos = document.createElement('span');
+            bos.textContent = 'Tanımlı kanal yok';
+            menu.appendChild(bos);
+        }
+    }
+
+    function kanalBaglantisi(kod, ham) {
+        const adres = String(ham || '').trim();
+        if (!adres) return '';
+        if (/^https?:\/\//i.test(adres)) return adres;
+        if (kod === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(adres)) {
+            return 'https://www.youtube.com/watch?v=' + adres;
+        }
+        if (kod === 'tiktok' && /^@?[A-Za-z0-9._]{2,32}$/.test(adres)) {
+            return 'https://www.tiktok.com/@' + adres.replace(/^@/, '');
+        }
+        return '';
     }
 
     function tumKanallariAcKapa(zorla) {
