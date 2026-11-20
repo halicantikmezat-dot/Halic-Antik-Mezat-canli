@@ -419,6 +419,33 @@
 
     <!-- 10 DÜKKAN SEÇİM BARI -->
     <div class="shop-selector-bar" id="shopBar"></div>
+    <details id="canliYayinKarti" class="card">
+        <summary class="card-title" style="cursor:pointer; margin:0;">📡 Canlı Yayın &amp; Sosyal Havuz</summary>
+        <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+            <div id="canliYayinDurumSatiri" style="font-size:13px; color:#94a3b8;">Seçili dükkan için yayın kapalı.</div>
+            <input type="text" id="cyBaslik" placeholder="Yayın başlığı" maxlength="180">
+            <input type="url" id="cyUrl" placeholder="Yayın linki (https://...)">
+            <button type="button" id="cyAnahtar" class="btn btn-red" onclick="canliYayinAnahtar()">Bu Dükkanda Canlı Yayın Başlat</button>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <input type="url" id="cyYoutube" placeholder="YouTube">
+                <input type="url" id="cyInstagram" placeholder="Instagram">
+                <input type="url" id="cyFacebook" placeholder="Facebook">
+                <input type="url" id="cyTiktok" placeholder="TikTok">
+                <input type="url" id="cyKick" placeholder="Kick">
+                <input type="url" id="cyTwitch" placeholder="Twitch">
+                <input type="url" id="cyX" placeholder="X">
+                <input type="url" id="cyTelegram" placeholder="Telegram">
+            </div>
+            <input type="url" id="cyWebhook" placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
+            <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
+                <button type="button" class="btn btn-blue btn-sm" onclick="canliSosyalKopyala()">Sosyal Linkleri Kopyala</button>
+                <button type="button" class="btn btn-sm" style="background:#0d9488; color:#fff;" onclick="canliDuyuruKopyala()">Duyuruyu Kopyala</button>
+            </div>
+            <div id="canliYayinNot" style="font-size:12px; color:#86efac; min-height:16px;"></div>
+        </div>
+    </details>
     <div id="yeniUrunlerPanel" class="card" hidden>
         <div class="card-title">🔥 Yeni Ürünler <span id="yeniUrunSayisi" style="font-size:12px; color:#94a3b8;"></span></div>
         <p style="font-size:12px; color:#94a3b8; margin-bottom:8px;">
@@ -1569,7 +1596,181 @@
             .catch(function () {});
         veriCekAdmin(true);
         adminUrunAra();
+        canliYayinPaneliCiz();
     }
+
+    let canliYayinKaydi = null;
+    const canliKanalAlanlari = [
+        ['youtube', 'cyYoutube'],
+        ['instagram', 'cyInstagram'],
+        ['facebook', 'cyFacebook'],
+        ['tiktok', 'cyTiktok'],
+        ['kick', 'cyKick'],
+        ['twitch', 'cyTwitch'],
+        ['x', 'cyX'],
+        ['telegram', 'cyTelegram']
+    ];
+
+    function canliYayinNotu(metin) {
+        const kutu = document.getElementById('canliYayinNot');
+        if (kutu) kutu.textContent = metin || '';
+    }
+
+    function canliYayinFormu(islem) {
+        const kanallar = {};
+        canliKanalAlanlari.forEach(function (cift) {
+            const alan = document.getElementById(cift[1]);
+            kanallar[cift[0]] = alan ? alan.value.trim() : '';
+        });
+        return {
+            islem: islem,
+            dukkan: seciliDukkan,
+            yayin_basligi: (document.getElementById('cyBaslik') || {}).value || '',
+            yayin_url: (document.getElementById('cyUrl') || {}).value || '',
+            kanallar: kanallar,
+            webhook_url: (document.getElementById('cyWebhook') || {}).value || '',
+            duyuru_metni: (document.getElementById('cyDuyuru') || {}).value || ''
+        };
+    }
+
+    function canliYayinPaneliCiz() {
+        const kayit = canliYayinKaydi || {};
+        const ayar = kayit.ayarlar || {};
+        const kanallar = ayar.kanallar || kayit.platformlar || {};
+        const taslak = (ayar.taslaklar && ayar.taslaklar[seciliDukkan]) || {};
+        const burada = !!(kayit.aktif && kayit.aktif_dukkan === seciliDukkan);
+        const baslik = document.getElementById('cyBaslik');
+        const url = document.getElementById('cyUrl');
+        if (baslik && document.activeElement !== baslik) {
+            baslik.value = burada ? (kayit.yayin_basligi || '') : (taslak.yayin_basligi || '');
+        }
+        if (url && document.activeElement !== url) {
+            url.value = burada ? (kayit.yayin_url || '') : (taslak.yayin_url || '');
+        }
+        canliKanalAlanlari.forEach(function (cift) {
+            const alan = document.getElementById(cift[1]);
+            if (alan && document.activeElement !== alan) alan.value = kanallar[cift[0]] || '';
+        });
+        const webhook = document.getElementById('cyWebhook');
+        const duyuru = document.getElementById('cyDuyuru');
+        if (webhook && document.activeElement !== webhook) webhook.value = ayar.webhook_url || '';
+        if (duyuru && document.activeElement !== duyuru) duyuru.value = ayar.duyuru_metni || '';
+        const anahtar = document.getElementById('cyAnahtar');
+        if (anahtar) {
+            anahtar.textContent = burada ? 'Bu Dükkanda Canlı Yayını Durdur' : 'Bu Dükkanda Canlı Yayın Başlat';
+            anahtar.className = burada ? 'btn btn-yellow' : 'btn btn-red';
+        }
+        const satir = document.getElementById('canliYayinDurumSatiri');
+        if (satir) {
+            if (kayit.aktif && kayit.aktif_dukkan) {
+                satir.textContent = burada
+                    ? 'Bu dükkan şu an canlı yayında.'
+                    : ((kayit.dukkan_adi || kayit.aktif_dukkan) + ' dükkanında canlı yayın var.');
+            } else {
+                satir.textContent = 'Seçili dükkan için yayın kapalı.';
+            }
+        }
+    }
+
+    function canliYayinDurumunuAl() {
+        fetch('/api/canli-yayin/durum', { credentials: 'same-origin' })
+            .then(function (yanit) { return yanit.json(); })
+            .then(function (veri) {
+                canliYayinKaydi = veri || {};
+                canliYayinPaneliCiz();
+            })
+            .catch(function () {});
+    }
+
+    function canliYayinGonder(islem) {
+        fetch('/api/canli-yayin/kontrol', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(canliYayinFormu(islem))
+        })
+            .then(function (yanit) { return yanit.json().then(function (veri) { return { kod: yanit.status, veri: veri }; }); })
+            .then(function (paket) {
+                if (!paket.veri || paket.veri.success === false) {
+                    canliYayinNotu((paket.veri && paket.veri.mesaj) || 'İşlem tamamlanamadı.');
+                    return;
+                }
+                canliYayinKaydi = paket.veri;
+                canliYayinPaneliCiz();
+                canliYayinNotu(paket.veri.mesaj || 'Kaydedildi.');
+            })
+            .catch(function () { canliYayinNotu('Bağlantı kurulamadı.'); });
+    }
+
+    function canliYayinAnahtar() {
+        const burada = canliYayinKaydi && canliYayinKaydi.aktif && canliYayinKaydi.aktif_dukkan === seciliDukkan;
+        canliYayinGonder(burada ? 'durdur' : 'baslat');
+    }
+
+    function canliYayinAyarKaydet() {
+        canliYayinGonder('ayar_kaydet');
+    }
+
+    function panoyaYaz(metin) {
+        const yazi = String(metin || '').trim();
+        if (!yazi) {
+            canliYayinNotu('Kopyalanacak metin yok.');
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(yazi).then(function () {
+                canliYayinNotu('Panoya kopyalandı.');
+            }).catch(function () { panoyaYedek(yazi); });
+            return;
+        }
+        panoyaYedek(yazi);
+    }
+
+    function panoyaYedek(yazi) {
+        const alan = document.createElement('textarea');
+        alan.value = yazi;
+        alan.setAttribute('readonly', '');
+        alan.style.position = 'fixed';
+        alan.style.left = '-9999px';
+        document.body.appendChild(alan);
+        alan.select();
+        try {
+            document.execCommand('copy');
+            canliYayinNotu('Panoya kopyalandı.');
+        } catch (e) {
+            canliYayinNotu('Kopyalama başarısız.');
+        }
+        alan.remove();
+    }
+
+    function canliSosyalKopyala() {
+        const satirlar = [];
+        canliKanalAlanlari.forEach(function (cift) {
+            const alan = document.getElementById(cift[1]);
+            const deger = alan ? alan.value.trim() : '';
+            if (deger) satirlar.push(cift[0] + ': ' + deger);
+        });
+        panoyaYaz(satirlar.join('\n'));
+    }
+
+    function canliDuyuruKopyala() {
+        const ayar = (canliYayinKaydi && canliYayinKaydi.ayarlar) || {};
+        const ad = (dukkanlar[seciliDukkan] && dukkanlar[seciliDukkan].ad) || seciliDukkan;
+        const link = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(seciliDukkan);
+        let metin = String((document.getElementById('cyDuyuru') || {}).value || '').trim();
+        if (!metin) metin = String(ayar.duyuru_hazir || '').trim();
+        if (!metin) {
+            metin = '🔴 CANLI MEZAT BAŞLADI! ' + ad + ' Dükkanında Şu An Canlı Yayın Var — Hemen Katıl\n' + link;
+        }
+        metin = metin.replaceAll('{dukkan_adi}', ad).replaceAll('{dukkan}', seciliDukkan).replaceAll('{link}', link);
+        panoyaYaz(metin);
+    }
+
+    socket.on('aktif_canli_yayin', function (veri) {
+        canliYayinKaydi = Object.assign({}, canliYayinKaydi || {}, veri || {});
+        canliYayinPaneliCiz();
+    });
+    canliYayinDurumunuAl();
 
     function dukkanEtiketi(kod) {
         const ad = (dukkanlar[kod] && dukkanlar[kod].ad) || kod || "";

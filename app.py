@@ -11710,6 +11710,50 @@ try:
 except Exception as hata:
     print(f"[BOOT] katalog havuzu atlandi: {hata}", flush=True)
 
+print("[BOOT] canli yayin havuzu", flush=True)
+try:
+    import canli_yayin_havuzu as _canli_yayin_havuzu
+
+    _canli_yayin_havuzu.bagla(
+        app=app,
+        db=db,
+        socketio=socketio,
+        dukkanlar=DUKKANLAR,
+        dukkan_dogrula=dukkan_dogrula,
+        tutar_coz=turkce_tutar_coz,
+        odalar=odalar,
+        oda_kilitleri=oda_kilitleri,
+        urun_model=Urun,
+        teklif_model=Teklif,
+        pey_kabul=_pey_kabul_mu,
+        pey_duyur=_pey_duyur,
+        gizli_esik=_gizli_esige_vardi,
+        erken_sat=_pazarlik_erken_sat,
+        nabiz=_nabiz_dokun,
+        iki_oda=_iki_odayi,
+        sicak_soguk=ahmet_sicak_soguk_seslendir,
+        pey_ses=ahmet_pey_reaksiyonunu_seslendir,
+        acilis_tabani=_acilis_tabani,
+        kopru_kabul=_kopru_kabul,
+    )
+
+    @app.route("/api/canli-yayin/durum", methods=["GET"])
+    def api_canli_yayin_durum():
+        return _canli_yayin_havuzu.durum_yaniti()
+
+    @app.route("/api/canli-yayin/kontrol", methods=["POST"])
+    @admin_required
+    def api_canli_yayin_kontrol():
+        return _canli_yayin_havuzu.kontrol_yaniti()
+
+    @app.route("/api/canli-yayin/webhook-yorum", methods=["POST"])
+    def api_canli_yayin_webhook_yorum():
+        return _canli_yayin_havuzu.webhook_yorum_yaniti()
+
+    print("[BOOT] canli yayin havuzu hazir", flush=True)
+except Exception as hata:
+    print(f"[BOOT] canli yayin havuzu atlandi: {hata}", flush=True)
+
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 

@@ -4,13 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <title>Haliç Antik Mezat - Canlı Mezat</title>
-    <meta name="description" content="Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.">
-    <meta property="og:title" content="Haliç Antik Mezat - Canlı Mezat">
-    <meta property="og:description" content="Balat'ta canlı mezat. Eseri izleyin, pey verin veya hemen alın.">
-    <meta property="og:image" content="/static/img/varsayilan_urun.png">
-    <meta property="og:url" content="">
+    {% set _canli_urun = ilk_sahne.aktif_urun if (ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun) else none %}
+    {% set _dukkan_ad = dukkanlar[secili_dukkan].ad if (secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar) else 'Gümüş' %}
+    {% set _seo_baslik = ('Canlı Mezat: ' ~ _canli_urun.ad ~ ' | ' ~ _dukkan_ad) if _canli_urun else ('Haliç Antik Mezat - ' ~ _dukkan_ad ~ ' Canlı Mezat') %}
+    {% set _seo_aciklama = ((_canli_urun.tanitim_yazisi or ('Haliç Antik canlı mezat. ' ~ _dukkan_ad ~ ' dükkanında eseri izleyin, pey verin veya hemen alın.'))[:180]) if _canli_urun else 'Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.' %}
+    {% set _seo_gorsel = (_canli_urun.fotograflar[0] if (_canli_urun and _canli_urun.fotograflar) else '/static/img/varsayilan_urun.png') %}
+    {% set _seo_url = 'https://halicantikcanli.com/?dukkan=' ~ (secili_dukkan if secili_dukkan is defined else 'gumus') %}
+    <title>{{ _seo_baslik }}</title>
+    <meta name="description" content="{{ _seo_aciklama }}">
+    <meta property="og:site_name" content="Haliç Antik Canlı Mezat">
+    <meta property="og:title" content="{{ _seo_baslik }}">
+    <meta property="og:description" content="{{ _seo_aciklama }}">
+    <meta property="og:image" content="{{ _seo_gorsel }}">
+    <meta property="og:url" content="{{ _seo_url }}">
     <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ _seo_baslik }}">
+    <meta name="twitter:description" content="{{ _seo_aciklama }}">
+    <meta name="twitter:image" content="{{ _seo_gorsel }}">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1709,10 +1720,104 @@
             font-weight: 800;
             cursor: pointer;
         }
+        #canliYonlendirmeSeridi {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 4200;
+            margin: 0;
+            border: 0;
+            width: 100%;
+            padding: 10px 14px;
+            background: #9f1239;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 800;
+            line-height: 1.35;
+            text-align: center;
+            cursor: pointer;
+        }
+        #canliYonlendirmeSeridi.gorunur { display: block; animation: canliSeritBlink 1.1s steps(1, end) infinite; }
+        @keyframes canliSeritBlink { 50% { background: #be123c; color: #ffe4e6; } }
+        #canliYayinRozeti {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            z-index: 4100;
+            background: #9f1239;
+            color: #fff;
+            border: 1px solid #fecdd3;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+        }
+        #tumKanallarKarti {
+            position: fixed;
+            right: 10px;
+            bottom: 10px;
+            z-index: 4050;
+            width: min(320px, calc(100% - 20px));
+            background: #141b24;
+            color: #f8fafc;
+            border: 1px solid #d4af37;
+            border-radius: 12px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+        }
+        #tumKanallarKarti summary {
+            cursor: pointer;
+            padding: 10px 12px;
+            font-weight: 800;
+            color: #f6e27a;
+            list-style: none;
+        }
+        #tumKanallarKarti a {
+            display: block;
+            margin: 0 10px 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #0f151d;
+            color: #7dd3fc;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .platform-rozet {
+            display: inline-block;
+            margin-right: 4px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            background: #9f1239;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 800;
+        }
+        #canliKalpSahne { position: fixed; inset: 0; pointer-events: none; z-index: 4300; overflow: hidden; }
+        .ucusan-kalp {
+            position: absolute;
+            bottom: 20%;
+            font-size: 22px;
+            animation: kalpUc 1.7s ease-out forwards;
+        }
+        @keyframes kalpUc { to { transform: translateY(-260px) scale(1.25); opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) {
+            #canliYonlendirmeSeridi.gorunur, .ucusan-kalp { animation: none; }
+        }
     </style>
 </head>
 <body onclick="sesKilidiAc()">
 
+<button type="button" id="canliYonlendirmeSeridi" hidden>🔴 CANLI MEZAT BAŞLADI!</button>
+<div id="canliYayinRozeti" hidden>🔴 CANLI / LIVE</div>
+<details id="tumKanallarKarti" hidden>
+    <summary>Tüm Kanallarımız</summary>
+    <div id="tumKanallarListe"></div>
+</details>
+<div id="canliKalpSahne" aria-hidden="true"></div>
 <div id="liveToast"></div>
 <div id="pazarlikPopup" class="pazarlik-popup" onclick="this.classList.remove('acik')">
     <b>Pazarlık Başarılı - Ürün Satıldı!</b>
@@ -2607,6 +2712,7 @@
         satildiDamgasiniGizle();
         odayaKatil();
         canliDurumuGetirHafif();
+        canliYayinArayuzunuCiz();
     }
 
     function odayaKatil() {
@@ -3378,10 +3484,114 @@
         if (kutu) {
             const satir = document.createElement('div');
             satir.className = 'chat-item';
-            satir.innerHTML = `<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}`;
+            const rozet = (data.havuz && data.platform)
+                ? `<span class="platform-rozet">${escapeHtml(data.platform)}</span> `
+                : '';
+            satir.innerHTML = `${rozet}<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}`;
             kutu.appendChild(satir);
+            kutu.scrollTop = kutu.scrollHeight;
         }
     });
+
+    let sonCanliYayin = null;
+    const kanalSirasi = [
+        ['youtube', 'YouTube'],
+        ['instagram', 'Instagram'],
+        ['facebook', 'Facebook'],
+        ['tiktok', 'TikTok'],
+        ['kick', 'Kick'],
+        ['twitch', 'Twitch'],
+        ['x', 'X'],
+        ['telegram', 'Telegram']
+    ];
+
+    function canliYayinArayuzunuCiz(veri) {
+        if (veri) sonCanliYayin = veri;
+        const kayit = sonCanliYayin;
+        const serit = document.getElementById('canliYonlendirmeSeridi');
+        const rozet = document.getElementById('canliYayinRozeti');
+        const kart = document.getElementById('tumKanallarKarti');
+        const liste = document.getElementById('tumKanallarListe');
+        const aktif = !!(kayit && kayit.aktif && kayit.aktif_dukkan);
+        const burada = aktif && kayit.aktif_dukkan === aktifDukkan;
+        window.canliYayinBuDukkan = burada;
+        if (serit) {
+            if (aktif && !burada) {
+                serit.hidden = false;
+                serit.classList.add('gorunur');
+                serit.textContent = '🔴 CANLI MEZAT BAŞLADI! ' + (kayit.dukkan_adi || 'Mezat') + ' Dükkanında Şu An Canlı Yayın Var — Hemen Katıl';
+                serit.dataset.dukkan = kayit.aktif_dukkan;
+            } else {
+                serit.hidden = true;
+                serit.classList.remove('gorunur');
+            }
+        }
+        if (rozet) rozet.hidden = !burada;
+        if (kart) {
+            kart.hidden = !burada;
+            if (!burada) kart.removeAttribute('open');
+        }
+        if (liste) {
+            liste.innerHTML = '';
+            const platformlar = (kayit && kayit.platformlar) || {};
+            let sayi = 0;
+            kanalSirasi.forEach(function (cift) {
+                const adres = platformlar[cift[0]];
+                if (!adres) return;
+                sayi += 1;
+                const link = document.createElement('a');
+                link.href = adres;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = cift[1];
+                liste.appendChild(link);
+            });
+            if (!sayi) {
+                const bos = document.createElement('div');
+                bos.style.cssText = 'padding:0 12px 10px; color:#94a3b8; font-size:12px;';
+                bos.textContent = 'Kanallar henüz eklenmedi.';
+                liste.appendChild(bos);
+            }
+        }
+    }
+
+    function canliYayinDurumunuAl() {
+        fetch('/api/canli-yayin/durum')
+            .then(function (yanit) { return yanit.json(); })
+            .then(function (veri) { canliYayinArayuzunuCiz(veri || {}); })
+            .catch(function () {});
+    }
+
+    function ucusanKalp() {
+        const sahne = document.getElementById('canliKalpSahne');
+        if (!sahne) return;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        while (sahne.childElementCount > 10) sahne.removeChild(sahne.firstChild);
+        const kalp = document.createElement('span');
+        kalp.className = 'ucusan-kalp';
+        kalp.textContent = '❤';
+        kalp.style.left = (18 + Math.random() * 64) + '%';
+        kalp.style.color = Math.random() > 0.5 ? '#fb7185' : '#fda4af';
+        sahne.appendChild(kalp);
+        setTimeout(function () { if (kalp.parentNode) kalp.remove(); }, 1800);
+    }
+
+    const canliSerit = document.getElementById('canliYonlendirmeSeridi');
+    if (canliSerit) {
+        canliSerit.addEventListener('click', function () {
+            const kod = canliSerit.dataset.dukkan;
+            if (!kod) return;
+            window.location.href = '/?dukkan=' + encodeURIComponent(kod);
+        });
+    }
+    socket.on('aktif_canli_yayin', function (veri) {
+        canliYayinArayuzunuCiz(veri || {});
+    });
+    socket.on('canli_kalp', function (veri) {
+        if (!veri || (veri.dukkan && veri.dukkan !== aktifDukkan)) return;
+        ucusanKalp();
+    });
+    canliYayinDurumunuAl();
 
     function cekicVur() {
         const ctx = sesBaglaminiAc();
@@ -5924,15 +6134,26 @@
         const ad = 'LOT #' + (urun.lot || '') + ' - ' + (urun.ad || '');
         const fiyat = Number(urun.guncel_fiyat || urun.fiyat || 0);
         const gorsel = (urun.fotograflar && urun.fotograflar[0]) || '/static/img/varsayilan_urun.png';
-        if (ogTitle) ogTitle.setAttribute('content', ad);
+        const aciklamaHam = (urun.tanitim_yazisi || 'Haliç Antik canlı mezat eseri').slice(0, 180);
+        const aciklama = window.canliYayinBuDukkan ? (aciklamaHam + ' Şu an canlı mezattayız.').slice(0, 200) : aciklamaHam;
+        const baslik = window.canliYayinBuDukkan ? ('🔴 CANLI | ' + ad) : ad;
+        document.title = baslik + ' | Haliç Antik Canlı Mezat';
+        const desc = document.querySelector('meta[name="description"]');
+        if (desc) desc.setAttribute('content', aciklama);
+        if (ogTitle) ogTitle.setAttribute('content', baslik);
         if (ogImage) ogImage.setAttribute('content', gorsel);
-        if (ogDesc) ogDesc.setAttribute('content', (urun.tanitim_yazisi || 'Haliç Antik canlı mezat eseri').slice(0, 180));
+        if (ogDesc) ogDesc.setAttribute('content', aciklama);
+        ['twitter:title', 'twitter:description', 'twitter:image'].forEach(function (adim, sira) {
+            const et = document.querySelector('meta[name="' + adim + '"]');
+            if (!et) return;
+            et.setAttribute('content', sira === 0 ? baslik : (sira === 1 ? aciklama : gorsel));
+        });
         if (etiket) {
             etiket.textContent = JSON.stringify({
                 '@context': 'https://schema.org',
                 '@type': 'Product',
                 name: ad,
-                description: urun.tanitim_yazisi || ad,
+                description: aciklama,
                 image: gorsel,
                 sku: String(urun.lot || urun.id || ''),
                 offers: {
@@ -7108,6 +7329,7 @@
         } catch (e) {}
         odayaKatil();
         dukkanMenuYukle();
+        canliYayinArayuzunuCiz();
     }
 
     function yeniSlaytUrununeGit(urun) {
