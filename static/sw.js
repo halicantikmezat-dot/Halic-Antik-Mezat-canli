@@ -1,4 +1,5 @@
-var PWA_ONBELLEK = "halic-antik-pwa-v2";
+var CACHE_NAME = "halic-antik-pwa-v3";
+var PWA_ONBELLEK = CACHE_NAME;
 var PWA_DOSYALAR = [
     "/static/img/icon-192.png",
     "/static/img/icon-512.png",

@@ -1531,14 +1531,21 @@
             border-radius: 999px; padding: 0 8px; gap: 4px;
             background: rgba(255,255,255,0.1);
         }
+        .mesaj-kutu-yigin {
+            position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+            display: block;
+        }
         .pwa-indir-yigin {
             position: absolute;
-            left: 168px;
-            right: 4px;
-            bottom: 50px;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 6px);
             height: 32px;
-            width: auto;
-            max-width: none;
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
             margin: 0;
             transform: none;
             z-index: 6;
@@ -1575,8 +1582,11 @@
         }
         .akis-mesaj-satiri .pwa-indir[hidden] { display: none !important; }
         .pwa-indir .pwa-kisa { display: none; }
+        @media (max-width: 900px) {
+            .mesaj-kutu-yigin { display: block; height: auto; min-height: 0; visibility: visible; }
+            #pwaIndirYigin { display: block; height: 32px; min-height: 32px; visibility: visible; }
+        }
         @media (max-width: 520px) {
-            .pwa-indir-yigin { left: 148px; right: 2px; bottom: 50px; }
             .akis-mesaj-satiri .pwa-indir .pwa-uzun { display: none; }
             .akis-mesaj-satiri .pwa-indir .pwa-kisa { display: inline; }
         }
@@ -2125,6 +2135,7 @@
         <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
         </div>
         <div class="akis-mesaj-satiri">
+            <div class="mesaj-kutu-yigin">
             <div class="pwa-indir-yigin" id="pwaIndirYigin">
                 <button type="button" class="pwa-indir pwa-indir-tetik" id="pwaIndirPey" onclick="pwaUygulamayiIndir()">
                     <span class="pwa-uzun">📲 Uygulamayı İndir</span>
@@ -2146,6 +2157,7 @@
                     </div>
                     <input type="text" id="chatMesajGirdi" class="akis-mesaj" placeholder="Mesaj" autocomplete="off" onfocus="hibritYaziAc()" onblur="hibritYaziKapat()" onkeydown="if(event.key==='Enter'){ izleyiciMesajGonder(); this.blur(); }">
                 </div>
+            </div>
             </div>
             <div class="ses-sutunu">
                 <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button" oncontextmenu="return false;"><span>🎤</span></button>
