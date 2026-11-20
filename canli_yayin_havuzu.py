@@ -64,6 +64,7 @@ _sicak_soguk = None
 _pey_ses = None
 _acilis_tabani = None
 _kopru_kabul = None
+_otonom_pas = None
 
 _KANALLAR = (
     "youtube",
@@ -139,12 +140,13 @@ def bagla(
     pey_ses,
     acilis_tabani,
     kopru_kabul,
+    otonom_pas=None,
 ):
     """Bağlantıları alır, şemayı açar ve kalıcı kaydı belleğe yükler."""
     global _app, _db, _socketio, _dukkanlar, _dukkan_dogrula, _tutar_coz
     global _odalar, _oda_kilitleri, _urun_model, _teklif_model
     global _pey_kabul, _pey_duyur, _gizli_esik, _erken_sat, _nabiz, _iki_oda
-    global _sicak_soguk, _pey_ses, _acilis_tabani, _kopru_kabul, _HAZIR
+    global _sicak_soguk, _pey_ses, _acilis_tabani, _kopru_kabul, _otonom_pas, _HAZIR
     _app = app
     _db = db
     _socketio = socketio
@@ -165,6 +167,7 @@ def bagla(
     _pey_ses = pey_ses
     _acilis_tabani = acilis_tabani
     _kopru_kabul = kopru_kabul
+    _otonom_pas = otonom_pas
     _redis_bagla()
     try:
         with app.app_context():
@@ -181,6 +184,7 @@ def bagla(
     try:
         if str(_kopya().get("aktif_dukkan") or ""):
             platform_dinleyici_baslat()
+            _otonom_pas_uygula(True)
     except Exception as hata:
         print(f"[CANLI YAYIN] dinleyici acilisi atlandi: {hata}", flush=True)
     print(
@@ -243,6 +247,32 @@ def herkese_acik_durum():
         "dinleyiciler": _dinleyici_ozet(kayit),
         "push_public_key": _vapid_public() or "",
     }
+
+
+def ozel_yayin_acik_mi():
+    """Yönetici özel yayını Diğer dükkanında açık mı. Redis varsa işçiler onu esas alır."""
+    if _REDIS is not None:
+        uzak = _redis_oku()
+        if isinstance(uzak, dict):
+            norm = _kaydi_normallestir(uzak)
+            kod = str(norm.get("aktif_dukkan") or "")
+            yerel = str(_kopya().get("aktif_dukkan") or "")
+            if kod != yerel:
+                with _KILIT:
+                    _BELLEK.update(norm)
+            return kod == _SABIT_CANLI_DUKKAN
+    return str(_kopya().get("aktif_dukkan") or "") == _SABIT_CANLI_DUKKAN
+
+
+def _otonom_pas_uygula(pas):
+    """Özel yayın açılıp kapanınca otonom sırayı app.py geri çağırır. Sayaç burada değişmez."""
+    fn = _otonom_pas
+    if not callable(fn):
+        return
+    try:
+        fn(bool(pas))
+    except Exception as hata:
+        print(f"[CANLI YAYIN] otonom pas atlandi: {hata}", flush=True)
 
 
 def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj):
@@ -346,6 +376,7 @@ def _baslat(veri):
         _push_yayin_basladi(anlik)
     except Exception as hata:
         print(f"[CANLI YAYIN] web push atlandi: {hata}", flush=True)
+    _otonom_pas_uygula(True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -354,7 +385,7 @@ def _baslat(veri):
 
 
 def _durdur(veri):
-    """Özel yayını kapatır. Mezat sayacı ve otonom döngü bayraklarına dokunmaz."""
+    """Özel yayını kapatır. Mezat sayacı ve kalıcı otonom bayrağı değişmez; dükkan sıraya döner."""
     kod = _dukkan_kodu(veri.get("dukkan")) if veri.get("dukkan") else ""
     with _KILIT:
         kayit = _kopya()
@@ -381,6 +412,7 @@ def _durdur(veri):
         print(f"[CANLI YAYIN] dinleyici kapatilamadi: {hata}", flush=True)
     _kalici_yaz(anlik)
     _olay_yayinla(anlik)
+    _otonom_pas_uygula(False)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()

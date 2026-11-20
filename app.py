@@ -3038,6 +3038,53 @@ def _otonomu_durdur(dukkan):
     _otonom_durum_duyur(dukkan, False)
 
 
+def _diger_ozel_yayinda():
+    """Özel yayın kaydı Diğer dükkanını otonom sırasından düşürür."""
+    try:
+        import canli_yayin_havuzu as modul
+
+        return bool(modul.ozel_yayin_acik_mi())
+    except Exception:
+        return False
+
+
+def _diger_sahneyi_ozel_yayina_birak(dukkan, oda):
+    """Açık özel yayın varken otonom sahneyi boşaltır. Kalıcı otonom bayrağına dokunmaz."""
+    if dukkan != "diger" or oda is None:
+        return
+    bosalt = False
+    with oda_kilitleri[dukkan]:
+        if oda.get("sayac_aktif"):
+            oda["sayac_aktif"] = False
+            oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
+            oda["sayac_kalan"] = 0
+            _gizli_pazarligi_kapat(oda)
+            bosalt = True
+        if oda.get("aktif_urun_id"):
+            bosalt = True
+    if bosalt:
+        _sahneyi_bosa_al(dukkan, "ozel_yayin", sesi_kes=True)
+
+
+def diger_otonom_pas_gec(pas):
+    """Özel yayın açılınca Diğer dükkanını sıradan çıkarır, kapanınca aynı döngüye alır."""
+    kod = "diger"
+    oda = odalar.get(kod)
+    if oda is None:
+        return
+    if pas:
+        sahip = (
+            kod in _otonom_sahipleri
+            or bool(_otonom_dongu_calisiyor.get(kod))
+            or kod in _canli_otorite
+        )
+        if sahip:
+            _diger_sahneyi_ozel_yayina_birak(kod, oda)
+        return
+    if oda.get("otonom_aktif"):
+        _otonom_donguyu_garantile(kod)
+
+
 def _otonom_gozcusu():
     while True:
         try:
@@ -3075,6 +3122,11 @@ def dukkan_otonom_dongusu(dukkan):
                         if not dukkan_kalici_durum.lider_ol(dukkan):
                             liderlik_dustu = True
                             break
+                    if dukkan == "diger" and _diger_ozel_yayinda():
+                        _diger_sahneyi_ozel_yayina_birak(dukkan, oda)
+                        _oturumu_birak()
+                        socketio.sleep(1)
+                        continue
                     if oda.get("aktif_urun_id") and oda.get("sayac_aktif"):
                         pass
                     else:
@@ -3209,8 +3261,20 @@ def dukkan_otonom_dongusu(dukkan):
                                 oda["sayac_aktif"] = False
                                 oda["sayac_gorev_id"] += 1
                                 break
+                        if dukkan == "diger" and _diger_ozel_yayinda():
+                            break
                         _oturumu_birak()
                         socketio.sleep(1)
+                    if (
+                        dukkan == "diger"
+                        and oda.get("otonom_aktif")
+                        and not liderlik_dustu
+                        and _diger_ozel_yayinda()
+                    ):
+                        _diger_sahneyi_ozel_yayina_birak(dukkan, oda)
+                        _oturumu_birak()
+                        socketio.sleep(1)
+                        continue
                     if liderlik_dustu or not oda.get("otonom_aktif"):
                         break
                     if not oda.get("otonom_aktif"):
@@ -11764,6 +11828,7 @@ try:
         pey_ses=ahmet_pey_reaksiyonunu_seslendir,
         acilis_tabani=_acilis_tabani,
         kopru_kabul=_kopru_kabul,
+        otonom_pas=diger_otonom_pas_gec,
     )
 
     @app.route("/api/canli-yayin/durum", methods=["GET"])

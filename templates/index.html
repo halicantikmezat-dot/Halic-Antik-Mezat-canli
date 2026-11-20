@@ -1461,6 +1461,13 @@
         .hibrit-kapsul.yazi-modu input.akis-mesaj { color: #ffffff; caret-color: #fef08a; }
         .akis-mesaj-satiri input.akis-mesaj::placeholder { color: transparent; }
         .hibrit-kapsul.yazi-modu input.akis-mesaj::placeholder { color: rgba(255,255,255,0.75); }
+        .akis-zil {
+            width: 40px; height: 40px; margin: 0 0 10px; border: none; background: transparent;
+            color: #fff; cursor: pointer; flex: 0 0 40px; font-size: 22px; line-height: 1;
+            display: flex; align-items: center; justify-content: center; padding: 0;
+            box-shadow: none;
+        }
+        .akis-zil[hidden] { display: none !important; }
         .akis-mikrofon {
             width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.45);
             background: rgba(0,0,0,0.7); color: #fff; cursor: pointer; flex: 0 0 40px;
@@ -1817,6 +1824,52 @@
         }
         #canliYonlendirmeSeridi.gorunur { display: block; }
         #canliYonlendirmeSeridi[hidden] { display: none !important; }
+        #canliYonlendirmeSeridi.kanal-kapsul {
+            width: max-content;
+            max-width: 100%;
+            text-align: center;
+            animation: none;
+            z-index: 1;
+        }
+        #canliYonlendirmeSeridi.kanal-kapsul .canli-kayar-yazi {
+            padding-left: 0;
+            animation: none;
+        }
+        .tum-kanallar-menu {
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 40px);
+            transform: translateX(-50%);
+            z-index: 30;
+            width: min(230px, calc(100% - 8px));
+            max-width: calc(100vw - 24px);
+            max-height: min(280px, 46vh);
+            overflow: auto;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 6px;
+            border-radius: 14px;
+            background: rgba(15, 21, 30, 0.94);
+            border: 1px solid rgba(212, 175, 55, 0.85);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+            pointer-events: auto;
+        }
+        .tum-kanallar-menu[hidden] { display: none !important; }
+        .tum-kanallar-menu a,
+        .tum-kanallar-menu span {
+            display: block;
+            margin: 2px 0;
+            padding: 8px 10px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.2;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .tum-kanallar-menu a:hover { background: rgba(212, 175, 55, 0.18); }
+        .tum-kanallar-menu span { color: #94a3b8; }
         @media (max-width: 768px) {
             #canliYonlendirmeSeridi.gorunur {
                 display: block !important;
@@ -2163,10 +2216,11 @@
                     <span class="pwa-uzun">📲 Uygulamayı İndir</span>
                     <span class="pwa-kisa">📲 İndir</span>
                 </button>
-                <button type="button" id="canliYonlendirmeSeridi" class="{% if _cy_kapsul %}gorunur{% endif %}" {% if not _cy_kapsul %}hidden{% endif %}>
-                    <span class="canli-kayar-yazi" id="canliYonlendirmeMetin">{% if _cy_kapsul %}🔴 Tüm Kanallarımız — Canlı Yayına Katıl   ·   🔴 Tüm Kanallarımız — Canlı Yayına Katıl{% endif %}</span>
+                <button type="button" id="canliYonlendirmeSeridi" class="{% if _cy_burada %}gorunur kanal-kapsul{% elif _cy_kapsul %}gorunur{% endif %}" {% if not (_cy_kapsul or _cy_burada) %}hidden{% endif %}>
+                    <span class="canli-kayar-yazi" id="canliYonlendirmeMetin">{% if _cy_burada %}🔴 Tüm Kanallarımız{% elif _cy_kapsul %}🔴 Tüm Kanallarımız — Canlı Yayına Katıl   ·   🔴 Tüm Kanallarımız — Canlı Yayına Katıl{% endif %}</span>
                 </button>
             </div>
+            <div id="tumKanallarMenu" class="tum-kanallar-menu" hidden role="menu" aria-label="Tüm Kanallarımız"></div>
             <div class="hibrit-kapsul" id="hibritKapsul">
                 <div class="guncel-pey-kutu" id="auctionCockpit">
                     <span class="pey-etiket">GÜNCEL PEY:</span>
@@ -2182,6 +2236,7 @@
             </div>
             </div>
             <div class="ses-sutunu">
+                <button type="button" id="btnBildirimAc" class="akis-zil" hidden title="Bildirimleri aç" aria-label="Bildirimleri aç">🔔</button>
                 <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button" oncontextmenu="return false;"><span>🎤</span></button>
                 <button type="button" id="btnMesajGonder" class="akis-gonder" style="display:none" aria-label="Gönder" onpointerdown="event.preventDefault()" onpointerup="mesajGonderTikla(event)" onclick="mesajGonderTikla(event)">Gönder</button>
             </div>
@@ -2782,6 +2837,7 @@
                     else if (nokta) nokta.remove();
                 }
             });
+            if (typeof canliYayinSekmeNoktasi === 'function') canliYayinSekmeNoktasi();
         });
     }
 
@@ -3638,11 +3694,17 @@
         window.canliYayinBuDukkan = burada;
         if (serit) {
             const metin = document.getElementById('canliYonlendirmeMetin');
+            serit.classList.toggle('kanal-kapsul', burada);
             if (aktif && !burada) {
                 serit.hidden = false;
                 serit.classList.add('gorunur');
                 if (metin) metin.textContent = CANLI_KAPSUL_METIN + '   ·   ' + CANLI_KAPSUL_METIN;
                 serit.dataset.hedef = 'diger';
+            } else if (burada) {
+                serit.hidden = false;
+                serit.classList.add('gorunur');
+                if (metin) metin.textContent = '🔴 Tüm Kanallarımız';
+                serit.dataset.hedef = '';
             } else {
                 serit.hidden = true;
                 serit.classList.remove('gorunur');
@@ -3650,8 +3712,11 @@
             }
             canliSeritOlcusunuEsitle();
         }
+        if (!burada && typeof tumKanallariAcKapa === 'function') tumKanallariAcKapa(false);
         canliYayinSekmeNoktasi();
         sahneKanallariniCiz(kayit, burada);
+        window.ozelDigerCanliOdasi = burada;
+        if (typeof window.bildirimZiliniUygula === 'function') window.bildirimZiliniUygula();
         if (kayit && kayit.push_public_key) window.canliPushPublicKey = kayit.push_public_key;
     }
 
@@ -3684,18 +3749,66 @@
     }
 
     function canliYayinSekmeNoktasi() {
+        const ozel = !!(sonCanliYayin && sonCanliYayin.aktif && sonCanliYayin.aktif_dukkan === 'diger');
         document.querySelectorAll('#shopNavBar .canli-yayin-nokta').forEach(function (el) { el.remove(); });
-        const kayit = sonCanliYayin;
-        if (!kayit || !kayit.aktif || kayit.aktif_dukkan !== 'diger') return;
-        const kod = 'diger';
-        const kacis = (window.CSS && CSS.escape) ? CSS.escape(kod) : kod.replace(/[^a-z0-9_-]/gi, '');
-        document.querySelectorAll('#shopNavBar [data-dukkan="' + kacis + '"]').forEach(function (el) {
-            const nokta = document.createElement('span');
-            nokta.className = 'canli-yayin-nokta';
-            nokta.textContent = '🔴';
-            nokta.setAttribute('aria-hidden', 'true');
-            el.appendChild(nokta);
+        document.querySelectorAll('#shopNavBar [data-dukkan="diger"]').forEach(function (el) {
+            const noktalar = el.querySelectorAll('.canli-nokta');
+            if (ozel) {
+                if (!noktalar.length) el.insertAdjacentHTML('beforeend', ' <span class="canli-nokta"></span>');
+                el.querySelectorAll('.canli-nokta').forEach(function (nokta, sira) {
+                    if (sira > 0) nokta.remove();
+                });
+                return;
+            }
+            const kod = el.getAttribute('data-dukkan');
+            const canli = !!(dukkanlar[kod] && dukkanlar[kod].canli);
+            if (!canli) {
+                noktalar.forEach(function (nokta) { nokta.remove(); });
+            } else if (noktalar.length > 1) {
+                noktalar.forEach(function (nokta, sira) { if (sira > 0) nokta.remove(); });
+            }
         });
+    }
+
+    const TUM_KANALLAR = [
+        ['youtube', 'YouTube'],
+        ['tiktok', 'TikTok'],
+        ['instagram', 'Instagram'],
+        ['facebook', 'Facebook'],
+        ['kick', 'Kick'],
+        ['twitch', 'Twitch'],
+        ['x', 'X'],
+        ['telegram', 'Telegram']
+    ];
+
+    function tumKanallarMenusunuCiz() {
+        const menu = document.getElementById('tumKanallarMenu');
+        if (!menu) return;
+        menu.innerHTML = '';
+        const platformlar = (sonCanliYayin && sonCanliYayin.platformlar) || {};
+        TUM_KANALLAR.forEach(function (cift) {
+            const adres = platformlar[cift[0]];
+            const oge = document.createElement(adres ? 'a' : 'span');
+            oge.textContent = cift[1];
+            if (adres) {
+                oge.href = adres;
+                oge.target = '_blank';
+                oge.rel = 'noopener noreferrer';
+            }
+            menu.appendChild(oge);
+        });
+    }
+
+    function tumKanallariAcKapa(zorla) {
+        const menu = document.getElementById('tumKanallarMenu');
+        if (!menu) return;
+        const ac = typeof zorla === 'boolean' ? zorla : menu.hidden;
+        if (ac && window.canliYayinBuDukkan) {
+            tumKanallarMenusunuCiz();
+            menu.hidden = false;
+        } else {
+            menu.hidden = true;
+        }
     }
 
     function ucusanKalp() {
@@ -3714,10 +3827,22 @@
 
     const canliSerit = document.getElementById('canliYonlendirmeSeridi');
     if (canliSerit) {
-        canliSerit.addEventListener('click', function () {
+        canliSerit.addEventListener('click', function (e) {
+            if (window.canliYayinBuDukkan) {
+                e.preventDefault();
+                tumKanallariAcKapa();
+                return;
+            }
             window.location.href = '/?dukkan=diger';
         });
     }
+    document.addEventListener('click', function (e) {
+        const menu = document.getElementById('tumKanallarMenu');
+        if (!menu || menu.hidden) return;
+        if (canliSerit && canliSerit.contains(e.target)) return;
+        if (menu.contains(e.target)) return;
+        menu.hidden = true;
+    });
     socket.on('aktif_canli_yayin', function (veri) {
         canliYayinArayuzunuCiz(veri || {});
     });
@@ -7726,7 +7851,7 @@
         function bildirimDugmeleriniGoster() {
             var ust = document.getElementById("btnBildirimAc");
             var menu = document.getElementById("btnBildirimMenu");
-            if (ust) ust.hidden = false;
+            if (ust) ust.hidden = !!window.ozelDigerCanliOdasi;
             if (menu) menu.hidden = false;
         }
         function bildirimDestegiVar() {
@@ -7783,9 +7908,17 @@
                     });
             }).catch(function () {});
         };
+        window.bildirimZiliniUygula = function () {
+            var ust = document.getElementById("btnBildirimAc");
+            if (window.ozelDigerCanliOdasi) {
+                if (ust) ust.hidden = true;
+                return;
+            }
+            bildirimDugmesiniHazirla();
+        };
         var bildirimUst = document.getElementById("btnBildirimAc");
         if (bildirimUst) bildirimUst.addEventListener("click", function () { window.bildirimAboneliginiAc(); });
-        bildirimDugmesiniHazirla();
+        window.bildirimZiliniUygula();
         window.pwaUygulamayiIndir = function () {
             if (uygulamaIcinde()) {
                 tetikleriGizle();
