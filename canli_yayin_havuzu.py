@@ -97,6 +97,7 @@ _PLATFORM_AD = {
     "telegram": "Telegram",
 }
 _SITE = "https://halicantikcanli.com"
+_SABIT_CANLI_DUKKAN = "diger"
 _REDIS_ANAHTAR = "halic:canli_yayin:durum"
 _DINLEYICI_ANAHTAR = "halic:canli_yayin:dinleyici"
 _VAPID_ANAHTAR = "halic:canli_yayin:vapid"
@@ -308,8 +309,11 @@ def yorumdan_pey_coz(mesaj, tutar_coz=None):
 
 def _baslat(veri):
     kod = _dukkan_kodu(veri.get("dukkan"))
-    if not kod:
-        return {"success": False, "mesaj": "Dükkan seçilemedi."}
+    if kod != _SABIT_CANLI_DUKKAN:
+        return {
+            "success": False,
+            "mesaj": "Özel canlı yayın yalnızca Diğer - Her Şey dükkanında başlatılır.",
+        }
     with _KILIT:
         kayit = _kopya()
         _alanlari_isle(kayit, veri, kod)
@@ -350,12 +354,16 @@ def _baslat(veri):
 
 
 def _durdur(veri):
+    """Özel yayını kapatır. Mezat sayacı ve otonom döngü bayraklarına dokunmaz."""
     kod = _dukkan_kodu(veri.get("dukkan")) if veri.get("dukkan") else ""
     with _KILIT:
         kayit = _kopya()
         aktif = str(kayit.get("aktif_dukkan") or "")
-        if kod and aktif and kod != aktif:
-            return {"success": False, "mesaj": "Canlı yayın başka dükkanda."}
+        if kod and kod != _SABIT_CANLI_DUKKAN and kod != aktif:
+            return {
+                "success": False,
+                "mesaj": "Özel canlı yayın yalnızca Diğer - Her Şey dükkanına aittir.",
+            }
         if aktif:
             taslaklar = dict(kayit.get("taslaklar") or {})
             taslaklar[aktif] = {
@@ -376,7 +384,7 @@ def _durdur(veri):
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
-    paket["mesaj"] = "Canlı yayın durduruldu."
+    paket["mesaj"] = "Canlı yayın durduruldu. Diğer - Her Şey normal mezat düzenine döndü."
     return paket
 
 
@@ -890,8 +898,12 @@ def _bellege_yukle():
             _redis_yaz(uzak)
     if not uzak:
         return
+    norm = _kaydi_normallestir(uzak)
     with _KILIT:
-        _BELLEK.update(_kaydi_normallestir(uzak))
+        _BELLEK.update(norm)
+    eski = str(uzak.get("aktif_dukkan") or "")
+    if eski and eski != _SABIT_CANLI_DUKKAN:
+        _kalici_yaz(norm)
 
 
 def _kalici_yaz(kayit):
@@ -983,8 +995,12 @@ def _kaydi_normallestir(ham):
         "duyuru_metni": str(ham.get("duyuru_metni") or "")[:2000],
         "taslaklar": ham.get("taslaklar") if isinstance(ham.get("taslaklar"), dict) else {},
     }
-    if kayit["aktif_dukkan"] not in _dukkanlar:
+    if kayit["aktif_dukkan"] != _SABIT_CANLI_DUKKAN:
         kayit["aktif_dukkan"] = ""
+        kayit["baslangic_zamani"] = ""
+    elif kayit["aktif_dukkan"] not in _dukkanlar:
+        kayit["aktif_dukkan"] = ""
+        kayit["baslangic_zamani"] = ""
     return kayit
 
 

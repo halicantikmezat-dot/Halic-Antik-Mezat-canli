@@ -3493,6 +3493,29 @@ def serve_uploads(filename):
 # ==========================================
 # İZLEYİCİ, VİTRİN VE DÜKKAN ROTALARI
 # ==========================================
+def _ilk_canli_yayin_gomu():
+    """Dükkan sayfasına gömülecek herkese açık yayın durumu. Mezat odasına yazmaz."""
+    bos = {
+        "success": True,
+        "aktif": False,
+        "aktif_dukkan": "",
+        "dukkan_adi": "",
+        "yayin_basligi": "",
+        "yayin_url": "",
+        "platformlar": {},
+        "baslangic_zamani": "",
+        "dinleyiciler": {},
+        "push_public_key": "",
+    }
+    try:
+        import canli_yayin_havuzu as modul
+
+        paket = modul.herkese_acik_durum()
+    except Exception:
+        return bos
+    return paket if isinstance(paket, dict) else bos
+
+
 @app.route("/")
 def izleyici_index():
     dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
@@ -3519,6 +3542,7 @@ def izleyici_index():
         secili_dukkan=dukkan,
         dukkanlar=DUKKANLAR,
         ilk_sahne=ilk_sahne,
+        ilk_canli_yayin=_ilk_canli_yayin_gomu(),
     )
 
 
@@ -3566,7 +3590,12 @@ def robots_txt():
 @app.route("/dukkan/<string:dukkan_adi>")
 def dukkan_sayfasi(dukkan_adi):
     dukkan = dukkan_dogrula(dukkan_adi)
-    return render_template("index.html", secili_dukkan=dukkan, dukkanlar=DUKKANLAR)
+    return render_template(
+        "index.html",
+        secili_dukkan=dukkan,
+        dukkanlar=DUKKANLAR,
+        ilk_canli_yayin=_ilk_canli_yayin_gomu(),
+    )
 
 
 @app.route("/vitrin")

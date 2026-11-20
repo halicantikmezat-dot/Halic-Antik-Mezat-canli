@@ -422,7 +422,7 @@
     <details id="canliYayinKarti" class="card">
         <summary class="card-title" style="cursor:pointer; margin:0;">📡 Canlı Yayın &amp; Sosyal Havuz</summary>
         <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
-            <div id="canliYayinDurumSatiri" style="font-size:13px; color:#94a3b8;">Seçili dükkan için yayın kapalı.</div>
+            <div id="canliYayinDurumSatiri" style="font-size:13px; color:#94a3b8;">Özel canlı yayın yalnızca Diğer - Her Şey dükkanında açılır. Kapalıyken dükkan otonom mezattadır.</div>
             <div id="canliYayinRozetler" style="display:flex; flex-wrap:wrap; gap:6px;">
                 <span id="cyRozetYoutube" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">YouTube: kapalı</span>
                 <span id="cyRozetTiktok" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">TikTok: kapalı</span>
@@ -432,7 +432,7 @@
             <div id="cyHavuzSayac" style="font-size:12px; color:#cbd5e1;">Toplam Yorum: 0 · Otomatik Pey: 0</div>
             <input type="text" id="cyBaslik" placeholder="Yayın başlığı" maxlength="180">
             <input type="url" id="cyUrl" placeholder="Yayın linki (https://...)">
-            <button type="button" id="cyAnahtar" class="btn btn-red" onclick="canliYayinAnahtar()">Bu Dükkanda Canlı Yayın Başlat</button>
+            <button type="button" id="cyAnahtar" class="btn btn-red" onclick="canliYayinAnahtar()">Diğer - Her Şey Canlı Yayın Başlat</button>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                 <input type="text" id="cyYoutube" placeholder="YouTube linki veya video ID">
                 <input type="url" id="cyInstagram" placeholder="Instagram">
@@ -1607,6 +1607,7 @@
     }
 
     let canliYayinKaydi = null;
+    const CANLI_YAYIN_DUKKANI = 'diger';
     const canliKanalAlanlari = [
         ['youtube', 'cyYoutube'],
         ['instagram', 'cyInstagram'],
@@ -1631,7 +1632,7 @@
         });
         return {
             islem: islem,
-            dukkan: seciliDukkan,
+            dukkan: CANLI_YAYIN_DUKKANI,
             yayin_basligi: (document.getElementById('cyBaslik') || {}).value || '',
             yayin_url: (document.getElementById('cyUrl') || {}).value || '',
             kanallar: kanallar,
@@ -1644,8 +1645,8 @@
         const kayit = canliYayinKaydi || {};
         const ayar = kayit.ayarlar || {};
         const kanallar = ayar.kanallar || kayit.platformlar || {};
-        const taslak = (ayar.taslaklar && ayar.taslaklar[seciliDukkan]) || {};
-        const burada = !!(kayit.aktif && kayit.aktif_dukkan === seciliDukkan);
+        const taslak = (ayar.taslaklar && ayar.taslaklar[CANLI_YAYIN_DUKKANI]) || {};
+        const burada = !!(kayit.aktif && kayit.aktif_dukkan === CANLI_YAYIN_DUKKANI);
         const baslik = document.getElementById('cyBaslik');
         const url = document.getElementById('cyUrl');
         if (baslik && document.activeElement !== baslik) {
@@ -1664,17 +1665,15 @@
         if (duyuru && document.activeElement !== duyuru) duyuru.value = ayar.duyuru_metni || '';
         const anahtar = document.getElementById('cyAnahtar');
         if (anahtar) {
-            anahtar.textContent = burada ? 'Bu Dükkanda Canlı Yayını Durdur' : 'Bu Dükkanda Canlı Yayın Başlat';
+            anahtar.textContent = burada ? 'Diğer - Her Şey Canlı Yayını Durdur' : 'Diğer - Her Şey Canlı Yayın Başlat';
             anahtar.className = burada ? 'btn btn-yellow' : 'btn btn-red';
         }
         const satir = document.getElementById('canliYayinDurumSatiri');
         if (satir) {
-            if (kayit.aktif && kayit.aktif_dukkan) {
-                satir.textContent = burada
-                    ? 'Bu dükkan şu an canlı yayında.'
-                    : ((kayit.dukkan_adi || kayit.aktif_dukkan) + ' dükkanında canlı yayın var.');
+            if (burada) {
+                satir.textContent = 'Diğer - Her Şey şu an özel canlı yayında. Durdurunca dükkan otonom mezata döner.';
             } else {
-                satir.textContent = 'Seçili dükkan için yayın kapalı.';
+                satir.textContent = 'Özel canlı yayın kapalı. Diğer - Her Şey otonom mezatta.';
             }
         }
         canliDinleyiciRozetleri(kayit.dinleyiciler || {});
@@ -1736,7 +1735,7 @@
     }
 
     function canliYayinAnahtar() {
-        const burada = canliYayinKaydi && canliYayinKaydi.aktif && canliYayinKaydi.aktif_dukkan === seciliDukkan;
+        const burada = canliYayinKaydi && canliYayinKaydi.aktif && canliYayinKaydi.aktif_dukkan === CANLI_YAYIN_DUKKANI;
         canliYayinGonder(burada ? 'durdur' : 'baslat');
     }
 
@@ -1788,14 +1787,14 @@
 
     function canliDuyuruKopyala() {
         const ayar = (canliYayinKaydi && canliYayinKaydi.ayarlar) || {};
-        const ad = (dukkanlar[seciliDukkan] && dukkanlar[seciliDukkan].ad) || seciliDukkan;
-        const link = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(seciliDukkan);
+        const ad = (dukkanlar[CANLI_YAYIN_DUKKANI] && dukkanlar[CANLI_YAYIN_DUKKANI].ad) || 'Diğer - Her Şey';
+        const link = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(CANLI_YAYIN_DUKKANI);
         let metin = String((document.getElementById('cyDuyuru') || {}).value || '').trim();
         if (!metin) metin = String(ayar.duyuru_hazir || '').trim();
         if (!metin) {
             metin = '🔴 CANLI MEZAT BAŞLADI! ' + ad + ' Dükkanında Şu An Canlı Yayın Var — Hemen Katıl\n' + link;
         }
-        metin = metin.replaceAll('{dukkan_adi}', ad).replaceAll('{dukkan}', seciliDukkan).replaceAll('{link}', link);
+        metin = metin.replaceAll('{dukkan_adi}', ad).replaceAll('{dukkan}', CANLI_YAYIN_DUKKANI).replaceAll('{link}', link);
         panoyaYaz(metin);
     }
 
