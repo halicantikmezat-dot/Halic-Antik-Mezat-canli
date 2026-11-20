@@ -270,6 +270,13 @@
             overflow: hidden;
         }
         .studyo-onizleme img, .studyo-onizleme video { max-width: 100%; max-height: 280px; object-fit: contain; }
+        .studyo-mod-serit { display: flex; gap: 6px; margin: 0 0 10px; }
+        .studyo-mod-serit button.secili { outline: 1px solid var(--accent-gold); }
+        #studyoHavuzAlan[hidden], #studyoTekliAlan[hidden] { display: none !important; }
+        .katalog-liste { max-height: 280px; overflow: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .katalog-oge { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; background: #0f141c; color: #fff; border: 1px solid var(--card-border); border-radius: 8px; padding: 6px; cursor: pointer; }
+        .katalog-oge.secili { border-color: var(--accent-gold); }
+        .katalog-oge img, .katalog-oge video { width: 54px; height: 54px; object-fit: cover; border-radius: 6px; background: #000; flex: 0 0 54px; }
 
         .medya-kapsayici {
             display: flex;
@@ -488,6 +495,12 @@
                 <input type="number" id="manuelKarOrani" value="30" min="0" step="1" style="margin:0; width:80px;" title="Manuel ürünlere uygulanacak yüzde">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="manuelKarUygula()">Kendi Ürünlerime % Uygula</button>
                 <button type="button" class="btn btn-sm" style="background:#475569; color:#fff;" onclick="manuelKarGeriAl()">Son Fiyat Artışını Geri Al</button>
+            </div>
+            <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <span style="font-size:11px; color:#94a3b8;">Kendi XML:</span>
+                <button type="button" class="btn btn-blue btn-sm" onclick="kendiXmlKopyala()">Linki Kopyala</button>
+                <button type="button" class="btn btn-green btn-sm" onclick="kendiXmlLaboratuvaraBagla()">Seçili Dükkan XML'ini Laboratuvara Bağla</button>
+                <span id="kendiXmlDurum" style="font-size:11px; color:#d6c089;"></span>
             </div>
         </div>
 
@@ -835,8 +848,13 @@
             <h3 style="color:var(--accent-gold); margin:0; font-size:16px;">🎙️ AI Ürün Stüdyosu</h3>
             <button type="button" onclick="modalKapat('modalStudyo')" class="btn btn-red btn-sm">✕</button>
         </div>
+        <div class="studyo-mod-serit">
+            <button type="button" id="studyoModTekli" class="btn btn-sm secili" style="background:#334155; color:#fff;" onclick="studyoModu('tekli')">Tekli Ürün (Mevcut)</button>
+            <button type="button" id="studyoModHavuz" class="btn btn-sm" style="background:#1e3a8a; color:#fff;" onclick="studyoModu('havuz')">Katalog Havuzu (Toplu İşlem)</button>
+        </div>
         <div class="studyo-grid">
             <div>
+                <div id="studyoTekliAlan">
                 <div id="studyoBirak" class="studyo-birak">
                     Fotoğraf veya videoyu buraya bırakın
                     <div style="font-size:11px; color:#94a3b8; margin-top:6px;">ya da tıklayarak seçin. Birden fazla dosya eklenebilir.</div>
@@ -844,6 +862,20 @@
                 </div>
                 <div id="studyoDosyaOzet" style="font-size:11px; color:#94a3b8; margin-top:6px;"></div>
                 <div id="studyoOnizleme" class="studyo-onizleme"><span style="color:#64748b; font-size:12px;">Önizleme burada görünür</span></div>
+                </div>
+                <div id="studyoHavuzAlan" hidden>
+                    <input type="file" id="katalogDosya" accept="image/*,video/*" multiple>
+                    <button type="button" class="btn btn-sm" style="background:#0f766e; color:#fff; width:100%;" onclick="katalogHavuzunaEkle()">Havuza Ekle</button>
+                    <div id="katalogHavuzDurum" style="font-size:12px; color:#94a3b8; min-height:18px; margin-top:6px;"></div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+                        <button type="button" id="katalogTaraBtn" class="btn btn-sm" style="background:#6d28d9; color:#fff;" onclick="katalogTaramaBaslat()">AI Tarama Başlat</button>
+                        <button type="button" class="btn btn-green btn-sm" onclick="katalogOnayla()">Onayla</button>
+                        <button type="button" class="btn btn-red btn-sm" onclick="katalogSecileniSil()">Havuzdan Sil</button>
+                    </div>
+                    <div id="katalogTaramaDurum" style="font-size:12px; color:#d6c089; min-height:18px; margin-top:6px;"></div>
+                    <div id="katalogListe" class="katalog-liste"></div>
+                    <button type="button" class="btn btn-yellow btn-sm" style="width:100%; margin-top:8px;" onclick="katalogXmlAktar()">Onaylananları Kendi XML'ime Aktar</button>
+                </div>
             </div>
             <div>
                 <button type="button" class="btn btn-sm" style="background:#6d28d9; color:#fff; margin-bottom:8px;" onclick="studyoAnalizEt()">🤖 AI Şecere Çıkar</button>
@@ -3964,6 +3996,7 @@
         if (pencere) pencere.style.display = 'flex';
         studyoDukkanlariDoldur();
         studyoTedarikcileriDoldur();
+        katalogHavuzuYukle();
     }
 
     function studyoDukkanlariDoldur() {
@@ -4170,6 +4203,289 @@
             studyoDosyaEkle(e.dataTransfer && e.dataTransfer.files);
         });
     })();
+
+    let katalogOgeler = [];
+    let katalogSeciliId = "";
+    let katalogTaramaSuruyor = false;
+
+    function studyoModu(mod) {
+        const tekli = document.getElementById("studyoTekliAlan");
+        const havuz = document.getElementById("studyoHavuzAlan");
+        const tekliBtn = document.getElementById("studyoModTekli");
+        const havuzBtn = document.getElementById("studyoModHavuz");
+        const havuzModu = mod === "havuz";
+        if (tekli) tekli.hidden = havuzModu;
+        if (havuz) havuz.hidden = !havuzModu;
+        if (tekliBtn) tekliBtn.classList.toggle("secili", !havuzModu);
+        if (havuzBtn) havuzBtn.classList.toggle("secili", havuzModu);
+        if (havuzModu) katalogHavuzuYukle();
+    }
+
+    function katalogFormOku() {
+        return {
+            baslik: (document.getElementById("studyoBaslik").value || "").trim(),
+            malzeme: document.getElementById("studyoMalzeme").value || "",
+            boyut: document.getElementById("studyoBoyut").value || "",
+            secere: document.getElementById("studyoSecere").value || "",
+            kondisyon: document.getElementById("studyoKondisyon").value || "",
+            baslangic_fiyati: document.getElementById("studyoFiyat").value || "0",
+            hemen_al_fiyati: document.getElementById("studyoHemenAl").value || "0",
+            dukkan: (document.getElementById("studyoDukkan").value || "")
+        };
+    }
+
+    function katalogFormaYaz(oge) {
+        document.getElementById("studyoBaslik").value = (oge && oge.baslik) || "";
+        document.getElementById("studyoMalzeme").value = (oge && oge.malzeme) || "";
+        document.getElementById("studyoBoyut").value = (oge && oge.boyut) || "";
+        document.getElementById("studyoSecere").value = (oge && oge.secere) || "";
+        document.getElementById("studyoKondisyon").value = (oge && oge.kondisyon) || "";
+        document.getElementById("studyoFiyat").value = oge && oge.baslangic_fiyati ? oge.baslangic_fiyati : "";
+        document.getElementById("studyoHemenAl").value = oge && oge.hemen_al_fiyati ? oge.hemen_al_fiyati : "";
+        const dukkan = document.getElementById("studyoDukkan");
+        if (dukkan && oge && oge.dukkan) dukkan.value = oge.dukkan;
+    }
+
+    function katalogListeYaz() {
+        const kutu = document.getElementById("katalogListe");
+        if (!kutu) return;
+        kutu.innerHTML = "";
+        if (!katalogOgeler.length) {
+            kutu.innerHTML = '<div style="font-size:12px; color:#64748b;">Havuz boş. Fotoğraf veya video ekleyin.</div>';
+            return;
+        }
+        katalogOgeler.forEach(function (oge) {
+            const dugme = document.createElement("button");
+            dugme.type = "button";
+            dugme.className = "katalog-oge" + (oge.id === katalogSeciliId ? " secili" : "");
+            if (oge.tur === "video") {
+                const video = document.createElement("video");
+                video.src = oge.medya_url;
+                video.muted = true;
+                video.playsInline = true;
+                video.preload = "metadata";
+                dugme.appendChild(video);
+            } else {
+                const img = document.createElement("img");
+                img.src = oge.medya_url;
+                img.alt = "";
+                dugme.appendChild(img);
+            }
+            const yazi = document.createElement("span");
+            const baslik = oge.baslik || oge.ad || "Adsız";
+            yazi.textContent = baslik + " — Durum: " + (oge.durum || "Bekliyor");
+            dugme.appendChild(yazi);
+            dugme.addEventListener("click", function () { katalogSec(oge.id); });
+            kutu.appendChild(dugme);
+        });
+    }
+
+    function katalogHavuzuYukle() {
+        return fetch("/api/katalog-havuzu")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                katalogOgeler = (data && data.ogeler) || [];
+                if (katalogSeciliId && !katalogOgeler.some(function (oge) { return oge.id === katalogSeciliId; })) {
+                    katalogSeciliId = "";
+                }
+                katalogListeYaz();
+                const durum = document.getElementById("katalogHavuzDurum");
+                if (durum && data) {
+                    durum.textContent = "Bekliyor " + (data.bekleyen || 0) + " · Kontrole hazır " + (data.hazir || 0) + " · Onaylandı " + (data.onaylanan || 0);
+                }
+                return data;
+            })
+            .catch(function () { return null; });
+    }
+
+    function katalogFormuKaydet() {
+        if (!katalogSeciliId) return Promise.resolve(null);
+        return fetch("/api/katalog-havuzu/" + encodeURIComponent(katalogSeciliId), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(katalogFormOku())
+        }).then(function (r) { return r.json(); }).catch(function () { return null; });
+    }
+
+    function katalogSec(id) {
+        const onceki = katalogSeciliId;
+        const gecis = onceki && onceki !== id ? katalogFormuKaydet() : Promise.resolve(null);
+        gecis.then(function () {
+            katalogSeciliId = id;
+            const oge = katalogOgeler.find(function (kayit) { return kayit.id === id; });
+            if (oge) katalogFormaYaz(oge);
+            katalogListeYaz();
+            if (onceki && onceki !== id) katalogHavuzuYukle();
+        });
+    }
+
+    function katalogHavuzunaEkle() {
+        const girdi = document.getElementById("katalogDosya");
+        const durum = document.getElementById("katalogHavuzDurum");
+        const dosyalar = girdi && girdi.files ? Array.from(girdi.files) : [];
+        if (!dosyalar.length) {
+            if (durum) durum.textContent = "Önce fotoğraf veya video seçin.";
+            return;
+        }
+        const paket = new FormData();
+        dosyalar.forEach(function (dosya) { paket.append("dosyalar", dosya, dosya.name); });
+        if (durum) durum.textContent = "Havuza ekleniyor...";
+        fetch("/api/katalog-havuzu/ekle", { method: "POST", body: paket })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (girdi) girdi.value = "";
+                if (!data || data.success === false) {
+                    if (durum) durum.textContent = (data && data.mesaj) || "Havuza eklenemedi.";
+                }
+                katalogOgeler = (data && data.ogeler) || katalogOgeler;
+                katalogListeYaz();
+                if (data && data.success !== false && durum) {
+                    durum.textContent = (data.eklenen || 0) + " öğe eklendi. Durum: Bekliyor.";
+                }
+            })
+            .catch(function () {
+                if (durum) durum.textContent = "Havuz isteği tamamlanamadı.";
+            });
+    }
+
+    async function katalogTaramaBaslat() {
+        if (katalogTaramaSuruyor) return;
+        katalogTaramaSuruyor = true;
+        const dugme = document.getElementById("katalogTaraBtn");
+        const sayac = document.getElementById("katalogTaramaDurum");
+        if (dugme) dugme.disabled = true;
+        try {
+            let tur = 0;
+            while (katalogTaramaSuruyor) {
+                const yanit = await fetch("/api/katalog-havuzu/tara-siradaki", { method: "POST" });
+                const data = await yanit.json().catch(function () { return {}; });
+                tur += 1;
+                const toplam = (data && data.toplam) || 0;
+                const kalan = (data && data.bekleyen) || 0;
+                const biten = Math.max(0, toplam - kalan);
+                if (sayac) sayac.textContent = data && data.bitti ? "Tarama bitti. " + biten + " / " + toplam : "Taranıyor " + biten + " / " + toplam;
+                if (data && data.ogeler) {
+                    katalogOgeler = data.ogeler;
+                    katalogListeYaz();
+                    if (katalogSeciliId) {
+                        const secili = katalogOgeler.find(function (oge) { return oge.id === katalogSeciliId; });
+                        if (secili) katalogFormaYaz(secili);
+                    }
+                }
+                const durum = document.getElementById("katalogHavuzDurum");
+                if (durum && data) {
+                    durum.textContent = "Bekliyor " + (data.bekleyen || 0) + " · Kontrole hazır " + (data.hazir || 0) + " · Onaylandı " + (data.onaylanan || 0);
+                }
+                if (!data || data.bitti || data.success === false) break;
+                if (tur > 500) break;
+                await new Promise(function (bekle) { setTimeout(bekle, 40); });
+            }
+        } catch (e) {
+            if (sayac) sayac.textContent = "Tarama isteği tamamlanamadı.";
+        }
+        katalogTaramaSuruyor = false;
+        if (dugme) dugme.disabled = false;
+    }
+
+    function katalogOnayla() {
+        if (!katalogSeciliId) {
+            const durum = document.getElementById("katalogHavuzDurum");
+            if (durum) durum.textContent = "Önce havuzdan bir ürün seçin.";
+            return;
+        }
+        fetch("/api/katalog-havuzu/" + encodeURIComponent(katalogSeciliId) + "/onayla", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(katalogFormOku())
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                const durum = document.getElementById("katalogHavuzDurum");
+                if (!data || !data.success) {
+                    if (durum) durum.textContent = (data && data.mesaj) || "Onay kaydedilemedi.";
+                    return;
+                }
+                if (durum) durum.textContent = "Durum: Onaylandı.";
+                katalogHavuzuYukle();
+            })
+            .catch(function () {
+                const durum = document.getElementById("katalogHavuzDurum");
+                if (durum) durum.textContent = "Onay isteği tamamlanamadı.";
+            });
+    }
+
+    function katalogSecileniSil() {
+        if (!katalogSeciliId) return;
+        const silinen = katalogSeciliId;
+        fetch("/api/katalog-havuzu/" + encodeURIComponent(silinen) + "/sil", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (katalogSeciliId === silinen) katalogSeciliId = "";
+                katalogOgeler = (data && data.ogeler) || [];
+                katalogListeYaz();
+                const durum = document.getElementById("katalogHavuzDurum");
+                if (durum && data) {
+                    durum.textContent = "Öğe havuzdan silindi. Bekliyor " + (data.bekleyen || 0);
+                }
+            })
+            .catch(function () {});
+    }
+
+    function katalogXmlAktar() {
+        const durum = document.getElementById("katalogHavuzDurum");
+        if (durum) durum.textContent = "Onaylananlar XML havuzuna aktarılıyor...";
+        fetch("/api/katalog-havuzu/xml-aktar", { method: "POST" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.success) {
+                    if (durum) durum.textContent = (data && data.mesaj) || "Aktarım yapılamadı.";
+                    return;
+                }
+                katalogSeciliId = "";
+                if (durum) {
+                    durum.textContent = data.mesaj + (data.fiyatsiz ? " Açılış fiyatı boş olanlar laboratuvarda elenir." : "");
+                }
+                katalogHavuzuYukle();
+            })
+            .catch(function () {
+                if (durum) durum.textContent = "XML aktarımı tamamlanamadı.";
+            });
+    }
+
+    function kendiXmlAdresi(dukkan) {
+        const kok = window.location.origin + "/api/kendi-xml";
+        if (!dukkan) return kok;
+        return kok + "?dukkan=" + encodeURIComponent(dukkan);
+    }
+
+    function kendiXmlKopyala() {
+        const adres = kendiXmlAdresi("");
+        const durum = document.getElementById("kendiXmlDurum");
+        const bitti = function () { if (durum) durum.textContent = "Kopyalandı: " + adres; };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(adres).then(bitti).catch(function () {
+                window.prompt("XML linki", adres);
+                bitti();
+            });
+            return;
+        }
+        window.prompt("XML linki", adres);
+        bitti();
+    }
+
+    function kendiXmlLaboratuvaraBagla() {
+        const dukkan = (typeof seciliDukkan !== "undefined" && seciliDukkan) ? seciliDukkan : "gumus";
+        const adres = kendiXmlAdresi(dukkan);
+        const giris = document.getElementById("topluUrl");
+        const dosya = document.getElementById("topluDosya");
+        const durum = document.getElementById("kendiXmlDurum");
+        if (dosya) dosya.value = "";
+        if (giris) giris.value = adres;
+        if (durum) durum.textContent = "Laboratuvar mevcut tarama motoruna bağlandı.";
+        const form = document.getElementById("topluYukleForm");
+        if (form && typeof form.requestSubmit === "function") form.requestSubmit();
+        else if (form) form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    }
 
     function htmlKacis(deger) {
         return String(deger == null ? '' : deger)

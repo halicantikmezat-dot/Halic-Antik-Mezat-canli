@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>Haliç Antik Mezat - Canlı Mezat</title>
     <meta name="description" content="Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.">
     <meta property="og:title" content="Haliç Antik Mezat - Canlı Mezat">
@@ -1224,6 +1225,7 @@
             backdrop-filter: blur(14px);
         }
         .muzik-menu[hidden] { display: none !important; }
+        #ytMuzikGizli, #ytMuzikGizli iframe { pointer-events: none !important; }
         .muzik-menu-baslik {
             font-size: 11px;
             font-weight: 800;
@@ -1413,7 +1415,7 @@
         .hibrit-kapsul .pey-ticker-oge { font-size: 16px !important; font-weight: 600 !important; line-height: 1.2 !important; color: #ffffff !important; }
         .hibrit-kapsul .pey-ticker-metin { animation-duration: 18s !important; }
         .hibrit-kapsul.yazi-modu .pey-ticker-kapsayici { opacity: 0; }
-        .ses-sutunu { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; }
+        .ses-sutunu { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; transform: translateY(-12px); }
         @keyframes canli-nabiz { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
         .canli-nokta { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 4px; animation: canli-nabiz 1.2s infinite; vertical-align: middle; }
         .canli-rozet { color: #ef4444; font-weight: 800; font-size: 13px; margin-left: 6px; white-space: nowrap; }
@@ -1423,6 +1425,8 @@
         .lot-galeri-satiri .stage-thumbnails { position: static !important; top: auto !important; left: auto !important; right: auto !important; display: flex; gap: 4px; background: transparent !important; border: none !important; padding: 0; max-width: calc(100% - 108px); overflow-x: auto; pointer-events: auto; }
         .lot-galeri-satiri .thumb-item { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
         .mezat-sayaci { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 40; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.38); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.28); border-radius: 12px; padding: 4px 8px; color: #fff; margin: 0; }
+        .sayac-hoparlor-satiri { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 1002; display: flex; align-items: center; gap: 6px; }
+        .sayac-hoparlor-satiri .mezat-sayaci { position: static; left: auto; bottom: auto; z-index: auto; }
         .guncel-pey-kutu { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: 118px; z-index: 60; height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.38); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 999px; padding: 0 14px; font-size: 15px; font-weight: 700; line-height: 1; white-space: nowrap; }
         .guncel-pey-kutu .pey-etiket { color: #fef08a; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; line-height: 1; }
         .guncel-pey-kutu .price-val, .guncel-pey-kutu #aktif_kazanan { font-size: 15px !important; font-weight: 700 !important; line-height: 1 !important; color: #ffffff !important; text-shadow: none !important; }
@@ -1446,6 +1450,22 @@
             user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
         }
         .akis-mikrofon span { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; line-height: 1; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        .akis-gonder {
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 999px;
+            border: 1px solid #d4af37;
+            background: #d4af37;
+            color: #111;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1;
+            cursor: pointer;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+        }
         #ozelSohbetModal.modal {
             background: transparent;
             pointer-events: none;
@@ -1472,7 +1492,8 @@
         }
         #ozelSohbetModal #ozelSohbetAkis,
         #ozelSohbetModal #ozelSohbetListe { background: transparent; }
-        .ses-sutunu .btn-dinle-kisa { width: 32px; height: 32px; flex: 0 0 32px; font-size: 16px; }
+        .ses-sutunu .btn-dinle-kisa,
+        .sayac-hoparlor-satiri .btn-dinle-kisa { width: 32px; height: 32px; flex: 0 0 32px; font-size: 16px; }
         .hibrit-kapsul .guncel-pey-kutu {
             position: static !important; left: auto !important; right: auto !important; bottom: auto !important;
             width: auto !important; height: 30px !important; flex: 0 0 auto; z-index: 3;
@@ -1502,12 +1523,14 @@
             border-radius: 999px;
             cursor: pointer;
             white-space: nowrap;
+            margin-left: max(0px, calc(180px - 50% + 84px));
         }
         .akis-mesaj-satiri > .pwa-indir[hidden] { display: none !important; }
         .pwa-indir .pwa-kisa { display: none; }
         @media (max-width: 520px) {
             .akis-mesaj-satiri > .pwa-indir .pwa-uzun { display: none; }
             .akis-mesaj-satiri > .pwa-indir .pwa-kisa { display: inline; }
+            .akis-mesaj-satiri > .pwa-indir { margin-left: max(0px, calc(180px - 50% + 42px)); }
         }
         #genelMenu button.pwa-indir-menu {
             background: #121622 !important;
@@ -1589,7 +1612,7 @@
                 width: 100%;
                 max-width: 100%;
                 min-width: 0;
-                overflow: hidden;
+                overflow: visible;
                 gap: 4px;
                 box-sizing: border-box;
             }
@@ -1624,6 +1647,11 @@
                 flex: 0 0 auto;
                 flex-shrink: 0;
                 margin-left: auto;
+            }
+        }
+        @supports (-webkit-touch-callout: none) {
+            .header.sade-header {
+                padding-top: env(safe-area-inset-top, 14px);
             }
         }
         #pwaIosIpucu {
@@ -1924,6 +1952,7 @@
 
         <div id="tanitimSeridi" hidden></div>
 
+        <div class="sayac-hoparlor-satiri">
         <div class="mezat-sayaci" id="mezatSayaci">
             <div class="timer-mini-cockpit">
                 <svg viewBox="0 0 50 50">
@@ -1933,6 +1962,8 @@
                 <div class="timer-digits-mini" id="timerDigits">--</div>
             </div>
             <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
+        </div>
+        <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
         </div>
         <div class="akis-mesaj-satiri">
             <button type="button" class="pwa-indir pwa-indir-tetik" id="pwaIndirPey" onclick="pwaUygulamayiIndir()">
@@ -1953,8 +1984,8 @@
                 </div>
             </div>
             <div class="ses-sutunu">
-                <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
                 <button id="btnIzleyiciSes" class="akis-mikrofon" title="Basılı tutarak konuşun" aria-label="Basılı tutarak konuşun" type="button" oncontextmenu="return false;"><span>🎤</span></button>
+                <button type="button" id="btnMesajGonder" class="akis-gonder" style="display:none" aria-label="Gönder" onpointerdown="event.preventDefault()" onpointerup="mesajGonderTikla(event)" onclick="mesajGonderTikla(event)">Gönder</button>
             </div>
         </div>
         <div id="izleyiciKayanMetin" hidden></div>
@@ -1967,7 +1998,7 @@
             </div>
         </div>
 
-        <div style="position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
+        <div id="ytMuzikGizli" aria-hidden="true" style="position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0.02;overflow:hidden;pointer-events:none;z-index:0;">
             <div id="ytBackgroundAudioPlayer"></div>
         </div>
     </div>
@@ -2985,16 +3016,55 @@
         toggleAltCekmece();
     }
 
+    var mesajGonderGizleZaman = null;
+
+    function mesajGonderGorunumu(goster) {
+        var mikrofon = document.getElementById('btnIzleyiciSes');
+        var gonder = document.getElementById('btnMesajGonder');
+        if (gonder) gonder.style.display = goster ? 'inline-flex' : 'none';
+        if (mikrofon) mikrofon.style.display = goster ? 'none' : '';
+    }
+
+    function mesajKutusunuTopla() {
+        if (mesajGonderGizleZaman) {
+            clearTimeout(mesajGonderGizleZaman);
+            mesajGonderGizleZaman = null;
+        }
+        var kutu = document.getElementById('hibritKapsul');
+        var input = document.getElementById('chatMesajGirdi');
+        if (input) input.value = '';
+        if (kutu) kutu.classList.remove('yazi-modu');
+        mesajGonderGorunumu(false);
+        if (input && document.activeElement === input) input.blur();
+    }
+
+    var mesajGonderKilit = false;
+    function mesajGonderTikla(e) {
+        if (e) e.preventDefault();
+        if (mesajGonderKilit) return;
+        mesajGonderKilit = true;
+        setTimeout(function () { mesajGonderKilit = false; }, 400);
+        izleyiciMesajGonder();
+    }
+
     function hibritYaziAc() {
-        const kutu = document.getElementById('hibritKapsul');
+        if (mesajGonderGizleZaman) {
+            clearTimeout(mesajGonderGizleZaman);
+            mesajGonderGizleZaman = null;
+        }
+        var kutu = document.getElementById('hibritKapsul');
         if (kutu) kutu.classList.add('yazi-modu');
+        mesajGonderGorunumu(true);
     }
 
     function hibritYaziKapat() {
-        const kutu = document.getElementById('hibritKapsul');
-        const input = document.getElementById('chatMesajGirdi');
-        if (input) input.value = '';
-        if (kutu) kutu.classList.remove('yazi-modu');
+        if (mesajGonderGizleZaman) clearTimeout(mesajGonderGizleZaman);
+        mesajGonderGizleZaman = setTimeout(function () {
+            mesajGonderGizleZaman = null;
+            var input = document.getElementById('chatMesajGirdi');
+            if (input && document.activeElement === input) return;
+            mesajKutusunuTopla();
+        }, 320);
     }
 
     function kayitUyarisiAc() {
@@ -3559,7 +3629,7 @@
     }
 
     let muzikKisitli = false;
-    const MUZIK_TAVAN = 15;
+    const MUZIK_TAVAN = 50;
     const MUZIK_KISIK = 5;
     let muzikSimdi = MUZIK_TAVAN;
     let muzikHedef = MUZIK_TAVAN;
@@ -6103,29 +6173,46 @@
         rehberCanliSesiBeklet();
         var ham = rehberKilavuzMetni();
         var cumleler = ham.match(/[^.!?]+[.!?]?/g) || [ham];
-        var sesler = window.speechSynthesis.getVoices() || [];
-        var turkce = turkceSesiBul(sesler);
-        if (!turkce) {
-            if (durum) durum.textContent = "Türkçe ses paketi bekleniyor.";
-            turkceSesle(ham, function () {
+        var sira = 0;
+        function rehberCumlesiniOku() {
+            if (nesil !== rehberSesNesil) return;
+            if (sira >= cumleler.length) {
+                rehberCanliSesiSurdur();
                 if (durum) durum.textContent = "Kılavuz sesi bitti.";
-            });
+                return;
+            }
+            var cumle = String(cumleler[sira] || "").trim();
+            sira += 1;
+            if (!cumle) {
+                rehberCumlesiniOku();
+                return;
+            }
+            var ses = turkceSesiBul(window.speechSynthesis.getVoices() || []);
+            var u = new SpeechSynthesisUtterance(cumle);
+            u.lang = "tr-TR";
+            if (ses) u.voice = ses;
+            u.onend = function () { rehberCumlesiniOku(); };
+            u.onerror = function () {
+                if (nesil !== rehberSesNesil) return;
+                rehberCumlesiniOku();
+            };
+            window.speechSynthesis.speak(u);
+        }
+        if (durum) durum.textContent = "Kılavuz Türkçe okunuyor.";
+        if (turkceSesiBul(window.speechSynthesis.getVoices() || [])) {
+            rehberCumlesiniOku();
             return;
         }
-        cumleler.forEach(function (cumle, index) {
-            var u = new SpeechSynthesisUtterance(cumle.trim());
-            u.lang = "tr-TR";
-            u.voice = turkce;
-            if (index === cumleler.length - 1) {
-                u.onend = function () {
-                    if (nesil !== rehberSesNesil) return;
-                    rehberCanliSesiSurdur();
-                    if (durum) durum.textContent = "Kılavuz sesi bitti.";
-                };
-            }
-            window.speechSynthesis.speak(u);
-        });
-        if (durum) durum.textContent = "Kılavuz Türkçe okunuyor.";
+        var basladi = false;
+        var baslat = function () {
+            if (basladi || nesil !== rehberSesNesil) return;
+            basladi = true;
+            try { window.speechSynthesis.removeEventListener("voiceschanged", baslat); } catch (e) {}
+            rehberCumlesiniOku();
+        };
+        try { window.speechSynthesis.addEventListener("voiceschanged", baslat); } catch (e) {}
+        window.speechSynthesis.getVoices();
+        setTimeout(baslat, 800);
     }
 
     function rehberYoutubeEmbed(url) {
@@ -6425,17 +6512,62 @@
         if (btn) btn.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
     }
 
+    function muzikCercevesiniHazirla() {
+        if (!ytAudioPlayer || typeof ytAudioPlayer.getIframe !== "function") return null;
+        try {
+            var cerceve = ytAudioPlayer.getIframe();
+            if (!cerceve) return null;
+            cerceve.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture");
+            cerceve.setAttribute("playsinline", "1");
+            cerceve.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+            return cerceve;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function muzikKullaniciOynat() {
+        if (!ytAudioPlayer || typeof ytAudioPlayer.playVideo !== "function") return;
+        var cerceve = muzikCercevesiniHazirla();
+        try { if (typeof ytAudioPlayer.unMute === "function") ytAudioPlayer.unMute(); } catch (e) {}
+        try { ytAudioPlayer.playVideo(); } catch (e) {}
+        if (!cerceve || !cerceve.contentWindow) return;
+        try {
+            cerceve.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', "*");
+            cerceve.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', "*");
+        } catch (e) {}
+    }
+
+    function muzikAyniKaynaktaMi(kaynak) {
+        if (!kaynak || !ytAudioPlayer) return false;
+        try {
+            if (kaynak.tur === "playlist") {
+                var liste = typeof ytAudioPlayer.getPlaylist === "function" ? ytAudioPlayer.getPlaylist() : null;
+                return !!(liste && liste.length && liste.indexOf(kaynak.id) >= 0);
+            }
+            var data = typeof ytAudioPlayer.getVideoData === "function" ? ytAudioPlayer.getVideoData() : null;
+            return !!(data && data.video_id === kaynak.id);
+        } catch (e) {
+            return false;
+        }
+    }
+
     function muzikKaynaginiYukle(cal) {
         var kaynak = muzikIstasyonlari[izleyiciMuzikKategori] || muzikIstasyonlari.nostalji;
         if (!ytAudioPlayer || !kaynak || !kaynak.id) return;
         var playlist = kaynak.tur === "playlist";
+        var ayni = muzikAyniKaynaktaMi(kaynak);
         try {
-            if (playlist) {
+            if (ayni && cal) {
+                muzikKullaniciOynat();
+            } else if (playlist) {
                 var paket = { listType: "playlist", list: kaynak.id, index: 0 };
                 if (cal && typeof ytAudioPlayer.loadPlaylist === "function") ytAudioPlayer.loadPlaylist(paket);
                 else if (typeof ytAudioPlayer.cuePlaylist === "function") ytAudioPlayer.cuePlaylist(paket);
+                if (cal) muzikKullaniciOynat();
             } else if (cal && typeof ytAudioPlayer.loadVideoById === "function") {
                 ytAudioPlayer.loadVideoById(kaynak.id);
+                muzikKullaniciOynat();
             } else if (typeof ytAudioPlayer.cueVideoById === "function") {
                 ytAudioPlayer.cueVideoById(kaynak.id);
             }
@@ -6482,8 +6614,9 @@
         var durum = -1;
         try { durum = ytAudioPlayer.getPlayerState(); } catch (e) { return; }
         if (durum === YT.PlayerState.PLAYING || durum === YT.PlayerState.BUFFERING) return;
-        if (durum === YT.PlayerState.PAUSED) {
-            try { ytAudioPlayer.playVideo(); } catch (e) {}
+        var kaynak = muzikIstasyonlari[izleyiciMuzikKategori] || muzikIstasyonlari.nostalji;
+        if (durum === YT.PlayerState.PAUSED || durum === YT.PlayerState.CUED || (durum === YT.PlayerState.UNSTARTED && muzikAyniKaynaktaMi(kaynak))) {
+            muzikKullaniciOynat();
             return;
         }
         muzikKaynaginiYukle(true);
@@ -6507,13 +6640,18 @@
 
     function onYouTubeIframeAPIReady() {
         var baslangic = (muzikIstasyonlari[izleyiciMuzikKategori] || muzikIstasyonlari.nostalji).id || "j12l7mQANFU";
+        var oynaticiAyar = { autoplay: 0, controls: 0, disablekb: 1, fs: 0, playsinline: 1, rel: 0 };
+        if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+            oynaticiAyar.origin = window.location.origin;
+        }
         ytAudioPlayer = new YT.Player('ytBackgroundAudioPlayer', {
-            height: '1',
-            width: '1',
+            height: '160',
+            width: '160',
             videoId: baslangic,
-            playerVars: { 'autoplay': 0, 'controls': 0, 'disablekb': 1, 'fs': 0, 'playsinline': 1, 'rel': 0 },
+            playerVars: oynaticiAyar,
             events: {
                 'onReady': function () {
+                    muzikCercevesiniHazirla();
                     muzikArayuzunuGuncelle();
                     muzikSeviyeYaz(MUZIK_TAVAN);
                     if (muzikBekleyenIslem) {
