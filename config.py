@@ -43,15 +43,15 @@ def _havuz_tam_sayi(ad, varsayilan):
 
 
 def _sqlalchemy_engine_options(db_uri):
-    """PostgreSQL için küçük bir bağlantı havuzu. SQLite havuz ayarı istemez."""
+    """PostgreSQL havuzu. 17 salon aynı anda açılınca 20+30 bağlantı yeter. SQLite havuz ayarı istemez."""
     adres = str(db_uri or "")
     if adres.startswith("sqlite"):
         return {}
     return {
         "pool_pre_ping": True,
         "pool_recycle": 280,
-        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 5),
-        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 5),
+        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 20),
+        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 30),
         "connect_args": {"options": "-c lock_timeout=5000"},
     }
 

@@ -706,6 +706,7 @@ def _satis_tebrik_bitisini_bekle(dukkan, saniye=15):
             return
         if not oda.get("otonom_aktif"):
             return
+        _oturumu_birak()
         socketio.sleep(0.3)
     if oda is not None:
         oda["satis_tebrik_bekleniyor"] = False
@@ -776,6 +777,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
                 kayit["calisiyor"] = False
                 return
             oge = kayit["ogeler"].pop(0)
+        _oturumu_birak()
         veri, kaynak = _tts_uret(oge["metin"])
         with _ses_kuyruk_kilit:
             kayit = _ses_kuyruk.get(dukkan)
@@ -1382,6 +1384,14 @@ def suan_utc():
 @app.teardown_appcontext
 def shutdown_session(exception=None):
     db.session.remove()
+
+
+def _oturumu_birak():
+    """Sorgu bittiyse bağlantıyı havuza geri ver. Ses beklemesi açık oturum tutmasın."""
+    try:
+        db.session.remove()
+    except Exception:
+        pass
 
 
 # ==========================================
@@ -2386,6 +2396,7 @@ def _fiyati_acilisa_cek(dukkan, oda):
             urun.kazanan_id = None
             db.session.add(urun)
             db.session.commit()
+        _oturumu_birak()
     oda["acilis_tabani"] = acilis
     oda["durum"]["pey"] = acilis
     oda["durum"]["kazanan"] = "Yok"
@@ -2552,6 +2563,7 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
             },
             dukkan,
         )
+        _oturumu_birak()
         socketio.sleep(1)
         if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
             oda["sayac_kalan"] -= 1
@@ -2594,6 +2606,7 @@ def _dukkan_geri_sayim_ic(dukkan, gorev_id, akis="standart"):
             {"dukkan": dukkan, "kalan": gizli_sayac, "sayac_gorunsun": False},
             room=dukkan,
         )
+        _oturumu_birak()
         socketio.sleep(1)
         gizli_sayac -= 1
         oda["sayac_kalan"] = 60 + gizli_sayac
@@ -2652,6 +2665,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 {"dukkan": dukkan, "kalan": oda["sayac_kalan"], "sayac_gorunsun": True},
                 dukkan,
             )
+            _oturumu_birak()
             socketio.sleep(1)
             if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
                 oda["sayac_kalan"] -= 1
@@ -3177,6 +3191,7 @@ def dukkan_otonom_dongusu(dukkan):
                             )
 
                         _otonom_secere_oku(dukkan, secilen_urun, acilis_fiyati)
+                        _oturumu_birak()
                         _otonom_sayaci_baslat(dukkan, secilen_urun)
                         son_biten_id = secilen_urun.id
 
@@ -3194,6 +3209,7 @@ def dukkan_otonom_dongusu(dukkan):
                                 oda["sayac_aktif"] = False
                                 oda["sayac_gorev_id"] += 1
                                 break
+                        _oturumu_birak()
                         socketio.sleep(1)
                     if liderlik_dustu or not oda.get("otonom_aktif"):
                         break
@@ -3211,13 +3227,16 @@ def dukkan_otonom_dongusu(dukkan):
                                 "Bir sonraki ürüne geçiyorum.",
                                 tur="sayac",
                             )
+                            _oturumu_birak()
                             socketio.sleep(3.5)
                             _sahneyi_bosa_al(dukkan, "satildi")
                     else:
+                        _oturumu_birak()
                         socketio.sleep(6)
                 except Exception as hata:
                     db.session.rollback()
                     _otonom_hatayi_bildir(dukkan, hata)
+                    _oturumu_birak()
                     socketio.sleep(3)
                 finally:
                     db.session.remove()
@@ -4096,43 +4115,34 @@ def admin_urun_ara_api():
 @app.route("/canli-durum", methods=["GET"])
 def canli_durum():
     dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
-    oda = odalar[dukkan]
 
     try:
-        aktif_urun_obj = (
-            db.session.get(Urun, oda["aktif_urun_id"])
-            if oda["aktif_urun_id"]
-            else None
-        )
-        asama = _sahne_asamasi(oda)
-        try:
-            ham = int(oda.get("sayac_kalan") or 0)
-        except (TypeError, ValueError):
-            ham = 0
-        if ham < 0:
-            ham = 0
+        paket = _sahne_durumu_paketi(dukkan)
+        sid = str(request.args.get("sid") or "").strip()
+        if sid:
+            socketio.emit("sahne_durumu", paket, room=sid)
+        aktif_urun_obj = paket.get("aktif_urun")
         return jsonify({
             "dukkan": dukkan,
-            "durum": oda["durum"]["durum"],
-            "sure_bitis": oda["durum"]["sure_bitis"],
-            "pey": oda["durum"]["pey"],
-            "kazanan": oda["durum"]["kazanan"],
-            "kazanan_id": oda["durum"].get("kazanan_id"),
-            "kalan_sayac": ham,
-            "ham_kalan": ham,
-            "kalan": ham,
-            "kalan_sure": ham,
-            "asama": asama,
-            "sayac_gorunsun": bool(oda.get("sayac_aktif")),
-            "aktif_urun": (
-                aktif_urun_obj.to_dict()
-                if (aktif_urun_obj and not aktif_urun_obj.silindi_mi)
-                else None
-            ),
-            "son_satis": None if oda.get("aktif_urun_id") else oda.get("son_satis"),
+            "durum": paket.get("durum"),
+            "sure_bitis": (odalar.get(dukkan) or {}).get("durum", {}).get("sure_bitis"),
+            "pey": paket.get("pey"),
+            "kazanan": paket.get("kazanan"),
+            "kazanan_id": paket.get("kazanan_id"),
+            "kalan_sayac": paket.get("ham_kalan"),
+            "ham_kalan": paket.get("ham_kalan"),
+            "kalan": paket.get("kalan"),
+            "kalan_sure": paket.get("kalan_sure"),
+            "asama": paket.get("asama"),
+            "sayac_gorunsun": paket.get("sayac_gorunsun"),
+            "toplam": paket.get("toplam"),
+            "acilis_fiyati": paket.get("acilis_fiyati"),
+            "gorsel": paket.get("gorsel"),
+            "aktif_urun": aktif_urun_obj,
+            "son_satis": None if (odalar.get(dukkan) or {}).get("aktif_urun_id") else (odalar.get(dukkan) or {}).get("son_satis"),
         })
     finally:
-        db.session.remove()
+        _oturumu_birak()
 
 
 def _sahne_asamasi(oda):
@@ -7840,8 +7850,11 @@ def otonom_mezat_kontrol():
         lot_yok = []
         hatalar = []
 
-        for d in hedefler:
+        for indeks, d in enumerate(hedefler):
             try:
+                if durum and len(hedefler) > 1 and indeks > 0:
+                    _oturumu_birak()
+                    socketio.sleep(0.3)
                 if durum:
                     lot = _otonomu_baslat(d)
                     if lot is None:
@@ -11115,12 +11128,17 @@ def admin_voice_end(veri=None):
         db.session.remove()
 
 
-def _katilana_sahneyi_ver(dukkan):
-    """Sayfayı yeni açan izleyiciye sahnedeki ürünü ve sayacı tek olayla verir."""
+def _sahne_durumu_paketi(dukkan):
+    """Odadaki canlı lotu, görseli, peyi ve sayaç aşamasını tek pakette toplar."""
     oda = odalar.get(dukkan) or {}
     durum = oda.get("durum") or {}
     asama = _sahne_asamasi(oda)
-    kalan = int(oda.get("sayac_kalan") or 0)
+    try:
+        ham = int(oda.get("sayac_kalan") or 0)
+    except (TypeError, ValueError):
+        ham = 0
+    if ham < 0:
+        ham = 0
     if asama == "pazarlik":
         toplam = 180
     elif asama == "karar":
@@ -11129,27 +11147,37 @@ def _katilana_sahneyi_ver(dukkan):
         toplam = 0
     aktif = None
     urun_id = oda.get("aktif_urun_id")
-    if urun_id:
-        urun = db.session.get(Urun, urun_id)
-        if urun and not urun.silindi_mi:
-            aktif = urun.to_dict()
-    emit(
-        "sahne_durumu",
-        {
-            "dukkan": dukkan,
-            "aktif_urun": aktif,
-            "aktif_urun_id": urun_id,
-            "pey": durum.get("pey") or 0,
-            "kazanan": durum.get("kazanan") or "Yok",
-            "kazanan_id": durum.get("kazanan_id"),
-            "kalan": kalan,
-            "kalan_sure": kalan,
-            "toplam": toplam,
-            "asama": asama,
-            "durum": durum.get("durum") or "Bekliyor",
-            "sayac_aktif": bool(oda.get("sayac_aktif")),
-        },
-    )
+    try:
+        if urun_id:
+            urun = db.session.get(Urun, urun_id)
+            if urun and not urun.silindi_mi:
+                aktif = urun.to_dict()
+    finally:
+        _oturumu_birak()
+    gorseller = (aktif or {}).get("fotograflar") or []
+    return {
+        "dukkan": dukkan,
+        "aktif_urun": aktif,
+        "aktif_urun_id": urun_id,
+        "pey": durum.get("pey") or 0,
+        "kazanan": durum.get("kazanan") or "Yok",
+        "kazanan_id": durum.get("kazanan_id"),
+        "acilis_fiyati": (aktif or {}).get("fiyat") or 0,
+        "gorsel": gorseller[0] if gorseller else ((aktif or {}).get("video") or ""),
+        "kalan": ham,
+        "kalan_sure": ham,
+        "ham_kalan": ham,
+        "toplam": toplam,
+        "asama": asama,
+        "durum": durum.get("durum") or "Bekliyor",
+        "sayac_aktif": bool(oda.get("sayac_aktif")),
+        "sayac_gorunsun": bool(oda.get("sayac_aktif")),
+    }
+
+
+def _katilana_sahneyi_ver(dukkan):
+    """Sayfayı yeni açan izleyiciye sahnedeki ürünü ve sayacı tek olayla verir."""
+    emit("sahne_durumu", _sahne_durumu_paketi(dukkan), to=request.sid)
 
 
 @socketio.on("join_dukkan")

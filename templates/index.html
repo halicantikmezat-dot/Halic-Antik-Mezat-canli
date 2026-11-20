@@ -4456,34 +4456,19 @@
     }
 
     function canliDurumuGetirHafif() {
-        fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}`).then(res => res.json()).then(data => {
-            if (!data) return;
+        const sid = (socket && socket.id) ? ("&sid=" + encodeURIComponent(socket.id)) : "";
+        fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}${sid}`).then(res => res.json()).then(data => {
+            if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+            canliAsamayiCiz(data);
             let gelenPey = parseFloat(data.pey || (data.aktif_urun ? data.aktif_urun.guncel_fiyat : 0));
             sonGorulenPey = gelenPey;
-            document.getElementById('currentBid').innerText = Math.round(gelenPey).toLocaleString('tr-TR');
-            document.getElementById('aktif_kazanan').innerText = data.kazanan || "Yok";
-
-            if (data.asama === "pazarlik" || data.asama === "karar") {
-                const ham = parseInt(data.ham_kalan !== undefined ? data.ham_kalan : data.kalan, 10);
-                if (!isNaN(ham)) {
-                    sayacPaketiniCiz({
-                        dukkan: aktifDukkan,
-                        kalan: ham,
-                        kalan_sure: ham,
-                        asama: data.asama,
-                        sayac_gorunsun: !!data.sayac_gorunsun
-                    });
-                }
+            if (secilenArsivUrunId) return;
+            if (data.aktif_urun) {
+                sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan, "sahne");
+                return;
             }
-
-            if (!secilenArsivUrunId) {
-                sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan);
-                if (!data.aktif_urun && data.son_satis && data.son_satis.kazanan) {
-                    satildiDamgasiniGoster(data.son_satis.kazanan);
-                } else if (!data.aktif_urun) {
-                    satildiDamgasiniGizle();
-                }
-            }
+            sahneyiGuncelle(null);
+            if (data.son_satis && data.son_satis.kazanan) satildiDamgasiniGoster(data.son_satis.kazanan);
         }).catch(e=>{});
     }
 

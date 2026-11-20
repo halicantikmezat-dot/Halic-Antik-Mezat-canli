@@ -553,6 +553,7 @@
             </div>
 
             <div style="background: #121822; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
+                <img id="aktifUrunGorsel" alt="" style="display:none; width:100%; max-height:180px; object-fit:contain; border-radius:6px; margin-bottom:8px; background:#0b1220;">
                 <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">Sahnede aktif ürün yok</span></p>
                 <p style="margin-top: 4px;"><b>Anlık Fiyat:</b> <span id="aktifFiyat" style="color: #34d399; font-weight: bold;">0 TL</span></p>
                 <p style="margin-top: 4px;"><b>Son Pey Veren:</b> <span id="aktifKazanan" style="color: var(--accent-gold); font-weight: bold;">Yok</span></p>
@@ -1390,6 +1391,11 @@
         if (ad) ad.innerText = "Sahnede aktif ürün yok";
         if (fiyat) fiyat.innerText = "0 TL";
         if (kazanan) kazanan.innerText = "Yok";
+        const gorsel = document.getElementById("aktifUrunGorsel");
+        if (gorsel) {
+            gorsel.style.display = "none";
+            gorsel.removeAttribute("src");
+        }
         if (durum) {
             durum.classList.remove("satildi-yazi");
             durum.innerText = "Bekliyor";
@@ -1553,6 +1559,14 @@
         if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
             otonomButonlariniCiz(!!otonomDurumlari[kod]);
         }
+        const sid = (socket && socket.id) ? ("&sid=" + encodeURIComponent(socket.id)) : "";
+        fetch("/canli-durum?dukkan=" + encodeURIComponent(kod) + sid)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || kod !== seciliDukkan) return;
+                adminSahneyiUygula(data);
+            })
+            .catch(function () {});
         veriCekAdmin(true);
         adminUrunAra();
     }
@@ -2392,6 +2406,7 @@
             document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(urun.dukkan) + ` LOT #${urun.lot} - ${urun.ad}`;
             document.getElementById('aktifFiyat').innerText = `${urun.guncel_fiyat || urun.fiyat} TL`;
             document.getElementById('aktifKazanan').innerText = urun.kazanan || "Yok";
+            adminGorseliYaz(urun);
             const durumKutusu = document.getElementById('aktifDurum');
             durumKutusu.classList.remove('satildi-yazi');
             durumKutusu.innerText = urun.durum || "Bekliyor";
@@ -2441,8 +2456,21 @@
         }
     });
 
-    socket.on("sahne_durumu", function (data) {
-        if (!adminOlayBirKez("sahne_durumu", data)) return;
+    function adminGorseliYaz(urun) {
+        const img = document.getElementById("aktifUrunGorsel");
+        if (!img) return;
+        const liste = urun && urun.fotograflar;
+        const adres = (liste && liste.length) ? String(liste[0] || "") : "";
+        if (!adres || /\.(mp4|webm|mov)(\?|$)/i.test(adres)) {
+            img.style.display = "none";
+            img.removeAttribute("src");
+            return;
+        }
+        img.src = adres;
+        img.style.display = "block";
+    }
+
+    function adminSahneyiUygula(data) {
         if (!data || data.dukkan !== seciliDukkan) return;
         const urun = data.aktif_urun;
         if (!urun) {
@@ -2455,6 +2483,7 @@
         if (ad) ad.innerText = dukkanEtiketi(data.dukkan) + " LOT #" + (urun.lot || "") + " - " + (urun.ad || "");
         if (fiyat) fiyat.innerText = (data.pey || urun.guncel_fiyat || urun.fiyat || 0) + " TL";
         if (kazanan) kazanan.innerText = data.kazanan || urun.kazanan || "Yok";
+        adminGorseliYaz(urun);
         const ham = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 0;
         if (data.asama === "karar") {
             adminKararSayaciniKur(ham, "karar");
@@ -2463,6 +2492,11 @@
             const gorunen = data.asama === "pazarlik" ? Math.max(0, ham - 60) : ham;
             if (durum) durum.innerText = (data.asama === "pazarlik" ? "Pazarlık: " : "Durum: ") + gorunen + " sn";
         }
+    }
+
+    socket.on("sahne_durumu", function (data) {
+        if (!adminOlayBirKez("sahne_durumu", data)) return;
+        adminSahneyiUygula(data);
     });
 
     socket.on('pazarlik_kapandi', function(data) {
