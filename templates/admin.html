@@ -423,14 +423,21 @@
         <summary class="card-title" style="cursor:pointer; margin:0;">📡 Canlı Yayın &amp; Sosyal Havuz</summary>
         <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
             <div id="canliYayinDurumSatiri" style="font-size:13px; color:#94a3b8;">Seçili dükkan için yayın kapalı.</div>
+            <div id="canliYayinRozetler" style="display:flex; flex-wrap:wrap; gap:6px;">
+                <span id="cyRozetYoutube" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">YouTube: kapalı</span>
+                <span id="cyRozetTiktok" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">TikTok: kapalı</span>
+                <span id="cyRozetWebhook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Webhook: kapalı</span>
+                <span id="cyRozetPush" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#e2e8f0; font-size:12px;">Web Push Abone: 0</span>
+            </div>
+            <div id="cyHavuzSayac" style="font-size:12px; color:#cbd5e1;">Toplam Yorum: 0 · Otomatik Pey: 0</div>
             <input type="text" id="cyBaslik" placeholder="Yayın başlığı" maxlength="180">
             <input type="url" id="cyUrl" placeholder="Yayın linki (https://...)">
             <button type="button" id="cyAnahtar" class="btn btn-red" onclick="canliYayinAnahtar()">Bu Dükkanda Canlı Yayın Başlat</button>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-                <input type="url" id="cyYoutube" placeholder="YouTube">
+                <input type="text" id="cyYoutube" placeholder="YouTube linki veya video ID">
                 <input type="url" id="cyInstagram" placeholder="Instagram">
                 <input type="url" id="cyFacebook" placeholder="Facebook">
-                <input type="url" id="cyTiktok" placeholder="TikTok">
+                <input type="text" id="cyTiktok" placeholder="TikTok kullanıcı adı veya link">
                 <input type="url" id="cyKick" placeholder="Kick">
                 <input type="url" id="cyTwitch" placeholder="Twitch">
                 <input type="url" id="cyX" placeholder="X">
@@ -1670,6 +1677,32 @@
                 satir.textContent = 'Seçili dükkan için yayın kapalı.';
             }
         }
+        canliDinleyiciRozetleri(kayit.dinleyiciler || {});
+    }
+
+    function canliRozetBoyasi(el, acik) {
+        if (!el) return;
+        el.style.background = acik ? '#14532d' : '#1e293b';
+        el.style.color = acik ? '#86efac' : '#cbd5e1';
+    }
+
+    function canliDinleyiciRozetleri(din) {
+        const youtube = document.getElementById('cyRozetYoutube');
+        const tiktok = document.getElementById('cyRozetTiktok');
+        const webhook = document.getElementById('cyRozetWebhook');
+        const push = document.getElementById('cyRozetPush');
+        const sayac = document.getElementById('cyHavuzSayac');
+        if (youtube) youtube.textContent = 'YouTube: ' + (din.youtube === 'bagli' ? 'bağlı' : 'kapalı');
+        if (tiktok) tiktok.textContent = 'TikTok: ' + (din.tiktok === 'bagli' ? 'bağlı' : 'kapalı');
+        if (webhook) webhook.textContent = 'Webhook: ' + (din.webhook === 'bagli' ? 'bağlı' : 'kapalı');
+        canliRozetBoyasi(youtube, din.youtube === 'bagli');
+        canliRozetBoyasi(tiktok, din.tiktok === 'bagli');
+        canliRozetBoyasi(webhook, din.webhook === 'bagli');
+        if (push) push.textContent = 'Web Push Abone: ' + (Number(din.push_abone) || 0);
+        if (sayac) {
+            sayac.textContent = 'Toplam Yorum: ' + (Number(din.toplam_yorum) || 0)
+                + ' · Otomatik Pey: ' + (Number(din.otomatik_pey) || 0);
+        }
     }
 
     function canliYayinDurumunuAl() {
@@ -1769,6 +1802,11 @@
     socket.on('aktif_canli_yayin', function (veri) {
         canliYayinKaydi = Object.assign({}, canliYayinKaydi || {}, veri || {});
         canliYayinPaneliCiz();
+    });
+    socket.on('canli_havuz_olcum', function (veri) {
+        if (!veri) return;
+        canliYayinKaydi = Object.assign({}, canliYayinKaydi || {}, { dinleyiciler: veri });
+        canliDinleyiciRozetleri(veri);
     });
     canliYayinDurumunuAl();
 

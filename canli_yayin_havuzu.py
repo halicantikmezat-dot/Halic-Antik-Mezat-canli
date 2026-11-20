@@ -4,6 +4,8 @@ Mezat sayacı, pey kilidi ve dükkan otonom bayrakları bu modülde değişmez.
 Eksik sohbet kütüphaneleri uygulamayı düşürmez; pasif kalır.
 """
 
+import base64
+import hashlib
 import json
 import os
 import re
@@ -96,7 +98,23 @@ _PLATFORM_AD = {
 }
 _SITE = "https://halicantikcanli.com"
 _REDIS_ANAHTAR = "halic:canli_yayin:durum"
+_DINLEYICI_ANAHTAR = "halic:canli_yayin:dinleyici"
+_VAPID_ANAHTAR = "halic:canli_yayin:vapid"
+_PUSH_ANAHTAR = "halic:canli_yayin:push"
 _TABLO = "canli_yayin_havuz"
+_PUSH_TABLO = "canli_yayin_push"
+_DINLEYICI_KILIT = threading.RLock()
+_DINLEYICI_DURUM = {"youtube": "kapali", "tiktok": "kapali"}
+_DINLEYICI_HEDEF = {"youtube": "", "tiktok": ""}
+_DINLEYICI_DUKKAN = {"youtube": "", "tiktok": ""}
+_DINLEYICI_DUR = {"youtube": None, "tiktok": None}
+_DINLEYICI_IS = {"youtube": None, "tiktok": None}
+_DINLEYICI_ISTEMCI = {"youtube": None, "tiktok": None}
+_OLCUM = {"toplam_yorum": 0, "otomatik_pey": 0}
+_SON_OLCUM_YAYIN = 0.0
+_PUSH = {}
+_PUSH_KILIT = threading.RLock()
+_VAPID = None
 
 
 def bagla(
@@ -151,9 +169,19 @@ def bagla(
         with app.app_context():
             _semayi_hazirla()
             _bellege_yukle()
+            _olcum_yukle()
+            _vapid_hazirla()
+            _push_yukle()
     except Exception as hata:
         print(f"[CANLI YAYIN] kalici yukleme atlandi: {hata}", flush=True)
+        if _VAPID is None:
+            _vapid_hazirla()
     _HAZIR = True
+    try:
+        if str(_kopya().get("aktif_dukkan") or ""):
+            platform_dinleyici_baslat()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] dinleyici acilisi atlandi: {hata}", flush=True)
     print(
         "[CANLI YAYIN] pytchat="
         + ("acik" if _PYTCHAT_VAR else "pasif")
@@ -208,7 +236,8 @@ def herkese_acik_durum():
         "yayin_url": kayit.get("yayin_url") or "",
         "platformlar": _kanallar(kayit),
         "baslangic_zamani": kayit.get("baslangic_zamani") or "",
-        "dinleyiciler": {"pytchat": _PYTCHAT_VAR, "tiktoklive": _TIKTOK_VAR},
+        "dinleyiciler": _dinleyici_ozet(kayit),
+        "push_public_key": _vapid_public() or "",
     }
 
 
@@ -232,13 +261,16 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj):
 
     tutar = yorumdan_pey_coz(metin, _tutar_coz)
     if not tutar or tutar <= 0:
+        _olcum_artir(False)
         return {"success": True, "tip": "yorum", "pey": False, "dukkan": kod}
 
     pey = _pey_karsilastir_ve_uygula(kod, platform_adi, ad, float(tutar))
+    uygulandi = bool(pey.get("uygulandi"))
+    _olcum_artir(uygulandi)
     return {
         "success": True,
         "tip": "pey" if pey.get("uygulandi") else "yorum",
-        "pey": bool(pey.get("uygulandi")),
+        "pey": uygulandi,
         "tutar": float(tutar),
         "dukkan": kod,
         "mesaj": pey.get("neden") or "",
@@ -296,8 +328,17 @@ def _baslat(veri):
         _BELLEK.update(kayit)
         anlik = _kopya()
     _kalici_yaz(anlik)
+    _olcum_sifirla()
+    try:
+        platform_dinleyici_baslat(anlik)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] dinleyici baslatilamadi: {hata}", flush=True)
     _olay_yayinla(anlik)
     _otomasyon_sinyali(anlik)
+    try:
+        _push_yayin_basladi(anlik)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] web push atlandi: {hata}", flush=True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -323,6 +364,10 @@ def _durdur(veri):
         kayit["baslangic_zamani"] = ""
         _BELLEK.update(kayit)
         anlik = _kopya()
+    try:
+        platform_dinleyici_durdur()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] dinleyici kapatilamadi: {hata}", flush=True)
     _kalici_yaz(anlik)
     _olay_yayinla(anlik)
     paket = herkese_acik_durum()
@@ -358,6 +403,10 @@ def _ayar_kaydet(veri):
         anlik = _kopya()
     _kalici_yaz(anlik)
     if str(anlik.get("aktif_dukkan") or ""):
+        try:
+            platform_dinleyici_baslat(anlik)
+        except Exception as hata:
+            print(f"[CANLI YAYIN] dinleyici guncellenemedi: {hata}", flush=True)
         _olay_yayinla(anlik)
     paket = herkese_acik_durum()
     paket["success"] = True
@@ -529,7 +578,7 @@ def _yorum_yayinla(dukkan, platform, kullanici, mesaj):
             "zaman": time.strftime("%H:%M:%S"),
             "dukkan": dukkan,
             "havuz": True,
-            "rozet": platform,
+            "rozet": "[" + platform + "]",
         },
         room=dukkan,
     )
@@ -559,6 +608,8 @@ def _olay_yayinla(kayit):
             "yayin_url": kayit.get("yayin_url") or "",
             "platformlar": _kanallar(kayit),
             "baslangic_zamani": kayit.get("baslangic_zamani") or "",
+            "dinleyiciler": _dinleyici_ozet(kayit),
+            "push_public_key": _vapid_public() or "",
         },
     )
 
@@ -686,7 +737,12 @@ def _kanallari_temizle(ham):
         deger = ham.get(anahtar)
         if deger is None:
             deger = ham.get(_KANAL_ETIKET[anahtar])
-        temiz[anahtar] = _guvenli_url(deger or "")
+        if anahtar == "youtube":
+            temiz[anahtar] = _youtube_kaynak(deger)
+        elif anahtar == "tiktok":
+            temiz[anahtar] = _tiktok_kaynak(deger)
+        else:
+            temiz[anahtar] = _guvenli_url(deger or "")
     return temiz
 
 
@@ -811,6 +867,17 @@ def _semayi_hazirla():
             """
         )
     )
+    _db.session.execute(
+        text(
+            f"""
+            CREATE TABLE IF NOT EXISTS {_PUSH_TABLO} (
+                anahtar VARCHAR(64) PRIMARY KEY,
+                icerik TEXT NOT NULL,
+                guncelleme VARCHAR(40)
+            )
+            """
+        )
+    )
     _db.session.commit()
 
 
@@ -866,10 +933,10 @@ def _redis_yaz(kayit):
     _REDIS.set(_REDIS_ANAHTAR, json.dumps(kayit, ensure_ascii=False))
 
 
-def _db_oku():
+def _db_oku(anahtar="durum"):
     satir = _db.session.execute(
         text(f"SELECT icerik FROM {_TABLO} WHERE anahtar = :anahtar"),
-        {"anahtar": "durum"},
+        {"anahtar": anahtar},
     ).first()
     if satir is None:
         return None
@@ -881,6 +948,10 @@ def _db_oku():
 
 
 def _db_yaz(kayit):
+    _db_satir_yaz("durum", kayit)
+
+
+def _db_satir_yaz(anahtar, kayit):
     _db.session.execute(
         text(
             f"""
@@ -892,7 +963,7 @@ def _db_yaz(kayit):
             """
         ),
         {
-            "anahtar": "durum",
+            "anahtar": anahtar,
             "icerik": json.dumps(kayit, ensure_ascii=False),
             "an": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         },
@@ -914,3 +985,720 @@ def _kaydi_normallestir(ham):
     if kayit["aktif_dukkan"] not in _dukkanlar:
         kayit["aktif_dukkan"] = ""
     return kayit
+
+
+def push_abone_yaniti():
+    veri = request.get_json(silent=True) or {}
+    if str(veri.get("islem") or "").strip().lower() in ("sil", "cik", "unsubscribe"):
+        adres = _push_endpoint(veri)
+        if adres:
+            _push_sil(adres)
+        return jsonify({"success": True, "abone": _push_sayisi()})
+    abone = _push_ayikla(veri)
+    if not abone:
+        return jsonify({"success": False, "mesaj": "Abonelik eksik."}), 400
+    _push_kaydet(abone)
+    return jsonify({"success": True, "abone": _push_sayisi()})
+
+
+def platform_dinleyici_baslat(kayit=None):
+    """YouTube ve TikTok sohbetini mezat döngüsünden ayrı işçide açar."""
+    kayit = kayit or _kopya()
+    kod = str(kayit.get("aktif_dukkan") or "")
+    if not kod:
+        platform_dinleyici_durdur()
+        return _dinleyici_ozet(kayit)
+    kanallar = kayit.get("kanallar") or {}
+    yt = _youtube_video_id(kanallar.get("youtube") or "", kayit.get("yayin_url") or "")
+    tt = _tiktok_kullanici(kanallar.get("tiktok") or "")
+    _dinleyici_yenile("youtube", yt, kod, _youtube_dongu)
+    _dinleyici_yenile("tiktok", tt, kod, _tiktok_dongu)
+    return _dinleyici_ozet(kayit)
+
+
+def platform_dinleyici_durdur():
+    _dinleyici_yenile("youtube", "", "", None)
+    _dinleyici_yenile("tiktok", "", "", None)
+
+
+def _dinleyici_yenile(ad, hedef, dukkan, fn):
+    eski_istemci = None
+    baslatilacak = None
+    with _DINLEYICI_KILIT:
+        eski_dur = _DINLEYICI_DUR.get(ad)
+        eski_isci = _DINLEYICI_IS.get(ad)
+        ayni = (
+            bool(hedef)
+            and _DINLEYICI_HEDEF.get(ad) == hedef
+            and _DINLEYICI_DUKKAN.get(ad) == dukkan
+            and eski_isci is not None
+            and getattr(eski_isci, "is_alive", lambda: False)()
+        )
+        if ayni:
+            return
+        if eski_dur is not None:
+            eski_dur.set()
+        eski_istemci = _DINLEYICI_ISTEMCI.get(ad)
+        _DINLEYICI_HEDEF[ad] = hedef or ""
+        _DINLEYICI_DUKKAN[ad] = dukkan or ""
+        if not hedef or fn is None:
+            _DINLEYICI_DURUM[ad] = "kapali"
+            _DINLEYICI_IS[ad] = None
+            _DINLEYICI_DUR[ad] = None
+        else:
+            dur = threading.Event()
+            _DINLEYICI_DUR[ad] = dur
+            _DINLEYICI_DURUM[ad] = "kapali"
+
+            def govde(hedef=hedef, dukkan=dukkan, dur=dur, fn=fn, ad=ad):
+                try:
+                    fn(hedef, dukkan, dur)
+                except Exception as hata:
+                    print(f"[CANLI YAYIN] {ad} dinleyici: {hata}", flush=True)
+                finally:
+                    with _DINLEYICI_KILIT:
+                        if _DINLEYICI_HEDEF.get(ad) == hedef and _DINLEYICI_DUR.get(ad) is dur:
+                            _DINLEYICI_DURUM[ad] = "kapali"
+                    _dinleyici_kalici()
+
+            isci = threading.Thread(target=govde, name="canli-" + ad, daemon=True)
+            _DINLEYICI_IS[ad] = isci
+            baslatilacak = isci
+    if eski_istemci is not None:
+        _istemci_kapat(eski_istemci)
+    if baslatilacak is not None:
+        baslatilacak.start()
+    _dinleyici_kalici()
+
+
+def _youtube_dongu(video_id, dukkan, dur):
+    if not _PYTCHAT_VAR or pytchat is None:
+        _pasif_uyar("youtube", "[CANLI YAYIN] pytchat kurulu degil, YouTube dinleyici pasif")
+        return
+    try:
+        chat = pytchat.create(video_id=video_id)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] youtube baglanamadi: {hata}", flush=True)
+        return
+    _dinleyici_durum_yaz("youtube", "bagli")
+    try:
+        while not dur.is_set():
+            try:
+                if hasattr(chat, "is_alive") and not chat.is_alive():
+                    break
+                demet = chat.get()
+                ogeler = demet.sync_items() if hasattr(demet, "sync_items") else []
+                for satir in ogeler:
+                    if dur.is_set():
+                        break
+                    yazar = getattr(satir, "author", None)
+                    ad = getattr(yazar, "name", None) or "YouTube"
+                    _dinleyici_yorum_isle(dukkan, "youtube", ad, getattr(satir, "message", "") or "")
+            except Exception as hata:
+                print(f"[CANLI YAYIN] youtube okuma: {hata}", flush=True)
+                break
+            if dur.wait(1.0):
+                break
+    finally:
+        for metod in ("terminate", "stop"):
+            fn = getattr(chat, metod, None)
+            if not callable(fn):
+                continue
+            try:
+                fn()
+                break
+            except Exception:
+                pass
+
+
+def _tiktok_dongu(kullanici, dukkan, dur):
+    if not _TIKTOK_VAR or TikTokLiveClient is None:
+        _pasif_uyar("tiktok", "[CANLI YAYIN] TikTokLive kurulu degil, TikTok dinleyici pasif")
+        return
+    unique = kullanici if str(kullanici).startswith("@") else "@" + str(kullanici)
+    try:
+        client = TikTokLiveClient(unique_id=unique)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] tiktok istemci: {hata}", flush=True)
+        return
+    with _DINLEYICI_KILIT:
+        _DINLEYICI_ISTEMCI["tiktok"] = client
+
+    async def _yorum(event):
+        user = getattr(event, "user", None)
+        ad = "TikTok"
+        if user is not None:
+            ad = getattr(user, "nickname", None) or getattr(user, "unique_id", None) or ad
+        _dinleyici_yorum_isle(dukkan, "tiktok", ad, getattr(event, "comment", None) or "")
+
+    async def _baglandi(_event):
+        _dinleyici_durum_yaz("tiktok", "bagli")
+
+    try:
+        from TikTokLive.events import CommentEvent, ConnectEvent
+
+        client.on(CommentEvent)(_yorum)
+        client.on(ConnectEvent)(_baglandi)
+    except Exception:
+        try:
+            client.on("comment")(_yorum)
+            client.on("connect")(_baglandi)
+        except Exception as hata:
+            print(f"[CANLI YAYIN] tiktok olay kaydi: {hata}", flush=True)
+            return
+
+    def _izle():
+        dur.wait()
+        _istemci_kapat(client)
+
+    threading.Thread(target=_izle, name="canli-tiktok-kapat", daemon=True).start()
+    try:
+        client.run()
+    finally:
+        with _DINLEYICI_KILIT:
+            if _DINLEYICI_ISTEMCI.get("tiktok") is client:
+                _DINLEYICI_ISTEMCI["tiktok"] = None
+
+
+_PASIF_UYARI = set()
+
+
+def _pasif_uyar(ad, metin):
+    if ad in _PASIF_UYARI:
+        return
+    _PASIF_UYARI.add(ad)
+    print(metin, flush=True)
+
+
+def _dinleyici_yorum_isle(dukkan, platform, kullanici, mesaj):
+    try:
+        if _app is not None:
+            with _app.app_context():
+                havuz_yorumu_isle(dukkan, platform, kullanici, mesaj)
+        else:
+            havuz_yorumu_isle(dukkan, platform, kullanici, mesaj)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] {platform} yorum: {hata}", flush=True)
+        try:
+            if _db is not None:
+                _db.session.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if _db is not None:
+                _db.session.remove()
+        except Exception:
+            pass
+
+
+def _istemci_kapat(client):
+    if client is None:
+        return
+    for ad in ("stop", "disconnect", "close"):
+        fn = getattr(client, ad, None)
+        if not callable(fn):
+            continue
+        try:
+            sonuc = fn()
+        except Exception:
+            continue
+        if hasattr(sonuc, "__await__"):
+            try:
+                import asyncio
+
+                loop = getattr(client, "loop", None)
+                if loop is not None and loop.is_running():
+                    asyncio.run_coroutine_threadsafe(sonuc, loop)
+                else:
+                    sonuc.close()
+            except Exception:
+                try:
+                    sonuc.close()
+                except Exception:
+                    pass
+        return
+
+
+def _dinleyici_durum_yaz(ad, durum):
+    with _DINLEYICI_KILIT:
+        _DINLEYICI_DURUM[ad] = "bagli" if durum == "bagli" else "kapali"
+    _dinleyici_kalici()
+    _olcum_yayinla(zorla=True)
+
+
+def _dinleyici_anlik():
+    with _DINLEYICI_KILIT:
+        return {
+            "youtube": _DINLEYICI_DURUM.get("youtube") or "kapali",
+            "tiktok": _DINLEYICI_DURUM.get("tiktok") or "kapali",
+            "toplam_yorum": int(_OLCUM.get("toplam_yorum") or 0),
+            "otomatik_pey": int(_OLCUM.get("otomatik_pey") or 0),
+        }
+
+
+def _dinleyici_ozet(kayit=None):
+    if kayit is None:
+        kayit = _kopya()
+    anlik = _dinleyici_anlik()
+    return {
+        "pytchat": _PYTCHAT_VAR,
+        "tiktoklive": _TIKTOK_VAR,
+        "youtube": anlik["youtube"] if anlik["youtube"] in ("bagli", "kapali") else "kapali",
+        "tiktok": anlik["tiktok"] if anlik["tiktok"] in ("bagli", "kapali") else "kapali",
+        "webhook": "bagli" if _webhook_adresi(kayit) else "kapali",
+        "push_abone": _push_sayisi(),
+        "toplam_yorum": anlik["toplam_yorum"],
+        "otomatik_pey": anlik["otomatik_pey"],
+    }
+
+
+def _olcum_artir(pey):
+    with _DINLEYICI_KILIT:
+        _OLCUM["toplam_yorum"] = int(_OLCUM.get("toplam_yorum") or 0) + 1
+        if pey:
+            _OLCUM["otomatik_pey"] = int(_OLCUM.get("otomatik_pey") or 0) + 1
+    _dinleyici_kalici()
+    _olcum_yayinla(False)
+
+
+def _olcum_sifirla():
+    with _DINLEYICI_KILIT:
+        _OLCUM["toplam_yorum"] = 0
+        _OLCUM["otomatik_pey"] = 0
+    _dinleyici_kalici()
+    _olcum_yayinla(True)
+
+
+def _olcum_yukle():
+    veri = _redis_json(_DINLEYICI_ANAHTAR)
+    if not isinstance(veri, dict):
+        veri = _db_oku("dinleyici") if _db is not None else None
+    if not isinstance(veri, dict):
+        return
+    with _DINLEYICI_KILIT:
+        _OLCUM["toplam_yorum"] = int(veri.get("toplam_yorum") or 0)
+        _OLCUM["otomatik_pey"] = int(veri.get("otomatik_pey") or 0)
+
+
+def _dinleyici_kalici():
+    anlik = _dinleyici_anlik()
+    if _REDIS is not None:
+        try:
+            _REDIS.set(_DINLEYICI_ANAHTAR, json.dumps(anlik, ensure_ascii=False))
+        except Exception as hata:
+            print(f"[CANLI YAYIN] dinleyici redis: {hata}", flush=True)
+    if _app is None or _db is None:
+        return
+    try:
+        with _app.app_context():
+            _db_satir_yaz("dinleyici", anlik)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] dinleyici veritabani: {hata}", flush=True)
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+
+
+def _olcum_yayinla(zorla):
+    global _SON_OLCUM_YAYIN
+    import time
+
+    simdi = time.time()
+    if not zorla and simdi - _SON_OLCUM_YAYIN < 1.5:
+        return
+    _SON_OLCUM_YAYIN = simdi
+    if _socketio is None:
+        return
+    try:
+        _socketio.emit("canli_havuz_olcum", _dinleyici_ozet())
+    except Exception as hata:
+        print(f"[CANLI YAYIN] olcum yayini: {hata}", flush=True)
+
+
+def _redis_json(anahtar):
+    if _REDIS is None:
+        return None
+    try:
+        ham = _REDIS.get(anahtar)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] Redis okunamadi: {hata}", flush=True)
+        return None
+    if not ham:
+        return None
+    try:
+        return json.loads(ham)
+    except ValueError:
+        return None
+
+
+def _youtube_video_id(*adaylar):
+    for ham in adaylar:
+        metin = str(ham or "").strip()
+        if not metin:
+            continue
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", metin):
+            return metin
+        eslesen = re.search(
+            r"(?:v=|vi=|youtu\.be/|youtube\.com/(?:live|embed|shorts|v)/)([A-Za-z0-9_-]{11})",
+            metin,
+            flags=re.IGNORECASE,
+        )
+        if eslesen:
+            return eslesen.group(1)
+    return ""
+
+
+def _youtube_kaynak(deger):
+    metin = str(deger or "").strip()
+    if not metin:
+        return ""
+    if not metin.lower().startswith("http"):
+        return _youtube_video_id(metin)
+    return _guvenli_url(metin)
+
+
+def _tiktok_kullanici(ham):
+    metin = str(ham or "").strip()
+    if not metin:
+        return ""
+    eslesen = re.search(r"tiktok\.com/@([A-Za-z0-9._]{2,32})", metin, flags=re.IGNORECASE)
+    if eslesen:
+        return eslesen.group(1)
+    if re.fullmatch(r"@?[A-Za-z0-9._]{2,32}", metin):
+        return metin.lstrip("@")
+    return ""
+
+
+def _tiktok_kaynak(deger):
+    metin = str(deger or "").strip()
+    if not metin:
+        return ""
+    if metin.lower().startswith("http"):
+        return _guvenli_url(metin)
+    return _tiktok_kullanici(metin)
+
+
+def _vapid_public():
+    kayit = _VAPID or {}
+    return str(kayit.get("public_b64") or "")
+
+
+def _vapid_kaydi():
+    return dict(_VAPID or {})
+
+
+def _vapid_hazirla():
+    global _VAPID
+    public = (os.environ.get("VAPID_PUBLIC_KEY") or "").strip()
+    private = (os.environ.get("VAPID_PRIVATE_KEY") or "").strip()
+    if public and private:
+        try:
+            _VAPID = {
+                "public_b64": _vapid_public_norm(public),
+                "private_pem": _vapid_private_norm(private),
+            }
+            return
+        except Exception as hata:
+            print(f"[CANLI YAYIN] VAPID ortam anahtari okunamadi: {hata}", flush=True)
+    kayitli = _vapid_oku()
+    if isinstance(kayitli, dict) and kayitli.get("public_b64") and kayitli.get("private_pem"):
+        _VAPID = {"public_b64": kayitli["public_b64"], "private_pem": kayitli["private_pem"]}
+        return
+    try:
+        uretilen = _vapid_uret()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] VAPID uretilemedi: {hata}", flush=True)
+        _VAPID = None
+        return
+    _VAPID = uretilen
+    _vapid_yaz(uretilen)
+    print("[CANLI YAYIN] VAPID anahtari uretildi", flush=True)
+
+
+def _vapid_oku():
+    redis_kayit = _redis_json(_VAPID_ANAHTAR)
+    if isinstance(redis_kayit, dict) and redis_kayit.get("public_b64") and redis_kayit.get("private_pem"):
+        return redis_kayit
+    if _db is None:
+        return None
+    try:
+        return _db_oku("vapid")
+    except Exception as hata:
+        print(f"[CANLI YAYIN] VAPID okunamadi: {hata}", flush=True)
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
+def _vapid_yaz(kayit):
+    if _REDIS is not None:
+        try:
+            _REDIS.set(_VAPID_ANAHTAR, json.dumps(kayit))
+        except Exception as hata:
+            print(f"[CANLI YAYIN] VAPID redis: {hata}", flush=True)
+    if _app is None or _db is None:
+        return
+    try:
+        with _app.app_context():
+            _db_satir_yaz("vapid", kayit)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] VAPID veritabani: {hata}", flush=True)
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+
+
+def _vapid_uret():
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    anahtar = ec.generate_private_key(ec.SECP256R1())
+    private_pem = anahtar.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+    public = anahtar.public_key().public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+    return {
+        "private_pem": private_pem,
+        "public_b64": base64.urlsafe_b64encode(public).decode("ascii").rstrip("="),
+    }
+
+
+def _b64url_coz(deger):
+    metin = str(deger or "").strip()
+    if not metin:
+        return None
+    ek = "=" * ((4 - len(metin) % 4) % 4)
+    try:
+        return base64.urlsafe_b64decode(metin + ek)
+    except Exception:
+        return None
+
+
+def _vapid_public_norm(deger):
+    metin = str(deger or "").strip().strip('"')
+    if "BEGIN" not in metin:
+        return metin
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+    anahtar = load_pem_public_key(metin.encode("utf-8"))
+    ham = anahtar.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+    return base64.urlsafe_b64encode(ham).decode("ascii").rstrip("=")
+
+
+def _vapid_private_norm(deger):
+    metin = str(deger or "").strip().strip('"').replace("\\n", "\n")
+    if "BEGIN" in metin:
+        return metin
+    ham = _b64url_coz(metin)
+    if not ham or len(ham) != 32:
+        return metin
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    sayi = int.from_bytes(ham, "big")
+    anahtar = ec.derive_private_key(sayi, ec.SECP256R1())
+    return anahtar.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+
+
+def _push_endpoint(veri):
+    adres = str((veri or {}).get("endpoint") or "").strip()
+    if not adres.startswith("https://") or len(adres) > 1800:
+        return ""
+    return adres
+
+
+def _push_ayikla(veri):
+    adres = _push_endpoint(veri)
+    anahtarlar = (veri or {}).get("keys") or {}
+    p256 = str(anahtarlar.get("p256dh") or (veri or {}).get("p256dh") or "").strip()
+    auth = str(anahtarlar.get("auth") or (veri or {}).get("auth") or "").strip()
+    if not adres or not p256 or not auth or len(p256) > 300 or len(auth) > 200:
+        return None
+    return {"endpoint": adres, "keys": {"p256dh": p256, "auth": auth}}
+
+
+def _push_anahtar(endpoint):
+    return hashlib.sha256(endpoint.encode("utf-8")).hexdigest()[:40]
+
+
+def _push_sayisi():
+    with _PUSH_KILIT:
+        return len(_PUSH)
+
+
+def _push_liste():
+    with _PUSH_KILIT:
+        return list(_PUSH.values())
+
+
+def _push_kaydet(abone):
+    with _PUSH_KILIT:
+        if len(_PUSH) >= 5000 and abone["endpoint"] not in _PUSH:
+            ilk = next(iter(_PUSH))
+            _push_sil_kilit_disi(ilk)
+        _PUSH[abone["endpoint"]] = abone
+    _push_kalici(abone)
+
+
+def _push_sil(endpoint):
+    if not endpoint:
+        return
+    with _PUSH_KILIT:
+        _PUSH.pop(endpoint, None)
+    _push_kalici_sil(endpoint)
+
+
+def _push_sil_kilit_disi(endpoint):
+    _PUSH.pop(endpoint, None)
+    _push_kalici_sil(endpoint)
+
+
+def _push_kalici(abone):
+    anahtar = _push_anahtar(abone["endpoint"])
+    govde = json.dumps(abone, ensure_ascii=False)
+    if _REDIS is not None:
+        try:
+            _REDIS.hset(_PUSH_ANAHTAR, anahtar, govde)
+        except Exception as hata:
+            print(f"[CANLI YAYIN] push redis: {hata}", flush=True)
+    if _app is None or _db is None:
+        return
+    try:
+        with _app.app_context():
+            _db.session.execute(
+                text(
+                    f"""
+                    INSERT INTO {_PUSH_TABLO} (anahtar, icerik, guncelleme)
+                    VALUES (:anahtar, :icerik, :an)
+                    ON CONFLICT(anahtar) DO UPDATE SET
+                        icerik = excluded.icerik,
+                        guncelleme = excluded.guncelleme
+                    """
+                ),
+                {
+                    "anahtar": anahtar,
+                    "icerik": govde,
+                    "an": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                },
+            )
+            _db.session.commit()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] push veritabani: {hata}", flush=True)
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+
+
+def _push_kalici_sil(endpoint):
+    anahtar = _push_anahtar(endpoint)
+    if _REDIS is not None:
+        try:
+            _REDIS.hdel(_PUSH_ANAHTAR, anahtar)
+        except Exception as hata:
+            print(f"[CANLI YAYIN] push redis sil: {hata}", flush=True)
+    if _app is None or _db is None:
+        return
+    try:
+        with _app.app_context():
+            _db.session.execute(
+                text(f"DELETE FROM {_PUSH_TABLO} WHERE anahtar = :anahtar"),
+                {"anahtar": anahtar},
+            )
+            _db.session.commit()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] push silinemedi: {hata}", flush=True)
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+
+
+def _push_yukle():
+    yuklenen = {}
+    if _REDIS is not None:
+        try:
+            ham = _REDIS.hgetall(_PUSH_ANAHTAR) or {}
+            for deger in ham.values():
+                kayit = json.loads(deger)
+                if isinstance(kayit, dict) and kayit.get("endpoint"):
+                    yuklenen[kayit["endpoint"]] = kayit
+        except Exception as hata:
+            print(f"[CANLI YAYIN] push redis okuma: {hata}", flush=True)
+    if not yuklenen and _db is not None:
+        try:
+            satirlar = _db.session.execute(text(f"SELECT icerik FROM {_PUSH_TABLO}")).fetchall()
+            for satir in satirlar:
+                kayit = json.loads(satir[0] or "{}")
+                if isinstance(kayit, dict) and kayit.get("endpoint"):
+                    yuklenen[kayit["endpoint"]] = kayit
+        except Exception as hata:
+            print(f"[CANLI YAYIN] push veritabani okuma: {hata}", flush=True)
+            try:
+                _db.session.rollback()
+            except Exception:
+                pass
+    with _PUSH_KILIT:
+        _PUSH.clear()
+        _PUSH.update(yuklenen)
+
+
+def _push_yayin_basladi(kayit):
+    _arkaplanda(_push_dagit, dict(kayit or {}))
+
+
+def _push_dagit(kayit):
+    kod = str((kayit or {}).get("aktif_dukkan") or "")
+    if not kod:
+        return
+    ad = _dukkan_adi(kod) or kod
+    paket = {
+        "title": "🔴 Canlı Mezat Başladı!",
+        "body": "🔴 Canlı Mezat Başladı! " + ad + " yayında, hemen katıl!",
+        "url": _SITE + "/?dukkan=" + kod,
+    }
+    anahtar = _vapid_kaydi()
+    if not anahtar.get("private_pem"):
+        print("[CANLI YAYIN] VAPID anahtari yok, push gonderilmedi", flush=True)
+        return
+    try:
+        from pywebpush import WebPushException, webpush
+    except ImportError:
+        print("[CANLI YAYIN] pywebpush kurulu degil, push gonderilmedi", flush=True)
+        return
+    konu = (os.environ.get("VAPID_SUBJECT") or "mailto:destek@halicantikcanli.com").strip()
+    for abone in _push_liste():
+        try:
+            webpush(
+                subscription_info={"endpoint": abone["endpoint"], "keys": abone["keys"]},
+                data=json.dumps(paket, ensure_ascii=False),
+                vapid_private_key=anahtar["private_pem"],
+                vapid_claims={"sub": konu},
+                ttl=180,
+            )
+        except WebPushException as hata:
+            kod_hata = getattr(getattr(hata, "response", None), "status_code", None)
+            if kod_hata in (404, 410):
+                _push_sil(abone.get("endpoint") or "")
+            else:
+                print(f"[CANLI YAYIN] push gonderilemedi: {hata}", flush=True)
+        except Exception as hata:
+            print(f"[CANLI YAYIN] push gonderilemedi: {hata}", flush=True)

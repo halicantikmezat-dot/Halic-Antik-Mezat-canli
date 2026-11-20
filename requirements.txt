@@ -19,3 +19,4 @@ Pillow==10.3.0
 numpy==1.26.4
 azure-cognitiveservices-speech
 cloudinary
+pywebpush>=2.0.1

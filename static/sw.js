@@ -1,4 +1,4 @@
-var PWA_ONBELLEK = "halic-antik-pwa-v1";
+var PWA_ONBELLEK = "halic-antik-pwa-v2";
 var PWA_DOSYALAR = [
     "/static/img/icon-192.png",
     "/static/img/icon-512.png",
@@ -68,6 +68,50 @@ self.addEventListener("fetch", function (event) {
             return response;
         }).catch(function () {
             return caches.match(request);
+        })
+    );
+});
+
+self.addEventListener("push", function (event) {
+    var veri = {};
+    if (event.data) {
+        try {
+            veri = event.data.json();
+        } catch (e) {
+            veri = { body: event.data.text() };
+        }
+    }
+    var baslik = veri.title || "🔴 Canlı Mezat Başladı!";
+    var govde = veri.body || "Canlı mezat yayında, hemen katıl!";
+    var hedef = veri.url || "/";
+    event.waitUntil(
+        self.registration.showNotification(baslik, {
+            body: govde,
+            icon: "/static/img/icon-192.png",
+            badge: "/static/img/icon-192.png",
+            data: { url: hedef },
+            tag: "canli-mezat",
+            renotify: true
+        })
+    );
+});
+
+self.addEventListener("notificationclick", function (event) {
+    event.notification.close();
+    var hedef = (event.notification.data && event.notification.data.url) || "/";
+    event.waitUntil(
+        self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (liste) {
+            for (var i = 0; i < liste.length; i++) {
+                var pencere = liste[i];
+                if (pencere.url && pencere.focus) {
+                    if (pencere.navigate) {
+                        return pencere.navigate(hedef).then(function () { return pencere.focus(); });
+                    }
+                    return pencere.focus();
+                }
+            }
+            if (self.clients.openWindow) return self.clients.openWindow(hedef);
+            return undefined;
         })
     );
 });

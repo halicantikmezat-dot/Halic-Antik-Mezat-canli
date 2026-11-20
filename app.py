@@ -11750,6 +11750,10 @@ try:
     def api_canli_yayin_webhook_yorum():
         return _canli_yayin_havuzu.webhook_yorum_yaniti()
 
+    @app.route("/api/canli-yayin/push-abone", methods=["POST"])
+    def api_canli_yayin_push_abone():
+        return _canli_yayin_havuzu.push_abone_yaniti()
+
     print("[BOOT] canli yayin havuzu hazir", flush=True)
 except Exception as hata:
     print(f"[BOOT] canli yayin havuzu atlandi: {hata}", flush=True)
