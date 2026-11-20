@@ -330,11 +330,16 @@ def _elevenlabs_mp3(text: str) -> bytes | None:
         return None
     voice_id = (getattr(Config, "ELEVENLABS_VOICE_ID", "") or "EXAVITQu4vr4xnSDxMaL").strip()
     model_id = (getattr(Config, "ELEVENLABS_MODEL_ID", "") or "eleven_flash_v2_5").strip()
+    model_adi = model_id.lower()
+    dil = (os.getenv("ELEVENLABS_LANGUAGE_CODE", "") or "tr").strip() or "tr"
+    if any(parca in model_adi for parca in ("flash", "turbo", "multilingual")):
+        dil = "tr"
     yol = f"/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128"
     govde = json.dumps(
         {
             "text": metin,
             "model_id": model_id,
+            "language_code": dil,
             "voice_settings": {
                 "stability": 0.30,
                 "similarity_boost": 0.80,
@@ -344,52 +349,69 @@ def _elevenlabs_mp3(text: str) -> bytes | None:
         },
         ensure_ascii=False,
     ).encode("utf-8")
-    baglanti = None
-    try:
+
+    def _bir_istek():
         import http.client
 
-        baglanti = http.client.HTTPSConnection("api.elevenlabs.io", timeout=15)
-        baglanti.request(
-            "POST",
-            yol,
-            body=govde,
-            headers={
-                "xi-api-key": anahtar,
-                "Content-Type": "application/json",
-                "Accept": "audio/mpeg",
-            },
-        )
-        yanit = baglanti.getresponse()
-        veri = yanit.read() or b""
-        if yanit.status != 200 or not veri:
-            ozet = veri.decode("utf-8", errors="replace").replace("\n", " ")[:240]
-            print(f"[SES HATA] ElevenLabs HTTP {yanit.status}: {ozet}", flush=True)
+        baglanti = None
+        try:
+            baglanti = http.client.HTTPSConnection("api.elevenlabs.io", timeout=15)
+            baglanti.request(
+                "POST",
+                yol,
+                body=govde,
+                headers={
+                    "xi-api-key": anahtar,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+            )
+            yanit = baglanti.getresponse()
+            veri = yanit.read() or b""
+            if yanit.status != 200 or not veri:
+                ozet = veri.decode("utf-8", errors="replace").replace("\n", " ")[:240]
+                print(f"[SES HATA] ElevenLabs HTTP {yanit.status}: {ozet}", flush=True)
+                return None
+            return veri
+        finally:
+            if baglanti is not None:
+                try:
+                    baglanti.close()
+                except Exception:
+                    pass
+
+    for deneme in range(2):
+        try:
+            return _bir_istek()
+        except Exception as hata:
+            print(f"[SES HATA] ElevenLabs: {hata}", flush=True)
+            if deneme == 0:
+                continue
             return None
-        return veri
-    except Exception as hata:
-        print(f"[SES HATA] ElevenLabs: {hata}", flush=True)
-        return None
-    finally:
-        if baglanti is not None:
-            try:
-                baglanti.close()
-            except Exception:
-                pass
+    return None
 
 
 def _openai_mp3(istemci, model, ses, soylenen):
-    """Okunan metin şablondur. tts-1-hd yönerge alanını sesli okuduğu için talimat girdiye yazılmaz."""
+    """Okunan metin şablondur. Türkçe talimat her modelde ve her denemede kalır."""
     hizli = istemci.with_options(timeout=5.0)
-    ortak = {"model": model, "voice": ses, "input": soylenen, "response_format": "mp3"}
-    if model not in ("tts-1", "tts-1-hd"):
-        ortak["instructions"] = 'language="tr". ' + TURKCE_DIREKTIF
+    talimat = 'language="tr". ' + TURKCE_DIREKTIF
+    ortak = {
+        "model": model,
+        "voice": ses,
+        "input": soylenen,
+        "response_format": "mp3",
+        "extra_body": {"language": "tr", "instructions": talimat},
+    }
+    try:
+        import inspect
+        if "instructions" in inspect.signature(hizli.audio.speech.create).parameters:
+            ortak["instructions"] = talimat
+    except Exception:
+        ortak["instructions"] = talimat
     son_hata = None
-    for deneme in range(2):
-        govde = dict(ortak)
-        if deneme:
-            govde.pop("instructions", None)
+    for _deneme in range(2):
         try:
-            yanit = hizli.audio.speech.create(**govde, extra_body={"language": "tr"})
+            yanit = hizli.audio.speech.create(**ortak)
             if hasattr(yanit, "read"):
                 veri = yanit.read()
             else:
@@ -433,7 +455,7 @@ def _edge_tts_mp3(soylenen):
 
 def _ses_modeli():
     model = getattr(Config, "OPENAI_TTS_MODEL", "") or "tts-1-hd"
-    if model not in ("tts-1", "tts-1-hd"):
+    if model not in ("tts-1", "tts-1-hd", "gpt-4o-mini-tts"):
         model = "tts-1-hd"
     ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
     return model, ses
@@ -11282,6 +11304,20 @@ try:
     print("[BOOT] pazaryeri rotalari hazir", flush=True)
 except Exception as hata:
     print(f"[BOOT] pazaryeri atlandi: {hata}", flush=True)
+
+print("[BOOT] katalog havuzu", flush=True)
+try:
+    from katalog_havuzu import katalog_havuzu_bagla
+    katalog_havuzu_bagla(
+        app,
+        admin_required,
+        _studyo_gorsel_analiz,
+        _xml_dukkan_siniflandir,
+        DUKKANLAR,
+    )
+    print("[BOOT] katalog havuzu hazir", flush=True)
+except Exception as hata:
+    print(f"[BOOT] katalog havuzu atlandi: {hata}", flush=True)
 
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
