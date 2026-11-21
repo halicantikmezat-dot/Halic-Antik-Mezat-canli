@@ -11789,6 +11789,74 @@ try:
 except Exception as hata:
     print(f"[BOOT] pazaryeri atlandi: {hata}", flush=True)
 
+def _canli_xml_sahneleri():
+    """XML çıktısına eklenecek, sahnede duran ürünlerin dükkan ve başlıkları."""
+    sahneler = []
+    try:
+        for kod, oda in list(odalar.items()):
+            urun_id = (oda or {}).get("aktif_urun_id")
+            if not urun_id:
+                continue
+            urun = db.session.get(Urun, urun_id)
+            if urun is None or getattr(urun, "silindi_mi", False):
+                continue
+            sahneler.append(
+                {
+                    "dukkan": str(getattr(urun, "dukkan_kodu", None) or kod or ""),
+                    "baslik": str(getattr(urun, "urun_adi", "") or ""),
+                    "lot": getattr(urun, "lot_no", "") or "",
+                }
+            )
+    except Exception as hata:
+        print(f"[XML] sahne okunamadi: {hata}", flush=True)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return []
+    finally:
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+    return sahneler
+
+
+def _kendi_xml_canli_bagla():
+    """Katalog XML yanıtına aktif sahne alanlarını mevcut etiketleri bozmadan ekler."""
+    hedef = None
+    for ad, fn in list(app.view_functions.items()):
+        if ad.endswith("_kendi_xml") or getattr(fn, "__name__", "") == "_kendi_xml":
+            hedef = ad
+            break
+    if not hedef:
+        print("[BOOT] kendi-xml canli alan atlandi", flush=True)
+        return
+    orijinal = app.view_functions[hedef]
+    if getattr(orijinal, "_canli_zengin", False):
+        return
+
+    def kendi_xml_canli(*args, **kwargs):
+        yanit = orijinal(*args, **kwargs)
+        try:
+            from canli_yayin_havuzu import xml_ciktisina_canli_ekle
+
+            mime = str(getattr(yanit, "mimetype", "") or "")
+            if yanit is None or "xml" not in mime or not hasattr(yanit, "get_data"):
+                return yanit
+            govde = yanit.get_data(as_text=True)
+            yeni = xml_ciktisina_canli_ekle(govde, _canli_xml_sahneleri())
+            if yeni != govde:
+                yanit.set_data(yeni)
+        except Exception as hata:
+            print(f"[XML] canli alan atlandi: {hata}", flush=True)
+        return yanit
+
+    kendi_xml_canli._canli_zengin = True
+    kendi_xml_canli.__name__ = "kendi_xml_canli"
+    app.view_functions[hedef] = kendi_xml_canli
+
+
 print("[BOOT] katalog havuzu", flush=True)
 try:
     from katalog_havuzu import katalog_havuzu_bagla
@@ -11799,6 +11867,7 @@ try:
         _xml_dukkan_siniflandir,
         DUKKANLAR,
     )
+    _kendi_xml_canli_bagla()
     print("[BOOT] katalog havuzu hazir", flush=True)
 except Exception as hata:
     print(f"[BOOT] katalog havuzu atlandi: {hata}", flush=True)
@@ -11864,6 +11933,10 @@ try:
     @app.route("/api/canli-yayin/webhook-yorum", methods=["POST"])
     def api_canli_yayin_webhook_yorum():
         return _canli_yayin_havuzu.webhook_yorum_yaniti()
+
+    @app.route("/api/canli-havuz/meta-webhook", methods=["GET", "POST"])
+    def api_canli_havuz_meta_webhook():
+        return _canli_yayin_havuzu.meta_webhook_yaniti()
 
     @app.route("/api/canli-yayin/push-abone", methods=["POST"])
     def api_canli_yayin_push_abone():

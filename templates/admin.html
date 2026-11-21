@@ -483,9 +483,13 @@
         <summary class="card-title" style="cursor:pointer; margin:0;">📡 Canlı Yayın &amp; Sosyal Havuz</summary>
         <div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
             <div id="canliYayinDurumSatiri" style="font-size:13px; color:#94a3b8;">Özel canlı yayın yalnızca Diğer - Her Şey dükkanında açılır. Kapalıyken dükkan otonom mezattadır.</div>
+            <div id="cyEkKaynakDurum" style="font-size:12px; color:#86efac; min-height:16px;"></div>
             <div id="canliYayinRozetler" style="display:flex; flex-wrap:wrap; gap:6px;">
                 <span id="cyRozetYoutube" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">YouTube: kapalı</span>
                 <span id="cyRozetTiktok" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">TikTok: kapalı</span>
+                <span id="cyRozetTwitch" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Twitch: kapalı</span>
+                <span id="cyRozetKick" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Kick: kapalı</span>
+                <span id="cyRozetMeta" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Meta: kapalı</span>
                 <span id="cyRozetWebhook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Webhook: kapalı</span>
                 <span id="cyRozetPush" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#e2e8f0; font-size:12px;">Web Push Abone: 0</span>
             </div>
@@ -498,15 +502,17 @@
                 <input type="url" id="cyInstagram" placeholder="Instagram">
                 <input type="url" id="cyFacebook" placeholder="Facebook">
                 <input type="text" id="cyTiktok" placeholder="TikTok kullanıcı adı veya link">
-                <input type="url" id="cyKick" placeholder="Kick">
-                <input type="url" id="cyTwitch" placeholder="Twitch">
+                <input type="text" id="cyKick" placeholder="Kick kullanıcı adı veya link">
+                <input type="text" id="cyTwitch" placeholder="Twitch kullanıcı adı veya link">
                 <input type="url" id="cyX" placeholder="X">
                 <input type="url" id="cyTelegram" placeholder="Telegram">
             </div>
             <input type="url" id="cyWebhook" placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
+            <div style="font-size:11px; color:#94a3b8;">Facebook ve Instagram yorumları POST /api/canli-havuz/meta-webhook adresine gelir. Alanlar: platform, kullanici, mesaj.</div>
             <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
+                <button type="button" class="btn btn-sm" style="background:#14532d; color:#86efac;" onclick="canliWebhookTest()">Test Webhook Gönder</button>
                 <button type="button" class="btn btn-blue btn-sm" onclick="canliSosyalKopyala()">Sosyal Linkleri Kopyala</button>
                 <button type="button" class="btn btn-sm" style="background:#0d9488; color:#fff;" onclick="canliDuyuruKopyala()">Duyuruyu Kopyala</button>
             </div>
@@ -1898,9 +1904,13 @@
     function canliDinleyiciRozetleri(din) {
         const youtube = document.getElementById('cyRozetYoutube');
         const tiktok = document.getElementById('cyRozetTiktok');
+        const twitch = document.getElementById('cyRozetTwitch');
+        const kick = document.getElementById('cyRozetKick');
+        const meta = document.getElementById('cyRozetMeta');
         const webhook = document.getElementById('cyRozetWebhook');
         const push = document.getElementById('cyRozetPush');
         const sayac = document.getElementById('cyHavuzSayac');
+        const ek = document.getElementById('cyEkKaynakDurum');
         if (youtube) {
             const ytBagli = din.youtube === 'bagli';
             const ytMesaj = String(din.youtube_mesaj || '').trim();
@@ -1913,10 +1923,36 @@
             tiktok.textContent = 'TikTok: ' + (ttBagli ? 'bağlı' : 'kapalı');
             tiktok.title = ttMesaj || (ttBagli ? 'TikTok sohbeti bağlı' : 'TikTok dinleyici kapalı');
         }
-        if (webhook) webhook.textContent = 'Webhook: ' + (din.webhook === 'bagli' ? 'bağlı' : 'kapalı');
+        if (twitch) {
+            const twBagli = din.twitch === 'bagli';
+            twitch.textContent = 'Twitch: ' + (twBagli ? 'bağlı' : 'kapalı');
+            twitch.title = String(din.twitch_mesaj || '').trim() || (twBagli ? 'Twitch sohbeti bağlı' : 'Twitch dinleyici kapalı');
+        }
+        if (kick) {
+            const kkBagli = din.kick === 'bagli';
+            kick.textContent = 'Kick: ' + (kkBagli ? 'bağlı' : 'kapalı');
+            kick.title = String(din.kick_mesaj || '').trim() || (kkBagli ? 'Kick sohbeti bağlı' : 'Kick dinleyici kapalı');
+        }
+        if (meta) {
+            const metaBagli = din.meta === 'bagli';
+            meta.textContent = 'Meta: ' + (metaBagli ? 'bağlı' : 'kapalı');
+            meta.title = String(din.meta_mesaj || '').trim() || (metaBagli ? 'Meta yorum ucu açık' : 'Meta yorum ucu kapalı');
+        }
+        const webhookAktif = din.webhook === 'aktif';
+        if (webhook) webhook.textContent = 'Webhook: ' + (webhookAktif ? 'aktif' : 'kapalı');
         canliRozetBoyasi(youtube, din.youtube === 'bagli');
         canliRozetBoyasi(tiktok, din.tiktok === 'bagli');
-        canliRozetBoyasi(webhook, din.webhook === 'bagli');
+        canliRozetBoyasi(twitch, din.twitch === 'bagli');
+        canliRozetBoyasi(kick, din.kick === 'bagli');
+        canliRozetBoyasi(meta, din.meta === 'bagli');
+        canliRozetBoyasi(webhook, webhookAktif);
+        if (ek) {
+            const bagli = [];
+            if (din.twitch === 'bagli') bagli.push('Twitch');
+            if (din.kick === 'bagli') bagli.push('Kick');
+            if (din.meta === 'bagli') bagli.push('Meta');
+            ek.textContent = bagli.length ? ('Bağlı ek kaynaklar: ' + bagli.join(', ')) : '';
+        }
         if (push) push.textContent = 'Web Push Abone: ' + (Number(din.push_abone) || 0);
         if (sayac) {
             sayac.textContent = 'Toplam Yorum: ' + (Number(din.toplam_yorum) || 0)
@@ -1961,6 +1997,10 @@
 
     function canliYayinAyarKaydet() {
         canliYayinGonder('ayar_kaydet');
+    }
+
+    function canliWebhookTest() {
+        canliYayinGonder('webhook_test');
     }
 
     function panoyaYaz(metin) {

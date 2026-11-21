@@ -8,7 +8,8 @@
     {% set _dukkan_ad = dukkanlar[secili_dukkan].ad if (secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar) else 'Gümüş' %}
     {% set _seo_baslik = ('Canlı Mezat: ' ~ _canli_urun.ad ~ ' | ' ~ _dukkan_ad) if _canli_urun else ('Haliç Antik Mezat - ' ~ _dukkan_ad ~ ' Canlı Mezat') %}
     {% set _seo_aciklama = ((_canli_urun.tanitim_yazisi or ('Haliç Antik canlı mezat. ' ~ _dukkan_ad ~ ' dükkanında eseri izleyin, pey verin veya hemen alın.'))[:180]) if _canli_urun else 'Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.' %}
-    {% set _seo_gorsel = (_canli_urun.fotograflar[0] if (_canli_urun and _canli_urun.fotograflar) else '/static/img/varsayilan_urun.png') %}
+    {% set _seo_gorsel_ham = (_canli_urun.fotograflar[0] if (_canli_urun and _canli_urun.fotograflar) else '/static/img/varsayilan_urun.png') %}
+    {% set _seo_gorsel = _seo_gorsel_ham if (_seo_gorsel_ham.startswith('http://') or _seo_gorsel_ham.startswith('https://')) else ('https://halicantikcanli.com' ~ (_seo_gorsel_ham if _seo_gorsel_ham.startswith('/') else '/' ~ _seo_gorsel_ham)) %}
     {% set _seo_url = 'https://halicantikcanli.com/?dukkan=' ~ (secili_dukkan if secili_dukkan is defined else 'gumus') %}
     {% set _ilk_cy = ilk_canli_yayin if (ilk_canli_yayin is defined and ilk_canli_yayin) else {} %}
     {% set _cy_aktif = _ilk_cy.aktif and ((_ilk_cy.aktif_dukkan or '') == 'diger') %}
@@ -31,7 +32,59 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/img/icon-192.png">
-    <script type="application/ld+json" id="urunJsonLd"></script>
+    {% if _canli_urun %}
+    <script type="application/ld+json" id="urunJsonLd">{{ {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Product",
+                "name": "LOT #" ~ (_canli_urun.lot or "") ~ " - " ~ (_canli_urun.ad or ""),
+                "description": _seo_aciklama,
+                "image": _seo_gorsel,
+                "sku": (_canli_urun.lot or _canli_urun.id or "")|string,
+                "offers": {
+                    "@type": "Offer",
+                    "priceCurrency": "TRY",
+                    "price": _canli_urun.guncel_fiyat if _canli_urun.guncel_fiyat is not none else (_canli_urun.fiyat or 0),
+                    "availability": "https://schema.org/InStock",
+                    "url": _seo_url
+                }
+            },
+            {
+                "@type": "BroadcastEvent",
+                "name": (_ilk_cy.yayin_basligi if (_cy_burada and _ilk_cy.yayin_basligi) else (_dukkan_ad ~ " Canlı Mezat")),
+                "description": _seo_aciklama,
+                "isLiveBroadcast": true,
+                "startDate": (_ilk_cy.baslangic_zamani if (_cy_burada and _ilk_cy.baslangic_zamani) else none),
+                "url": _seo_url,
+                "image": _seo_gorsel,
+                "broadcastOfEvent": {
+                    "@type": "Event",
+                    "name": _seo_baslik,
+                    "eventAttendanceMode": "https://schema.org/OnlineEventAttendanceMode",
+                    "eventStatus": "https://schema.org/EventScheduled",
+                    "location": {"@type": "VirtualLocation", "url": _seo_url}
+                }
+            }
+        ]
+    } | tojson }}</script>
+    {% else %}
+    <script type="application/ld+json" id="urunJsonLd">{{ {
+        "@context": "https://schema.org",
+        "@type": "BroadcastEvent",
+        "name": _dukkan_ad ~ " Canlı Mezat",
+        "description": _seo_aciklama,
+        "isLiveBroadcast": true,
+        "url": _seo_url,
+        "broadcastOfEvent": {
+            "@type": "Event",
+            "name": _seo_baslik,
+            "eventAttendanceMode": "https://schema.org/OnlineEventAttendanceMode",
+            "eventStatus": "https://schema.org/EventScheduled",
+            "location": {"@type": "VirtualLocation", "url": _seo_url}
+        }
+    } | tojson }}</script>
+    {% endif %}
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest" defer></script>
     <style>
@@ -748,11 +801,24 @@
             font-size: 9px;
         }
         .chat-item {
-            padding: 2px 4px;
+            position: relative;
+            padding: 2px 46px 2px 4px;
             border-radius: 3px;
             background: #141b24;
             color: #f1f5f9;
             word-break: break-word;
+        }
+        .mesaj-kalp {
+            position: absolute;
+            right: 2px;
+            top: 1px;
+            border: none;
+            background: transparent;
+            color: #fda4af;
+            font-size: 11px;
+            line-height: 1.2;
+            cursor: pointer;
+            padding: 0 2px;
         }
         .chat-item.ahmet {
             background: #2a2007;
@@ -1934,11 +2000,21 @@
             font-size: 10px;
             font-weight: 800;
         }
-        #canliKalpSahne { position: fixed; inset: 0; pointer-events: none; z-index: 4300; overflow: hidden; }
+        #canliKalpSahne {
+            position: fixed;
+            right: max(12px, calc(50vw - 228px));
+            bottom: calc(150px + env(safe-area-inset-bottom));
+            width: 72px;
+            height: 170px;
+            pointer-events: none;
+            z-index: 30;
+            overflow: hidden;
+        }
         .ucusan-kalp {
             position: absolute;
-            bottom: 20%;
+            bottom: 0;
             font-size: 22px;
+            pointer-events: none;
             animation: kalpUc 1.7s ease-out forwards;
         }
         @keyframes kalpUc { to { transform: translateY(-260px) scale(1.25); opacity: 0; } }
@@ -2134,7 +2210,7 @@
                 <button type="button" onclick="toggleChatDrawer()" aria-label="Sohbeti kapat" style="background:#475569; color:#fff; border:none; padding:1px 4px; border-radius:2px; font-size:8px; cursor:pointer;">✕</button>
             </div>
             <div class="chat-messages" id="izleyiciChatKutusu">
-                <div class="chat-item ahmet"><b>🎙️ Canlı Sunucu:</b> Hoş geldiniz, sorunuzu sorun, peynizi de esirgemeyin.</div>
+                <div class="chat-item ahmet"><span class="mesaj-govde"><b>🎙️ Canlı Sunucu:</b> Hoş geldiniz, sorunuzu sorun, peynizi de esirgemeyin.</span><button type="button" class="mesaj-kalp" aria-label="Beğen">❤️ <span>0</span></button></div>
             </div>
             <p style="font-size:11px; color:#94a3b8;">Mesaj ve bas-konuş alt bantta.</p>
         </div>
@@ -3643,7 +3719,7 @@
         const rozet = (data.havuz && etiket)
                 ? `<span class="platform-rozet">${escapeHtml(etiket)}</span> `
                 : '';
-            satir.innerHTML = `${rozet}<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}`;
+            satir.innerHTML = `<span class="mesaj-govde">${rozet}<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}</span><button type="button" class="mesaj-kalp" aria-label="Beğen">❤️ <span>0</span></button>`;
             kutu.appendChild(satir);
             kutu.scrollTop = kutu.scrollHeight;
         }
@@ -3811,6 +3887,12 @@
         if (kod === 'tiktok' && /^@?[A-Za-z0-9._]{2,32}$/.test(adres)) {
             return 'https://www.tiktok.com/@' + adres.replace(/^@/, '');
         }
+        if (kod === 'twitch' && /^@?[A-Za-z0-9_]{3,25}$/.test(adres)) {
+            return 'https://www.twitch.tv/' + adres.replace(/^@/, '');
+        }
+        if (kod === 'kick' && /^@?[A-Za-z0-9_-]{2,25}$/.test(adres)) {
+            return 'https://kick.com/' + adres.replace(/^@/, '');
+        }
         return '';
     }
 
@@ -3831,11 +3913,12 @@
         if (!sahne) return;
         if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
         while (sahne.childElementCount > 10) sahne.removeChild(sahne.firstChild);
+        const renkler = ['#fb7185', '#f43f5e', '#fda4af', '#f9a8d4', '#e11d48'];
         const kalp = document.createElement('span');
         kalp.className = 'ucusan-kalp';
         kalp.textContent = '❤';
-        kalp.style.left = (18 + Math.random() * 64) + '%';
-        kalp.style.color = Math.random() > 0.5 ? '#fb7185' : '#fda4af';
+        kalp.style.left = (4 + Math.random() * 36) + 'px';
+        kalp.style.color = renkler[Math.floor(Math.random() * renkler.length)];
         sahne.appendChild(kalp);
         setTimeout(function () { if (kalp.parentNode) kalp.remove(); }, 1800);
     }
@@ -3865,6 +3948,18 @@
         if (!veri || (veri.dukkan && veri.dukkan !== aktifDukkan)) return;
         ucusanKalp();
     });
+    const sohbetKalpKutusu = document.getElementById('izleyiciChatKutusu');
+    if (sohbetKalpKutusu) {
+        sohbetKalpKutusu.addEventListener('click', function (e) {
+            const dugme = e.target.closest ? e.target.closest('.mesaj-kalp') : null;
+            if (!dugme || !sohbetKalpKutusu.contains(dugme)) return;
+            e.preventDefault();
+            const sayi = dugme.querySelector('span');
+            const adet = (parseInt(sayi && sayi.textContent, 10) || 0) + 1;
+            if (sayi) sayi.textContent = String(adet);
+            ucusanKalp();
+        });
+    }
     if (sonCanliYayin) canliYayinArayuzunuCiz(sonCanliYayin);
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', canliYayinDurumunuAl);
@@ -6412,17 +6507,28 @@
         const ogTitle = document.querySelector('meta[property="og:title"]');
         const ogImage = document.querySelector('meta[property="og:image"]');
         const ogDesc = document.querySelector('meta[property="og:description"]');
-        if (ogUrl) ogUrl.setAttribute('content', window.location.href);
+        const kanonik = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(aktifDukkan || 'gumus');
+        if (ogUrl) ogUrl.setAttribute('content', kanonik);
         if (!urun) {
-            if (etiket) etiket.textContent = '';
+            if (etiket) {
+                etiket.textContent = JSON.stringify({
+                    '@context': 'https://schema.org',
+                    '@type': 'BroadcastEvent',
+                    name: ((dukkanlar[aktifDukkan] && dukkanlar[aktifDukkan].ad) || 'Haliç Antik') + ' Canlı Mezat',
+                    isLiveBroadcast: true,
+                    url: kanonik
+                });
+            }
             return;
         }
         const ad = 'LOT #' + (urun.lot || '') + ' - ' + (urun.ad || '');
         const fiyat = Number(urun.guncel_fiyat || urun.fiyat || 0);
-        const gorsel = (urun.fotograflar && urun.fotograflar[0]) || '/static/img/varsayilan_urun.png';
+        const gorselHam = (urun.fotograflar && urun.fotograflar[0]) || '/static/img/varsayilan_urun.png';
+        const gorsel = /^https?:\/\//i.test(gorselHam) ? gorselHam : ('https://halicantikcanli.com' + (gorselHam.charAt(0) === '/' ? gorselHam : '/' + gorselHam));
         const aciklamaHam = (urun.tanitim_yazisi || 'Haliç Antik canlı mezat eseri').slice(0, 180);
         const aciklama = window.canliYayinBuDukkan ? (aciklamaHam + ' Şu an canlı mezattayız.').slice(0, 200) : aciklamaHam;
         const baslik = window.canliYayinBuDukkan ? ('🔴 CANLI | ' + ad) : ad;
+        const yayinAdi = (sonCanliYayin && sonCanliYayin.yayin_basligi) || baslik;
         document.title = baslik + ' | Haliç Antik Canlı Mezat';
         const desc = document.querySelector('meta[name="description"]');
         if (desc) desc.setAttribute('content', aciklama);
@@ -6437,18 +6543,38 @@
         if (etiket) {
             etiket.textContent = JSON.stringify({
                 '@context': 'https://schema.org',
-                '@type': 'Product',
-                name: ad,
-                description: aciklama,
-                image: gorsel,
-                sku: String(urun.lot || urun.id || ''),
-                offers: {
-                    '@type': 'Offer',
-                    priceCurrency: 'TRY',
-                    price: fiyat,
-                    availability: 'https://schema.org/InStock',
-                    url: window.location.href
-                }
+                '@graph': [
+                    {
+                        '@type': 'Product',
+                        name: ad,
+                        description: aciklama,
+                        image: gorsel,
+                        sku: String(urun.lot || urun.id || ''),
+                        offers: {
+                            '@type': 'Offer',
+                            priceCurrency: 'TRY',
+                            price: fiyat,
+                            availability: 'https://schema.org/InStock',
+                            url: kanonik
+                        }
+                    },
+                    {
+                        '@type': 'BroadcastEvent',
+                        name: yayinAdi,
+                        description: aciklama,
+                        isLiveBroadcast: true,
+                        startDate: (sonCanliYayin && sonCanliYayin.baslangic_zamani) || undefined,
+                        url: kanonik,
+                        image: gorsel,
+                        broadcastOfEvent: {
+                            '@type': 'Event',
+                            name: baslik,
+                            eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+                            eventStatus: 'https://schema.org/EventScheduled',
+                            location: {'@type': 'VirtualLocation', url: kanonik}
+                        }
+                    }
+                ]
             });
         }
     }
