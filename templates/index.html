@@ -1855,8 +1855,7 @@
             pointer-events: auto;
         }
         .tum-kanallar-menu[hidden] { display: none !important; }
-        .tum-kanallar-menu a,
-        .tum-kanallar-menu span {
+        .tum-kanallar-menu a[href] {
             display: block;
             margin: 2px 0;
             padding: 8px 10px;
@@ -1868,8 +1867,12 @@
             text-decoration: none;
             background: rgba(255, 255, 255, 0.04);
         }
-        .tum-kanallar-menu a:hover { background: rgba(212, 175, 55, 0.18); }
-        .tum-kanallar-menu span { color: #94a3b8; }
+        .tum-kanallar-menu a[href]:hover { background: rgba(212, 175, 55, 0.18); }
+        .tum-kanallar-menu span,
+        .tum-kanallar-menu a:not([href]),
+        .tum-kanallar-menu a[href=""] {
+            display: none !important;
+        }
         @media (max-width: 768px) {
             #canliYonlendirmeSeridi.gorunur {
                 display: block !important;
@@ -3796,11 +3799,6 @@
             oge.textContent = cift[1];
             menu.appendChild(oge);
         });
-        if (!menu.childElementCount) {
-            const bos = document.createElement('span');
-            bos.textContent = 'Tanımlı kanal yok';
-            menu.appendChild(bos);
-        }
     }
 
     function kanalBaglantisi(kod, ham) {
@@ -3822,7 +3820,7 @@
         const ac = typeof zorla === 'boolean' ? zorla : menu.hidden;
         if (ac && window.canliYayinBuDukkan) {
             tumKanallarMenusunuCiz();
-            menu.hidden = false;
+            menu.hidden = menu.childElementCount === 0;
         } else {
             menu.hidden = true;
         }
