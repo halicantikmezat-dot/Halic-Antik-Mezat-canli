@@ -75,6 +75,50 @@
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         @media(max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
+        #rejiSunucuKarti.reji-yayin-acik { grid-column: 1 / -1; }
+        .reji-akis-govde { display: flex; flex-direction: column; flex: 1; min-height: 180px; }
+        .reji-yorum-sutunu { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 6px; }
+        .reji-akis-filtre { display: flex; align-items: center; gap: 6px; }
+        .reji-akis-filtre span { font-size: 11px; color: #94a3b8; font-weight: 700; }
+        .reji-sahne-sutun { display: none; }
+        .reji-akis-govde.reji-iki-sutun {
+            display: grid;
+            grid-template-columns: minmax(240px, 42%) minmax(0, 1fr);
+            gap: 8px;
+            min-height: 340px;
+        }
+        .reji-iki-sutun .reji-sahne-sutun {
+            display: flex;
+            flex-direction: column;
+            min-height: 320px;
+            border: 1px solid var(--accent-gold);
+            border-radius: 6px;
+            overflow: hidden;
+            background: #0b1220;
+        }
+        .reji-sahne-baslik {
+            font-size: 11px;
+            font-weight: 800;
+            color: #fef08a;
+            background: #111827;
+            padding: 6px 8px;
+            border-bottom: 1px solid #283548;
+        }
+        .reji-sahne-sutun iframe {
+            flex: 1;
+            width: 100%;
+            min-height: 280px;
+            border: 0;
+            background: #0b1220;
+        }
+        #rejiSunucuKarti.reji-yayin-acik #adminCanliSohbetAlani {
+            max-height: 420px;
+            min-height: 300px;
+        }
+        @media (max-width: 900px) {
+            .reji-akis-govde.reji-iki-sutun { grid-template-columns: 1fr; }
+        }
+
         .card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
@@ -607,7 +651,7 @@
         </div>
 
         <!-- ÇOKLU PLATFORM CANLI SOHBET & BAS-KONUŞ GELEN KUTUSU -->
-        <div class="card" style="display: flex; flex-direction: column;">
+        <div class="card" id="rejiSunucuKarti" style="display: flex; flex-direction: column;">
             <div class="card-title">
                 <span>🔴 Canlı Akış ve Mezat Sunucusu</span>
                 <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -622,9 +666,22 @@
                     <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
                 </div>
             </div>
-            <div id="adminCanliSohbetAlani" style="flex: 1; min-height: 180px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; background: #0f141c; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px;">
-                <div style="color: #64748b; font-size: 12px; text-align: center; margin-top: 75px;" id="sohbetBosUyarisi">
-                    Yayındaki yorumlar, sorular ve mezat sunucusunun yanıtları burada akar...
+            <div id="rejiAkisGovde" class="reji-akis-govde">
+                <div id="rejiSahneSutunu" class="reji-sahne-sutun" aria-hidden="true">
+                    <div class="reji-sahne-baslik">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</div>
+                    <iframe id="rejiSahneOnizleme" title="Diğer - Her Şey canlı sahne önizleme" allow="autoplay"></iframe>
+                </div>
+                <div class="reji-yorum-sutunu">
+                    <div id="rejiAkisFiltre" class="reji-akis-filtre" role="group" aria-label="Yorum filtresi">
+                        <span>Akış:</span>
+                        <button type="button" id="rejiFiltreTumu" class="btn btn-sm btn-yellow" onclick="rejiAkisFiltresiSec('tumu')">Tümü</button>
+                        <button type="button" id="rejiFiltreOzel" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;" onclick="rejiAkisFiltresiSec('ozel')">Özel Oda</button>
+                    </div>
+                    <div id="adminCanliSohbetAlani" style="flex: 1; min-height: 180px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; background: #0f141c; border: 1px solid var(--card-border); border-radius: 6px; padding: 8px;">
+                        <div style="color: #64748b; font-size: 12px; text-align: center; margin-top: 75px;" id="sohbetBosUyarisi">
+                            Yayındaki yorumlar, sorular ve mezat sunucusunun yanıtları burada akar...
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1520,6 +1577,10 @@
     let sonVeriCekmeZamani = 0;
     let adminAramaTimer = null;
     let toplamYorumSayisi = 0;
+    let rejiAkisFiltresi = 'tumu';
+    let rejiOzelOnceki = null;
+    let rejiBekleyenHedef = null;
+    let rejiSessizZamanlayici = null;
 
     const medyaDosyaHavuzu = new DataTransfer();
 
@@ -1546,7 +1607,12 @@
                     opt.textContent = d.ad || kod;
                     rejiSecim.appendChild(opt);
                 }
-                rejiSecim.value = [...rejiSecim.options].some(function (o) { return o.value === onceki; }) ? onceki : 'tumu';
+                if (rejiBekleyenHedef && [...rejiSecim.options].some(function (o) { return o.value === rejiBekleyenHedef; })) {
+                    rejiSecim.value = rejiBekleyenHedef;
+                    rejiBekleyenHedef = null;
+                } else {
+                    rejiSecim.value = [...rejiSecim.options].some(function (o) { return o.value === onceki; }) ? onceki : 'tumu';
+                }
             }
 
             for (const [kod, d] of Object.entries(dukkanlar)) {
@@ -1677,6 +1743,136 @@
             }
         }
         canliDinleyiciRozetleri(kayit.dinleyiciler || {});
+        rejiOzelYayinGorunumu(burada);
+    }
+
+    function rejiHedefiYaz(kod) {
+        const secim = document.getElementById('rejiHedefDukkan');
+        if (!secim) return false;
+        const hedef = String(kod || '').trim().toLowerCase();
+        const varMi = [...secim.options].some(function (o) { return o.value === hedef; });
+        if (!varMi) return false;
+        secim.value = hedef;
+        return true;
+    }
+
+    function rejiOzelYayinGorunumu(acik) {
+        const simdi = !!acik;
+        if (rejiOzelOnceki !== simdi) {
+            const onceki = rejiOzelOnceki;
+            rejiOzelOnceki = simdi;
+            const hedef = simdi ? CANLI_YAYIN_DUKKANI : 'tumu';
+            if (simdi || onceki === true) {
+                if (!rejiHedefiYaz(hedef)) rejiBekleyenHedef = hedef;
+                else rejiBekleyenHedef = null;
+            }
+        }
+        rejiIzgarayiCiz(simdi);
+    }
+
+    function rejiCerceveyiSessizlestir() {
+        const cerceve = document.getElementById('rejiSahneOnizleme');
+        if (!cerceve) return;
+        let win;
+        try { win = cerceve.contentWindow; } catch (e) { return; }
+        if (!win) return;
+        try {
+            if (win.speechSynthesis) {
+                try { win.speechSynthesis.cancel(); } catch (e) {}
+                win.speechSynthesis.speak = function () {};
+            }
+            const proto = win.HTMLMediaElement && win.HTMLMediaElement.prototype;
+            if (proto && !proto.__rejiSessiz) {
+                const eskiPlay = proto.play;
+                proto.play = function () {
+                    this.muted = true;
+                    try { this.volume = 0; } catch (err) {}
+                    return eskiPlay.apply(this, arguments);
+                };
+                proto.__rejiSessiz = true;
+            }
+            if (!win.__rejiAudioSessiz && typeof win.Audio === 'function') {
+                const Orig = win.Audio;
+                function SessizAudio(src) {
+                    const a = arguments.length ? new Orig(src) : new Orig();
+                    a.muted = true;
+                    try { a.volume = 0; } catch (err) {}
+                    return a;
+                }
+                SessizAudio.prototype = Orig.prototype;
+                win.Audio = SessizAudio;
+                win.__rejiAudioSessiz = true;
+            }
+            if (win.document) {
+                win.document.querySelectorAll('audio, video').forEach(function (el) {
+                    el.muted = true;
+                    try { el.volume = 0; } catch (err) {}
+                });
+            }
+        } catch (e) {}
+    }
+
+    function rejiIzgarayiCiz(acik) {
+        const govde = document.getElementById('rejiAkisGovde');
+        const sutun = document.getElementById('rejiSahneSutunu');
+        const cerceve = document.getElementById('rejiSahneOnizleme');
+        const kart = document.getElementById('rejiSunucuKarti');
+        if (govde) govde.classList.toggle('reji-iki-sutun', !!acik);
+        if (kart) kart.classList.toggle('reji-yayin-acik', !!acik);
+        if (sutun) sutun.setAttribute('aria-hidden', acik ? 'false' : 'true');
+        if (!cerceve) return;
+        if (acik) {
+            const hedef = '/?dukkan=' + encodeURIComponent(CANLI_YAYIN_DUKKANI);
+            if (cerceve.getAttribute('data-yuklu') !== hedef) {
+                cerceve.onload = function () { rejiCerceveyiSessizlestir(); };
+                cerceve.src = hedef;
+                cerceve.setAttribute('data-yuklu', hedef);
+            }
+            if (!rejiSessizZamanlayici) {
+                rejiSessizZamanlayici = setInterval(rejiCerceveyiSessizlestir, 1000);
+            }
+            return;
+        }
+        if (rejiSessizZamanlayici) {
+            clearInterval(rejiSessizZamanlayici);
+            rejiSessizZamanlayici = null;
+        }
+        if (cerceve.getAttribute('data-yuklu')) {
+            cerceve.onload = null;
+            cerceve.src = 'about:blank';
+            cerceve.removeAttribute('data-yuklu');
+        }
+    }
+
+    function rejiFiltreDugmeleriniCiz() {
+        const tumuSecili = rejiAkisFiltresi !== 'ozel';
+        const tumuBtn = document.getElementById('rejiFiltreTumu');
+        const ozelBtn = document.getElementById('rejiFiltreOzel');
+        if (tumuBtn) {
+            tumuBtn.className = 'btn btn-sm' + (tumuSecili ? ' btn-yellow' : '');
+            tumuBtn.style.background = tumuSecili ? '' : '#1e293b';
+            tumuBtn.style.color = tumuSecili ? '' : '#e2e8f0';
+        }
+        if (ozelBtn) {
+            ozelBtn.className = 'btn btn-sm' + (tumuSecili ? '' : ' btn-yellow');
+            ozelBtn.style.background = tumuSecili ? '#1e293b' : '';
+            ozelBtn.style.color = tumuSecili ? '#e2e8f0' : '';
+        }
+    }
+
+    function rejiSatiriniFiltrele(satir) {
+        if (!satir || satir.id === 'sohbetBosUyarisi') return;
+        const kod = String(satir.getAttribute('data-dukkan') || '').trim().toLowerCase();
+        const goster = rejiAkisFiltresi !== 'ozel' || !kod || kod === CANLI_YAYIN_DUKKANI;
+        satir.style.display = goster ? '' : 'none';
+    }
+
+    function rejiAkisFiltresiSec(mod) {
+        rejiAkisFiltresi = mod === 'ozel' ? 'ozel' : 'tumu';
+        rejiFiltreDugmeleriniCiz();
+        const kutu = document.getElementById('adminCanliSohbetAlani');
+        if (!kutu) return;
+        Array.from(kutu.children).forEach(rejiSatiriniFiltrele);
     }
 
     function canliRozetBoyasi(el, acik) {
@@ -2134,6 +2330,7 @@
 
         const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
         const yeniSatir = document.createElement("div");
+        yeniSatir.setAttribute("data-dukkan", String((data && data.dukkan) || "").trim().toLowerCase());
         yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
 
         const dukkanOnEk = data.dukkan ? dukkanEtiketi(data.dukkan) + " " : "";
@@ -2150,7 +2347,8 @@
         `;
 
         sohbetKutusu.appendChild(yeniSatir);
-        sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
+        rejiSatiriniFiltrele(yeniSatir);
+        if (yeniSatir.style.display !== "none") sohbetKutusu.scrollTop = sohbetKutusu.scrollHeight;
     });
 
     socket.on("reji_geri_bildirim", function (data) {
