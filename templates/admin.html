@@ -2893,14 +2893,6 @@
         setTimeout(sikayetleriGetir, 1200);
     };
 
-    socket.on('veri_guncellendi', function() {
-        const simdi = Date.now();
-        if (simdi - sonVeriCekmeZamani > 1500) {
-            veriCekAdmin();
-            adminUrunAra();
-        }
-    });
-
     socket.on('yeni_sahne_urunu', function(urun) {
         if (urun && urun.dukkan === seciliDukkan) {
             document.getElementById('aktifUrunAdi').innerText = dukkanEtiketi(urun.dukkan) + ` LOT #${urun.lot} - ${urun.ad}`;
@@ -3097,7 +3089,6 @@
         tablo.prepend(tr);
     }
 
-    socket.on('yeni_kayit_talebi', onayBekleyenSatiriEkle);
     socket.on('yeni_elestiri', elestiriSatiriEkle);
 
     socket.on('izleyici_sayisi_guncelle', function(data) {

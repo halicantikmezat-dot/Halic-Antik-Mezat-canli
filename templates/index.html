@@ -4036,10 +4036,6 @@
         setTimeout(dinle, 800);
     }
 
-    socket.on("ses_yedek_konus", function () {
-        return;
-    });
-
     socket.on("ses_kes", function (data) {
         if (!data || data.dukkan !== aktifDukkan) return;
         const zorunlu = data.zorunlu || data.tur === "satis" || data.tur === "sahne" || data.tur === "yeni_urun";
@@ -4049,16 +4045,6 @@
         sesKuyrugunuTemizle();
         sesBaglaminiAc();
         if (data.tur === 'satis') cekicVur();
-    });
-
-    socket.on("ses_akisi", sesParcasiAl);
-
-    socket.on("ses_akisi_bitti", function (data) {
-        if (!data || data.dukkan !== aktifDukkan || data.nesil !== sesNesil) return;
-        if (dinlemeAcik) {
-            dinlemeAcik = false;
-            dinleDugmesiniYaz('🔊 Dinle');
-        }
     });
 
     let currentAudio = null;

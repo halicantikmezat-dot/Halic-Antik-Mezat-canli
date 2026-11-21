@@ -36,6 +36,7 @@ import os
 import random
 from queue import Queue
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -170,15 +171,17 @@ print(
     flush=True,
 )
 
-ADMIN_PASSWORD_HASH = os.environ.get(
-    "ADMIN_PASSWORD_HASH",
-    generate_password_hash(os.environ.get("ADMIN_PASSWORD", "1453")),
-)
+_ADMIN_PAROLA_ORTAMDA = bool((os.environ.get("ADMIN_PASSWORD") or "").strip())
+_ADMIN_OZET_ORTAMDA = bool((os.environ.get("ADMIN_PASSWORD_HASH") or "").strip())
+if _ADMIN_OZET_ORTAMDA:
+    ADMIN_PASSWORD_HASH = os.environ["ADMIN_PASSWORD_HASH"]
+elif _ADMIN_PAROLA_ORTAMDA:
+    ADMIN_PASSWORD_HASH = generate_password_hash(os.environ["ADMIN_PASSWORD"].strip())
+else:
+    ADMIN_PASSWORD_HASH = generate_password_hash("1453")
 ADMIN_2FA_SECRET = os.environ.get("ADMIN_2FA_SECRET") or ""
 
-app.config["SECRET_KEY"] = os.environ.get(
-    "SECRET_KEY", "halic_hamid_antik_mezat_gizli_anahtar_1453"
-)
+app.config["SECRET_KEY"] = (os.environ.get("SECRET_KEY") or "").strip() or secrets.token_hex(32)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = Config.SQLALCHEMY_ENGINE_OPTIONS
@@ -1484,6 +1487,38 @@ def _iki_asama_acik():
     return bool(sir) and totp is not None
 
 
+def _yerel_adres_mi(adres):
+    deger = str(adres or "").strip().lower()
+    if deger.startswith("::ffff:"):
+        deger = deger[7:]
+    return deger in ("127.0.0.1", "::1", "localhost")
+
+
+def _dis_agda_varsayilan_sifre_kapali():
+    """1453 yalniz yerel agda kalir. Dis ag ADMIN_PASSWORD veya ozet ister."""
+    if _ADMIN_PAROLA_ORTAMDA or _ADMIN_OZET_ORTAMDA:
+        return False
+    return not _yerel_adres_mi(request.remote_addr)
+
+
+def _dis_ag_sifre_reddi():
+    if not _dis_agda_varsayilan_sifre_kapali():
+        return None
+    if (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.method == "POST"
+    ):
+        return (
+            jsonify({
+                "success": False,
+                "mesaj": "Dış ağdan yönetici işlemi için ADMIN_PASSWORD tanımlanmalıdır.",
+            }),
+            403,
+        )
+    return redirect(url_for("admin_login_ekrani"))
+
+
 def admin_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
@@ -1491,6 +1526,9 @@ def admin_required(f):
             return f(*args, **kwargs)
         if session.get("is_admin") is True and session.get("admin_2fa_ok") is True:
             return f(*args, **kwargs)
+        red = _dis_ag_sifre_reddi()
+        if red is not None:
+            return red
 
         req_auth_header = request.headers.get("X-Admin-Password")
         req_json_pass = (
@@ -2512,6 +2550,20 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
     _admin_satisi_duyur(dukkan, biten_id, etiket_ad, tutar, "esik")
 
 
+def _sayac_saniye_dus(dukkan, oda, gorev_id, nesil):
+    """Saniye düşüşü, son 15 sn pey uzatmasıyla aynı oda kilidinde uygulanır."""
+    with oda_kilitleri[dukkan]:
+        if not (oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id):
+            return
+        if int(oda.get("sayac_uzatma_nesli") or 0) != int(nesil):
+            return
+        oda["sayac_kalan"] -= 1
+
+
+def _sayac_uzatma_nesli_artir(oda):
+    oda["sayac_uzatma_nesli"] = int(oda.get("sayac_uzatma_nesli") or 0) + 1
+
+
 def _uc_dakikalik_pazarlik(dukkan, gorev_id):
     """180 sn: ilk 120 pazarlık, son 60 normal karar. Erken satış sayacı ayrıca durdurur."""
     oda = odalar[dukkan]
@@ -2564,9 +2616,10 @@ def _uc_dakikalik_pazarlik(dukkan, gorev_id):
             dukkan,
         )
         _oturumu_birak()
+        with oda_kilitleri[dukkan]:
+            nesil = int(oda.get("sayac_uzatma_nesli") or 0)
         socketio.sleep(1)
-        if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-            oda["sayac_kalan"] -= 1
+        _sayac_saniye_dus(dukkan, oda, gorev_id, nesil)
 
     if not (oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id):
         return False
@@ -2666,9 +2719,10 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                 dukkan,
             )
             _oturumu_birak()
+            with oda_kilitleri[dukkan]:
+                nesil = int(oda.get("sayac_uzatma_nesli") or 0)
             socketio.sleep(1)
-            if oda["sayac_aktif"] and oda["sayac_gorev_id"] == gorev_id:
-                oda["sayac_kalan"] -= 1
+            _sayac_saniye_dus(dukkan, oda, gorev_id, nesil)
 
     # 3. AŞAMA: MEZAT KAPANIŞI VE PEY KONTROLÜ
     # Kilit yalniz sahne bayraklarini alir. Satis kaydi ve anons kilit disinda kalir.
@@ -4875,6 +4929,7 @@ def chat_mesaj_gonder():
                     ):
                         oda["sayac_kalan"] = 15
                         oda["durum"]["sure_bitis"] = time.time() + 15
+                        _sayac_uzatma_nesli_artir(oda)
                         asama = oda.get("asama") or oda.get("mevat_asama") or "karar"
                         _iki_odayi(
                             "sayac_uzatildi",
@@ -4921,10 +4976,14 @@ def chat_mesaj_gonder():
 
 
 def _kopru_kabul():
-    """ENTEGRASYON_TOKEN boşsa köprüyü kabul et. Doluysa başlık veya gövde eşleşmeli."""
+    """Boş token dış köprüyü reddeder. Aynı sunucu, geçerli token veya yönetici oturumu geçer."""
+    if session.get("is_admin") is True and session.get("admin_2fa_ok") is True:
+        return True
+    if _yerel_adres_mi(request.remote_addr):
+        return True
     beklenen = (os.environ.get("ENTEGRASYON_TOKEN") or "").strip()
     if not beklenen:
-        return True
+        return False
     veri = request.get_json(silent=True) or {}
     gelen = (
         request.headers.get("X-Entegrasyon-Token")
@@ -5504,18 +5563,25 @@ def odeme_baslat():
         db.session.add(kullanici)
         db.session.commit()
 
-    if kullanici:
-        Urun.query.filter(
-            Urun.kazanan_id == kullanici.id,
-            Urun.silindi_mi.is_(False),
-            Urun.siparis_durumu == "Odeme_Bekliyor",
-        ).update({"siparis_durumu": "Odendi"}, synchronize_session=False)
-        db.session.commit()
+    kurumsal = {}
+    try:
+        kurumsal = kurumsal_bilgileri_oku() or {}
+    except Exception:
+        db.session.rollback()
+        kurumsal = {}
 
     return jsonify({
         "success": True,
         "musteri_id": kullanici.id if kullanici else None,
-        "mesaj": "Ödeme ekranına yönlendiriliyorsunuz (3D Secure).",
+        "durum": "Odeme_Bekliyor",
+        "odeme": "Havale/EFT",
+        "mesaj": (
+            "Ödeme henüz tahsil edilmedi. Sipariş Odeme_Bekliyor durumunda kalır. "
+            "Havale veya EFT açıklamasına adınızı yazın; tutar onaylanınca yönetici tahsilatı kapatır."
+        ),
+        "banka": kurumsal.get("bankaAdi") or "",
+        "alici": kurumsal.get("aliciAdi") or "",
+        "iban": kurumsal.get("iban") or "",
         "yonlendir": "/pos",
     })
 
@@ -5542,8 +5608,32 @@ def pos_ekrani():
     return render_template("pos.html")
 
 
+def _pos_yazan_kim():
+    """Yönetici oturumu veya giriş yapmış üye. Kimliksiz istek dosyaya yazamaz."""
+    if session.get("is_admin") is True and session.get("admin_2fa_ok") is True:
+        return "admin"
+    if _entegrasyon_tokeni_gecerli():
+        return "admin"
+    try:
+        oturum_id = int(session.get("kullanici_id") or session.get("musteri_id") or 0)
+    except (TypeError, ValueError):
+        oturum_id = 0
+    if oturum_id <= 0:
+        return None
+    kullanici = db.session.get(Kullanici, oturum_id)
+    if not kullanici or kullanici.silindi_mi or kullanici_banli_mi(kullanici):
+        return None
+    return oturum_id
+
+
 @app.route("/pos/siparis-onayla", methods=["POST"])
 def pos_siparis_onayla():
+    yazan = _pos_yazan_kim()
+    if yazan is None:
+        return jsonify({
+            "success": False,
+            "mesaj": "Sipariş kaydı için geçerli üye oturumu veya yönetici girişi gerekir.",
+        }), 403
     veri = request.get_json(silent=True) or {}
     ad = str(veri.get("ad") or veri.get("ad_soyad") or "").strip()
     telefon = str(veri.get("telefon") or veri.get("tel") or "").strip()
@@ -5578,7 +5668,7 @@ def pos_siparis_onayla():
     kayit = {
         "siparis_no": siparis_no,
         "tarih": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "musteri_id": veri.get("musteri_id"),
+        "musteri_id": veri.get("musteri_id") if yazan == "admin" else yazan,
         "ad": ad,
         "telefon": telefon,
         "adres": adres,
@@ -5904,6 +5994,7 @@ def pey_ver():
                 ):
                     oda["sayac_kalan"] = 15
                     oda["durum"]["sure_bitis"] = time.time() + 15
+                    _sayac_uzatma_nesli_artir(oda)
                     asama = oda.get("asama") or oda.get("mevat_asama") or "karar"
                     _iki_odayi(
                         "sayac_uzatildi",
@@ -6634,6 +6725,11 @@ def admin_login_post():
             "success": False,
             "mesaj": "Çok fazla hatalı giriş. 15 dakika sonra tekrar deneyin.",
         }), 429
+    if _dis_agda_varsayilan_sifre_kapali():
+        return jsonify({
+            "success": False,
+            "mesaj": "Dış ağdan giriş için ADMIN_PASSWORD ortam değişkeni tanımlanmalıdır.",
+        }), 403
     if check_password_hash(ADMIN_PASSWORD_HASH, girilen_sifre):
         _rate_limit_sifirla(giris_anahtari)
         if not _iki_asama_acik():
@@ -7000,6 +7096,7 @@ def mezat_baslat():
                 return jsonify({"success": False, "mesaj": "Uzatılacak aktif sayaç yok."})
             oda["sayac_kalan"] = int(oda["sayac_kalan"] or 0) + 15
             oda["durum"]["sure_bitis"] = time.time() + oda["sayac_kalan"]
+            _sayac_uzatma_nesli_artir(oda)
             kalan = int(oda["sayac_kalan"])
             pazarlik = bool(oda.get("gizli_pazarlik_aktif"))
         paket = {
@@ -11739,10 +11836,44 @@ def veritabani_onarimini_bir_kez_baslat():
     socketio.start_background_task(_calistir)
 
 
+def _eski_bellek_kayitlarini_sil():
+    """10 dakikadan eski hız limiti, yorum ve düzeltme kayıtlarını düşürür."""
+    esik = time.time() - 600
+    bos = []
+    for anahtar, kova in list(_rate_kovalar.items()):
+        if isinstance(kova, collections.deque):
+            while kova and kova[0] <= esik:
+                kova.popleft()
+            if not kova:
+                bos.append(anahtar)
+        elif isinstance(kova, (int, float)) and kova <= esik:
+            bos.append(anahtar)
+    for anahtar in bos:
+        _rate_kovalar.pop(anahtar, None)
+    for anahtar, an in list(_son_duzeltme_ani.items()):
+        if isinstance(an, (int, float)) and an <= esik:
+            _son_duzeltme_ani.pop(anahtar, None)
+    try:
+        import canli_yayin_havuzu as havuz
+        havuz.bellek_kovalarini_temizle(600)
+    except Exception as hata:
+        print(f"[BELLEK] yorum kovalari atlandi: {hata}", flush=True)
+
+
+def _bellek_temizleme_dongusu():
+    while True:
+        try:
+            _eski_bellek_kayitlarini_sil()
+        except Exception as hata:
+            print(f"[BELLEK] temizlik atlandi: {hata}", flush=True)
+        socketio.sleep(60)
+
+
 def _arkaplan_agir_baslangic():
     """Port açıldıktan sonra: onarım, pazaryeri şeması, XML senkronu ve ses hazırlığı."""
     print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
+        socketio.start_background_task(_bellek_temizleme_dongusu)
         veritabani_onarimini_bir_kez_baslat()
         if _pazaryeri_semasi is not None:
             print("[BOOT] pazaryeri tablolari", flush=True)

@@ -601,6 +601,7 @@ def _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id):
             and _iki_oda is not None
         ):
             oda["sayac_kalan"] = 15
+            oda["sayac_uzatma_nesli"] = int(oda.get("sayac_uzatma_nesli") or 0) + 1
             import time
 
             oda["durum"]["sure_bitis"] = time.time() + 15
@@ -1018,6 +1019,23 @@ def _yorum_hizi_uygun(platform, kullanici):
         pencere.append(simdi)
         _yorum_zamanlari[anahtar] = pencere
     return True
+
+
+def bellek_kovalarini_temizle(ttl_sn=600):
+    """10 dakikadan eski yorum hızı kayıtlarını düşürür."""
+    import time
+
+    esik = time.time() - float(ttl_sn)
+    with _KILIT:
+        silinecek = []
+        for anahtar, pencere in list(_yorum_zamanlari.items()):
+            kalan = [an for an in pencere if an > esik]
+            if kalan:
+                _yorum_zamanlari[anahtar] = kalan
+            else:
+                silinecek.append(anahtar)
+        for anahtar in silinecek:
+            _yorum_zamanlari.pop(anahtar, None)
 
 
 def _yonetici_mi():

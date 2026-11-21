@@ -22,3 +22,5 @@ cloudinary
 pywebpush>=2.0.1
 pytchat
 TikTokLive
+cryptography
+certifi
