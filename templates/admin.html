@@ -516,6 +516,23 @@
                 <button type="button" class="btn btn-blue btn-sm" onclick="canliSosyalKopyala()">Sosyal Linkleri Kopyala</button>
                 <button type="button" class="btn btn-sm" style="background:#0d9488; color:#fff;" onclick="canliDuyuruKopyala()">Duyuruyu Kopyala</button>
             </div>
+            <div id="restreamKopruKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Restream RTMP Köprüsü (opsiyonel)</div>
+                <div style="font-size:11px; color:#94a3b8;">Boş bırakılırsa mevcut web yayını eskisi gibi sürer. Yalnızca Diğer - Her Şey canlı yayını açıkken ve iki alan da doluyken köprü kurulur.</div>
+                <input type="text" id="cyRestreamUrl" value="rtmp://live.restream.io/live" placeholder="Restream RTMP URL" autocomplete="off" spellcheck="false">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="password" id="cyRestreamKey" placeholder="Restream Akış Anahtarı (Stream Key)" autocomplete="new-password" spellcheck="false" style="flex:1; margin:0;">
+                    <button type="button" id="cyRestreamKeyGoster" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Göster</button>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <select id="cyRestreamKamera" style="margin:0;"><option value="">Kamera seçin</option></select>
+                    <select id="cyRestreamMikrofon" style="margin:0;"><option value="">Mikrofon seçin</option></select>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;" onclick="restreamCihazIzni()">Kamera ve Mikrofonu Listele</button>
+                </div>
+                <div id="cyRestreamDurum" style="font-size:12px; color:#94a3b8; min-height:16px;"></div>
+            </div>
             <div id="canliYayinNot" style="font-size:12px; color:#86efac; min-height:16px;"></div>
         </div>
     </details>
@@ -2067,7 +2084,269 @@
         canliYayinKaydi = Object.assign({}, canliYayinKaydi || {}, { dinleyiciler: veri });
         canliDinleyiciRozetleri(veri);
     });
+    const _restreamEskiForm = canliYayinFormu;
+    canliYayinFormu = function (islem) {
+        const paket = _restreamEskiForm(islem);
+        const ek = restreamAlanlari();
+        paket.restream_rtmp_url = ek.restream_rtmp_url;
+        paket.restream_stream_key = ek.restream_stream_key;
+        paket.restream_video_id = ek.restream_video_id;
+        paket.restream_audio_id = ek.restream_audio_id;
+        return paket;
+    };
+    const _restreamEskiCiz = canliYayinPaneliCiz;
+    canliYayinPaneliCiz = function () {
+        _restreamEskiCiz();
+        restreamAlanlariniDoldur();
+        restreamKopruSenkron();
+    };
+    const cyRestreamKeyGoster = document.getElementById('cyRestreamKeyGoster');
+    if (cyRestreamKeyGoster) {
+        cyRestreamKeyGoster.addEventListener('click', function () {
+            const alan = document.getElementById('cyRestreamKey');
+            if (!alan) return;
+            const acik = alan.type === 'password';
+            alan.type = acik ? 'text' : 'password';
+            cyRestreamKeyGoster.textContent = acik ? 'Gizle' : 'Göster';
+        });
+    }
     canliYayinDurumunuAl();
+    restreamCihazlariYukle();
+
+    let restreamAkis = null;
+    let restreamKayit = null;
+    let restreamAcik = false;
+    let restreamImza = '';
+    let restreamKuyruk = Promise.resolve();
+    let restreamYeniden = 0;
+
+    function restreamDurumYaz(metin) {
+        const kutu = document.getElementById('cyRestreamDurum');
+        if (kutu) kutu.textContent = metin || '';
+    }
+
+    function restreamAlanlari() {
+        const url = document.getElementById('cyRestreamUrl');
+        const anahtar = document.getElementById('cyRestreamKey');
+        const kamera = document.getElementById('cyRestreamKamera');
+        const mikrofon = document.getElementById('cyRestreamMikrofon');
+        return {
+            restream_rtmp_url: url ? String(url.value || '').trim() : '',
+            restream_stream_key: anahtar ? String(anahtar.value || '').trim() : '',
+            restream_video_id: kamera ? String(kamera.value || '').trim() : '',
+            restream_audio_id: mikrofon ? String(mikrofon.value || '').trim() : ''
+        };
+    }
+
+    function restreamAlanlariniDoldur() {
+        const ayar = (canliYayinKaydi && canliYayinKaydi.ayarlar) || {};
+        const url = document.getElementById('cyRestreamUrl');
+        const anahtar = document.getElementById('cyRestreamKey');
+        const kamera = document.getElementById('cyRestreamKamera');
+        const mikrofon = document.getElementById('cyRestreamMikrofon');
+        if (url && document.activeElement !== url && Object.prototype.hasOwnProperty.call(ayar, 'restream_rtmp_url')) {
+            url.value = ayar.restream_rtmp_url || 'rtmp://live.restream.io/live';
+        }
+        if (anahtar && document.activeElement !== anahtar && Object.prototype.hasOwnProperty.call(ayar, 'restream_stream_key')) {
+            anahtar.value = ayar.restream_stream_key || '';
+        }
+        if (kamera && document.activeElement !== kamera && ayar.restream_video_id && restreamSecenekVar(kamera, ayar.restream_video_id)) {
+            kamera.value = ayar.restream_video_id;
+        }
+        if (mikrofon && document.activeElement !== mikrofon && ayar.restream_audio_id && restreamSecenekVar(mikrofon, ayar.restream_audio_id)) {
+            mikrofon.value = ayar.restream_audio_id;
+        }
+    }
+
+    function restreamSecenekVar(secim, deger) {
+        return Array.from(secim.options).some(function (oge) { return oge.value === deger; });
+    }
+
+    function restreamCihazSirasi(liste) {
+        return liste.slice().sort(function (a, b) {
+            const aIriun = /iriun/i.test(a.label || '') ? 0 : 1;
+            const bIriun = /iriun/i.test(b.label || '') ? 0 : 1;
+            return aIriun - bIriun;
+        });
+    }
+
+    function restreamSecenekleriDoldur(id, liste, bosEtiket) {
+        const secim = document.getElementById(id);
+        if (!secim) return;
+        const onceki = secim.value;
+        secim.replaceChildren();
+        const bos = document.createElement('option');
+        bos.value = '';
+        bos.textContent = bosEtiket;
+        secim.appendChild(bos);
+        restreamCihazSirasi(liste).forEach(function (cihaz, sira) {
+            const oge = document.createElement('option');
+            oge.value = String(cihaz.deviceId || '');
+            const etiket = cihaz.label || ((id === 'cyRestreamKamera' ? 'Kamera ' : 'Mikrofon ') + (sira + 1));
+            oge.textContent = etiket;
+            secim.appendChild(oge);
+        });
+        if (onceki && restreamSecenekVar(secim, onceki)) secim.value = onceki;
+    }
+
+    function restreamCihazlariYukle() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            restreamDurumYaz('Bu tarayıcı kamera listesini vermiyor.');
+            return;
+        }
+        navigator.mediaDevices.enumerateDevices().then(function (liste) {
+            const video = liste.filter(function (cihaz) { return cihaz.kind === 'videoinput'; });
+            const ses = liste.filter(function (cihaz) { return cihaz.kind === 'audioinput'; });
+            restreamSecenekleriDoldur('cyRestreamKamera', video, 'Kamera seçin');
+            restreamSecenekleriDoldur('cyRestreamMikrofon', ses, 'Mikrofon seçin');
+            restreamAlanlariniDoldur();
+            const iriun = liste.some(function (cihaz) { return /iriun/i.test(cihaz.label || ''); });
+            if (!iriun && liste.some(function (cihaz) { return cihaz.label; })) {
+                restreamDurumYaz('Iriun cihazı görünmüyor. Listede varsa onu seçin; yoksa Iriun Webcam açık olsun.');
+            }
+        }).catch(function () {
+            restreamDurumYaz('Cihaz listesi alınamadı.');
+        });
+    }
+
+    function restreamCihazIzni() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            restreamDurumYaz('Kamera izni bu tarayıcıda yok.');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(function (akis) {
+            akis.getTracks().forEach(function (iz) { iz.stop(); });
+            restreamCihazlariYukle();
+        }).catch(function () {
+            restreamDurumYaz('Kamera veya mikrofon izni verilmedi. Web yayını etkilenmedi.');
+        });
+    }
+
+    function restreamMime() {
+        const adaylar = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp8', 'video/webm'];
+        if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+        for (let i = 0; i < adaylar.length; i++) {
+            if (MediaRecorder.isTypeSupported(adaylar[i])) return adaylar[i];
+        }
+        return '';
+    }
+
+    function restreamKopruSenkron() {
+        const kayit = canliYayinKaydi || {};
+        const ayar = kayit.ayarlar || {};
+        const acik = !!(kayit.aktif && kayit.aktif_dukkan === CANLI_YAYIN_DUKKANI);
+        const alan = restreamAlanlari();
+        const hazir = acik && alan.restream_rtmp_url && alan.restream_stream_key;
+        const imza = String(ayar.restream_imza || '');
+        if (!hazir) {
+            restreamKopruKapat();
+            if (!acik) restreamDurumYaz('');
+            return;
+        }
+        if (restreamAcik && imza && imza !== restreamImza) {
+            restreamKopruKapat();
+        }
+        if (restreamAcik) return;
+        restreamImza = imza;
+        restreamKopruAc();
+    }
+
+    function restreamKopruAc() {
+        if (restreamAcik || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+        const alan = restreamAlanlari();
+        const kisit = { video: true, audio: true };
+        if (alan.restream_video_id) kisit.video = { deviceId: { exact: alan.restream_video_id } };
+        if (alan.restream_audio_id) kisit.audio = { deviceId: { exact: alan.restream_audio_id } };
+        restreamAcik = true;
+        restreamYeniden = 0;
+        navigator.mediaDevices.getUserMedia(kisit).then(function (akis) {
+            if (!restreamAcik) {
+                akis.getTracks().forEach(function (iz) { iz.stop(); });
+                return;
+            }
+            restreamAkis = akis;
+            restreamKaydiBaslat();
+            restreamDurumYaz('Restream köprüsü kamera paketini gönderiyor.');
+        }).catch(function () {
+            restreamAcik = false;
+            restreamDurumYaz('Seçilen kamera veya mikrofon açılamadı. Web yayını sürüyor.');
+        });
+    }
+
+    function restreamKaydiBaslat() {
+        if (!restreamAkis || !window.MediaRecorder) return;
+        const mime = restreamMime();
+        let rec;
+        try {
+            rec = mime ? new MediaRecorder(restreamAkis, { mimeType: mime }) : new MediaRecorder(restreamAkis);
+        } catch (e) {
+            restreamDurumYaz('Tarayıcı kayıt biçimi Restream köprüsüne uymadı. Web yayını sürüyor.');
+            restreamKopruKapat();
+            return;
+        }
+        let ilk = true;
+        rec.ondataavailable = function (olay) {
+            if (!olay.data || !olay.data.size || !restreamAcik) return;
+            restreamParcaGonder(olay.data, ilk, mime);
+            ilk = false;
+        };
+        rec.onerror = function () {
+            restreamDurumYaz('Köprü kaydı kesildi. Web yayını sürüyor.');
+        };
+        try {
+            rec.start(1000);
+        } catch (e) {
+            restreamDurumYaz('Köprü kaydı başlamadı. Web yayını sürüyor.');
+            restreamKopruKapat();
+            return;
+        }
+        restreamKayit = rec;
+    }
+
+    function restreamParcaGonder(blob, baslik, mime) {
+        restreamKuyruk = restreamKuyruk.then(function () {
+            return blobBase64(blob).then(function (b64) {
+                if (!b64 || !restreamAcik) return null;
+                return fetch('/api/canli-yayin/kontrol', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        islem: 'restream_parca',
+                        parca: b64,
+                        baslik: !!baslik,
+                        mime: mime || ''
+                    })
+                }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
+                    if (veri && veri.yeniden && restreamAcik && restreamYeniden < 2) {
+                        restreamYeniden += 1;
+                        restreamKaydiYenile();
+                    }
+                });
+            });
+        }).catch(function () {});
+    }
+
+    function restreamKaydiYenile() {
+        if (restreamKayit && restreamKayit.state !== 'inactive') {
+            try { restreamKayit.stop(); } catch (e) {}
+        }
+        restreamKayit = null;
+        restreamKaydiBaslat();
+    }
+
+    function restreamKopruKapat() {
+        restreamAcik = false;
+        restreamImza = '';
+        if (restreamKayit && restreamKayit.state !== 'inactive') {
+            try { restreamKayit.stop(); } catch (e) {}
+        }
+        restreamKayit = null;
+        if (restreamAkis) {
+            restreamAkis.getTracks().forEach(function (iz) { try { iz.stop(); } catch (e) {} });
+            restreamAkis = null;
+        }
+    }
 
     function dukkanEtiketi(kod) {
         const ad = (dukkanlar[kod] && dukkanlar[kod].ad) || kod || "";

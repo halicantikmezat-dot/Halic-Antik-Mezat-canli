@@ -12,6 +12,7 @@ import os
 import re
 import socket
 import ssl
+import subprocess
 import threading
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, unquote, urlparse
@@ -43,6 +44,10 @@ _BELLEK = {
     "webhook_url": "",
     "duyuru_metni": "",
     "taslaklar": {},
+    "restream_rtmp_url": "",
+    "restream_stream_key": "",
+    "restream_video_id": "",
+    "restream_audio_id": "",
 }
 _THREADPOOL = None
 _REDIS = None
@@ -224,6 +229,8 @@ def kontrol_yaniti():
         return jsonify(_ayar_kaydet(veri))
     if islem in ("webhook_test", "webhook_dene"):
         return jsonify(_webhook_test())
+    if islem == "restream_parca":
+        return jsonify(_restream_parca_al(veri))
     return jsonify({"success": False, "mesaj": "Geçersiz canlı yayın işlemi."}), 400
 
 
@@ -416,6 +423,10 @@ def _baslat(veri):
     except Exception as hata:
         print(f"[CANLI YAYIN] web push atlandi: {hata}", flush=True)
     _otonom_pas_uygula(True)
+    try:
+        _restream_istek_guncelle()
+    except Exception as hata:
+        print(f"[RESTREAM] baslangic atlandi: {hata}", flush=True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -452,6 +463,10 @@ def _durdur(veri):
     _kalici_yaz(anlik)
     _olay_yayinla(anlik)
     _otonom_pas_uygula(False)
+    try:
+        _restream_kopru_durdur()
+    except Exception as hata:
+        print(f"[RESTREAM] kapanis atlandi: {hata}", flush=True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -490,6 +505,10 @@ def _ayar_kaydet(veri):
         except Exception as hata:
             print(f"[CANLI YAYIN] dinleyici guncellenemedi: {hata}", flush=True)
         _olay_yayinla(anlik)
+    try:
+        _restream_istek_guncelle()
+    except Exception as hata:
+        print(f"[RESTREAM] ayar atlandi: {hata}", flush=True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -506,6 +525,17 @@ def _alanlari_isle(kayit, veri, kod):
         kayit["webhook_url"] = _guvenli_url(veri.get("webhook_url") or "")
     if "duyuru_metni" in veri:
         kayit["duyuru_metni"] = str(veri.get("duyuru_metni") or "").strip()[:2000]
+    if "restream_rtmp_url" in veri or "restream_stream_key" in veri:
+        url, anahtar = _restream_url_ve_anahtar(
+            veri.get("restream_rtmp_url", kayit.get("restream_rtmp_url")),
+            veri.get("restream_stream_key", kayit.get("restream_stream_key")),
+        )
+        kayit["restream_rtmp_url"] = url
+        kayit["restream_stream_key"] = anahtar
+    if "restream_video_id" in veri:
+        kayit["restream_video_id"] = str(veri.get("restream_video_id") or "").strip()[:256]
+    if "restream_audio_id" in veri:
+        kayit["restream_audio_id"] = str(veri.get("restream_audio_id") or "").strip()[:256]
     if kod and not str(kayit.get("aktif_dukkan") or ""):
         taslak = (kayit.get("taslaklar") or {}).get(kod) or {}
         if "yayin_basligi" not in veri and taslak.get("yayin_basligi"):
@@ -1055,6 +1085,11 @@ def _ayarlar_paketi():
         "duyuru_metni": kayit.get("duyuru_metni") or "",
         "duyuru_hazir": _duyuru_hazir(kayit, kod or "gumus"),
         "taslaklar": kayit.get("taslaklar") or {},
+        "restream_rtmp_url": kayit.get("restream_rtmp_url") or "",
+        "restream_stream_key": kayit.get("restream_stream_key") or "",
+        "restream_video_id": kayit.get("restream_video_id") or "",
+        "restream_audio_id": kayit.get("restream_audio_id") or "",
+        "restream_imza": _restream_imza(kayit),
     }
 
 
@@ -1231,6 +1266,14 @@ def _kaydi_normallestir(ham):
         "duyuru_metni": str(ham.get("duyuru_metni") or "")[:2000],
         "taslaklar": ham.get("taslaklar") if isinstance(ham.get("taslaklar"), dict) else {},
     }
+    url, anahtar = _restream_url_ve_anahtar(
+        ham.get("restream_rtmp_url") or "",
+        ham.get("restream_stream_key") or "",
+    )
+    kayit["restream_rtmp_url"] = url
+    kayit["restream_stream_key"] = anahtar
+    kayit["restream_video_id"] = str(ham.get("restream_video_id") or "")[:256]
+    kayit["restream_audio_id"] = str(ham.get("restream_audio_id") or "")[:256]
     if kayit["aktif_dukkan"] != _SABIT_CANLI_DUKKAN:
         kayit["aktif_dukkan"] = ""
         kayit["baslangic_zamani"] = ""
@@ -2525,3 +2568,252 @@ def _push_dagit(kayit):
                 print(f"[CANLI YAYIN] push gonderilemedi: {hata}", flush=True)
         except Exception as hata:
             print(f"[CANLI YAYIN] push gonderilemedi: {hata}", flush=True)
+
+
+# --- Restream RTMP köprüsü (izole). Web yayını bu blok hata verse de sürer. ---
+
+_RESTREAM_KILIT = threading.Lock()
+_RESTREAM_PROC = None
+_RESTREAM_ISTEK = False
+_RESTREAM_HEDEF = ""
+
+
+def _restream_anahtar_temizle(deger):
+    anahtar = str(deger or "").strip()
+    if re.fullmatch(r"[^\s/?#\"'\\]{4,200}", anahtar):
+        return anahtar
+    return ""
+
+
+def _restream_url_ve_anahtar(url, anahtar):
+    """Yalnızca live.restream.io kabul edilir. Boş veya yabancı adres köprüyü kapatır."""
+    adres = str(url or "").strip()
+    temiz_anahtar = _restream_anahtar_temizle(anahtar)
+    if not adres:
+        return "", temiz_anahtar
+    eslesme = re.fullmatch(
+        r"(rtmps?)://live\.restream\.io/live(?:/([^\s/?#\"'\\]{4,200}))?/?",
+        adres,
+        flags=re.IGNORECASE,
+    )
+    if not eslesme:
+        return "", temiz_anahtar
+    sema = "rtmps" if eslesme.group(1).lower() == "rtmps" else "rtmp"
+    yol_anahtar = _restream_anahtar_temizle(eslesme.group(2) or "")
+    if not temiz_anahtar and yol_anahtar:
+        temiz_anahtar = yol_anahtar
+    return sema + "://live.restream.io/live", temiz_anahtar
+
+
+def _restream_hedef(url, anahtar):
+    govde, temiz = _restream_url_ve_anahtar(url, anahtar)
+    if not govde or not temiz:
+        return ""
+    return govde.rstrip("/") + "/" + temiz
+
+
+def _restream_imza(kayit):
+    if str((kayit or {}).get("aktif_dukkan") or "") != _SABIT_CANLI_DUKKAN:
+        return ""
+    hedef = _restream_hedef(
+        (kayit or {}).get("restream_rtmp_url"),
+        (kayit or {}).get("restream_stream_key"),
+    )
+    if not hedef:
+        return ""
+    return hashlib.sha256(hedef.encode("utf-8")).hexdigest()[:16]
+
+
+def _restream_istek_guncelle():
+    """Dolu anahtar ve diger yayını varsa köprüyü beklemeye alır. Eksikse süreci kapatır."""
+    global _RESTREAM_ISTEK, _RESTREAM_HEDEF
+    kayit = _kopya()
+    canli = str(kayit.get("aktif_dukkan") or "") == _SABIT_CANLI_DUKKAN
+    hedef = ""
+    if canli:
+        hedef = _restream_hedef(kayit.get("restream_rtmp_url"), kayit.get("restream_stream_key"))
+    with _RESTREAM_KILIT:
+        eski = _RESTREAM_HEDEF
+        _RESTREAM_HEDEF = hedef
+        _RESTREAM_ISTEK = bool(hedef)
+    if (not hedef) or hedef != eski:
+        _restream_sureci_kapat()
+
+
+def _restream_kopru_durdur():
+    global _RESTREAM_ISTEK, _RESTREAM_HEDEF
+    with _RESTREAM_KILIT:
+        _RESTREAM_ISTEK = False
+        _RESTREAM_HEDEF = ""
+    _restream_sureci_kapat()
+
+
+def _restream_sureci_kapat():
+    global _RESTREAM_PROC
+    with _RESTREAM_KILIT:
+        proc = _RESTREAM_PROC
+        _RESTREAM_PROC = None
+    if proc is None:
+        return
+    try:
+        if proc.stdin and not proc.stdin.closed:
+            proc.stdin.close()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=3)
+    except Exception:
+        try:
+            proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+
+
+def _restream_ffmpeg_yolu():
+    """PATH'te ffmpeg varsa onu kullanır. Yoksa imageio-ffmpeg ikilisini yedek alır."""
+    try:
+        import shutil
+
+        yer = shutil.which("ffmpeg")
+        if yer:
+            return yer
+    except Exception:
+        pass
+    try:
+        import imageio_ffmpeg
+
+        yer = imageio_ffmpeg.get_ffmpeg_exe()
+        if yer:
+            return str(yer)
+    except Exception as hata:
+        print(f"[RESTREAM] imageio-ffmpeg atlandi: {hata}", flush=True)
+    return "ffmpeg"
+
+
+def _restream_surec_ac(hedef, mime):
+    if not (
+        str(hedef).startswith("rtmp://live.restream.io/live/")
+        or str(hedef).startswith("rtmps://live.restream.io/live/")
+    ):
+        return None
+    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
+    komut = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-fflags",
+        "+genpts",
+        "-f",
+        bicim,
+        "-i",
+        "pipe:0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-tune",
+        "zerolatency",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "25",
+        "-g",
+        "50",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+        "-f",
+        "flv",
+        hedef,
+    ]
+    komut[0] = _restream_ffmpeg_yolu()
+    ayar = {}
+    if os.name == "nt":
+        bayrak = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if bayrak:
+            ayar["creationflags"] = bayrak
+    try:
+        return subprocess.Popen(
+            komut,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **ayar,
+        )
+    except Exception as hata:
+        print(f"[RESTREAM] ffmpeg atlandi: {hata}", flush=True)
+        return None
+
+
+def _restream_yaz(hedef, paket, baslik, mime):
+    global _RESTREAM_PROC
+    with _RESTREAM_KILIT:
+        if not _RESTREAM_ISTEK or _RESTREAM_HEDEF != hedef:
+            return False
+        proc = _RESTREAM_PROC
+        if proc is not None and proc.poll() is not None:
+            _RESTREAM_PROC = None
+            proc = None
+            if not baslik:
+                return "yeniden"
+        if proc is None:
+            if not baslik:
+                return "yeniden"
+            proc = _restream_surec_ac(hedef, mime)
+            _RESTREAM_PROC = proc
+        if proc is None or proc.stdin is None:
+            return False
+        stdin = proc.stdin
+    try:
+        stdin.write(paket)
+        stdin.flush()
+    except Exception:
+        with _RESTREAM_KILIT:
+            if _RESTREAM_PROC is proc:
+                _RESTREAM_PROC = None
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return "yeniden"
+    return True
+
+
+def _restream_parca_al(veri):
+    """Tarayıcı medya parçasını FFmpeg stdin'ine yazar. Hata olursa sessizce atlar."""
+    try:
+        if not _yonetici_mi():
+            return {"success": True, "atlandi": True}
+        with _RESTREAM_KILIT:
+            istek = _RESTREAM_ISTEK
+            hedef = _RESTREAM_HEDEF
+        if not istek or not hedef:
+            return {"success": True, "atlandi": True}
+        if str(_kopya().get("aktif_dukkan") or "") != _SABIT_CANLI_DUKKAN:
+            return {"success": True, "atlandi": True}
+        ham = str((veri or {}).get("parca") or "")
+        if not ham or len(ham) > 2800000:
+            return {"success": True, "atlandi": True}
+        try:
+            paket = base64.b64decode(ham, validate=False)
+        except Exception:
+            return {"success": True, "atlandi": True}
+        if not paket or len(paket) > 2000000:
+            return {"success": True, "atlandi": True}
+        sonuc = _restream_yaz(
+            hedef,
+            paket,
+            bool((veri or {}).get("baslik")),
+            str((veri or {}).get("mime") or ""),
+        )
+        if sonuc == "yeniden":
+            return {"success": True, "yeniden": True}
+        return {"success": True, "restream": bool(sonuc)}
+    except Exception as hata:
+        print(f"[RESTREAM] parca atlandi: {hata}", flush=True)
+        return {"success": True, "atlandi": True}
