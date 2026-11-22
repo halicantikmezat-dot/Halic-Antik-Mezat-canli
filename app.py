@@ -1745,7 +1745,7 @@ def kategori_ad_temizle(kat):
 
 def dukkan_dogrula(kod):
     k = (kod or "").lower().strip()
-    return k if k in DUKKANLAR else "gumus"
+    return k if k in DUKKANLAR else "diger"
 
 
 # ==========================================
@@ -3636,7 +3636,7 @@ def _ilk_canli_yayin_gomu():
 
 @app.route("/")
 def izleyici_index():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
     oda = odalar.get(dukkan) or {}
     durum = oda.get("durum") or {}
     ilk_sahne = {
@@ -3718,7 +3718,7 @@ def dukkan_sayfasi(dukkan_adi):
 
 @app.route("/vitrin")
 def vitrin():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
     return render_template("vitrin.html", secili_dukkan=dukkan, dukkanlar=DUKKANLAR)
 
 
@@ -11555,57 +11555,6 @@ def anons_bitti(veri):
         _satis_tebrik_bitti(dukkan)
     finally:
         db.session.remove()
-
-
-REHBER_ADIMLARI = (
-    "Birinci adım. Vitrinden veya sahneden bir lot seçin. Üyeliğiniz olmadan yayını ve vitrini izleyebilirsiniz.",
-    "İkinci adım. İlk peyinizde ad, soyad, telefon ve e-posta ile kayıt olun. Şartname kutusunu işaretleyin. E-postanıza gelen altı haneli kodu girince hesabınız açılır.",
-    "Üçüncü adım. Yazılı pey, bas konuş ile sesli pey veya Hemen Al ile teklif verin.",
-    "Dördüncü adım. Kazandığınız eser sepete düşer. Ödemeyi sepetten tamamlayın. Yeni katılımcı beşinci üründe ön ödeme yapmadan yeni alım açamaz.",
-)
-
-
-@socketio.on("rehber_ses_iste")
-def rehber_ses_iste(veri):
-    """Nasıl kullanılır turu. Ses yalnızca isteyen sokete gider."""
-    try:
-        adim = int((veri or {}).get("adim") or 1)
-    except (TypeError, ValueError):
-        adim = 1
-    try:
-        maddeler = icerik_maddelerini_oku("rehber")
-    finally:
-        db.session.remove()
-    if not maddeler:
-        maddeler = [
-            {"baslik": "", "metin": metin} for metin in REHBER_ADIMLARI
-        ]
-    if adim < 1:
-        adim = 1
-    if adim > len(maddeler):
-        adim = len(maddeler)
-    kayit = maddeler[adim - 1]
-    metin = ses_metnini_temizle(
-        ((kayit.get("baslik") or "") + ". " + (kayit.get("metin") or "")).strip(" .")
-    )
-    sid = request.sid
-
-    def uret():
-        mp3, motor = _tts_uret(metin)
-        if not mp3:
-            socketio.emit("rehber_ses", {
-                "adim": adim,
-                "mesaj": "Ses üretilemedi. Adım metni ekranda duruyor.",
-            }, room=sid)
-            return
-        adres = _mp3_kaydet(mp3, adim)
-        socketio.emit("rehber_ses", {
-            "adim": adim,
-            "audio_url": adres,
-            "motor": motor,
-        }, room=sid)
-
-    socketio.start_background_task(uret)
 
 
 @socketio.on("ahmet_ses_iste")

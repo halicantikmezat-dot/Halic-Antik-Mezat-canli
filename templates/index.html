@@ -10,7 +10,7 @@
     {% set _seo_aciklama = ((_canli_urun.tanitim_yazisi or ('Haliç Antik canlı mezat. ' ~ _dukkan_ad ~ ' dükkanında eseri izleyin, pey verin veya hemen alın.'))[:180]) if _canli_urun else 'Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.' %}
     {% set _seo_gorsel_ham = (_canli_urun.fotograflar[0] if (_canli_urun and _canli_urun.fotograflar) else '/static/img/varsayilan_urun.png') %}
     {% set _seo_gorsel = _seo_gorsel_ham if (_seo_gorsel_ham.startswith('http://') or _seo_gorsel_ham.startswith('https://')) else ('https://halicantikcanli.com' ~ (_seo_gorsel_ham if _seo_gorsel_ham.startswith('/') else '/' ~ _seo_gorsel_ham)) %}
-    {% set _seo_url = 'https://halicantikcanli.com/?dukkan=' ~ (secili_dukkan if secili_dukkan is defined else 'gumus') %}
+    {% set _seo_url = 'https://halicantikcanli.com/?dukkan=' ~ (secili_dukkan if secili_dukkan is defined else 'diger') %}
     {% set _ilk_cy = ilk_canli_yayin if (ilk_canli_yayin is defined and ilk_canli_yayin) else {} %}
     {% set _cy_aktif = _ilk_cy.aktif and ((_ilk_cy.aktif_dukkan or '') == 'diger') %}
     {% set _cy_burada = _cy_aktif and (secili_dukkan is defined and secili_dukkan == 'diger') %}
@@ -1385,7 +1385,7 @@
         .genel-menu a.active, .genel-menu a:hover, .genel-menu button.menu-oge:hover { border-color: var(--accent-gold); }
         .menu-perde { position: absolute; inset: 0; background: rgba(0,0,0,0.35); z-index: 1300; }
         .menu-perde[hidden] { display: none; }
-        .stage-media-box { height: 70vh; max-height: 70vh; overflow: hidden; touch-action: none; }
+        .stage-media-box { height: 70vh; max-height: 70vh; overflow: hidden; touch-action: manipulation pinch-zoom; }
         #medyaKapsayici.pinch-aktif img,
         #medyaKapsayici.pinch-aktif video {
             animation: none !important;
@@ -2735,7 +2735,7 @@
     const rozetDukkan = document.getElementById('aktifDukkanRozet');
     const sunucuDukkan = (rozetDukkan ? (rozetDukkan.getAttribute('data-dukkan') || '') : '').trim().toLowerCase();
     const urlDukkan = (urlParams.get('dukkan') || '').trim().toLowerCase();
-    let aktifDukkan = urlDukkan || sunucuDukkan || 'gumus';
+    let aktifDukkan = urlDukkan || sunucuDukkan || 'diger';
     let dukkanlar = {};
 
     let kullaniciAdi = "", kullaniciId = null, kullaniciTel = "", kullaniciMail = "";
@@ -3091,6 +3091,7 @@
     }
 
     let sunucuTtsSes = null;
+    let sunucuTtsNesil = 0;
     let slaytEslikAni = 0;
     let slaytEslikSira = 0;
     const SLAYT_ESLIKLERI = [
@@ -3100,10 +3101,34 @@
         "Bir de bu açıdan bakın, vitrin böyle durmaz."
     ];
 
-    function sunucuTtsCal(metin, bildirim) {
+    function sunucuTtsDurdur() {
+        sunucuTtsNesil += 1;
+        if (!sunucuTtsSes) return;
+        try {
+            sunucuTtsSes.onended = null;
+            sunucuTtsSes.onerror = null;
+            sunucuTtsSes.pause();
+        } catch (e) {}
+        sunucuTtsSes = null;
+    }
+
+    function sunucuTtsCal(metin, bildirim, bitti) {
         const yazi = String(metin || "").trim();
-        if (!yazi) return;
+        sunucuTtsNesil += 1;
+        const nesil = sunucuTtsNesil;
+        if (!yazi) {
+            if (typeof bitti === "function") bitti();
+            return;
+        }
         if (bildirim && typeof showToast === "function") showToast(bildirim);
+        if (sunucuTtsSes) {
+            try {
+                sunucuTtsSes.onended = null;
+                sunucuTtsSes.onerror = null;
+                sunucuTtsSes.pause();
+            } catch (e) {}
+            sunucuTtsSes = null;
+        }
         fetch("/api/tts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -3112,6 +3137,7 @@
             if (!r.ok) throw new Error("tts");
             return r.blob();
         }).then(function (blob) {
+            if (nesil !== sunucuTtsNesil) return;
             if (!blob || !blob.size) throw new Error("bos");
             if (sunucuTtsSes) {
                 try { sunucuTtsSes.pause(); } catch (e) {}
@@ -3119,9 +3145,23 @@
             const url = URL.createObjectURL(blob);
             sunucuTtsSes = new Audio(url);
             sunucuTtsSes.setAttribute("playsinline", "");
-            sunucuTtsSes.play().catch(function () {});
+            sunucuTtsSes.playsInline = true;
+            var bittiCagrildi = false;
+            function bitir() {
+                if (nesil !== sunucuTtsNesil || bittiCagrildi) return;
+                bittiCagrildi = true;
+                if (typeof bitti === "function") bitti();
+            }
+            sunucuTtsSes.onended = bitir;
+            sunucuTtsSes.onerror = bitir;
+            sunucuTtsSes.play().catch(function () {
+                if (nesil !== sunucuTtsNesil) return;
+                if (typeof bitti === "function") bitti();
+            });
         }).catch(function () {
+            if (nesil !== sunucuTtsNesil) return;
             if (typeof showToast === "function") showToast("Ses şu an çıkmadı, metin ekranda duruyor.");
+            if (typeof bitti === "function") bitti();
         });
     }
 
@@ -3989,53 +4029,6 @@
         osc.stop(ctx.currentTime + 0.24);
     }
 
-    function turkceSesiBul(sesler) {
-        var liste = sesler || [];
-        for (var i = 0; i < liste.length; i++) {
-            var ses = liste[i];
-            var dil = String(ses.lang || "").toLowerCase().replace(/_/g, "-");
-            var ad = String(ses.name || "").toLowerCase();
-            if (dil.indexOf("tr-tr") === 0 || dil === "tr" || ad.indexOf("türk") >= 0 || ad.indexOf("turk") >= 0) {
-                return ses;
-            }
-        }
-        return null;
-    }
-
-    function turkceSesle(metin, bitti) {
-        var yazi = String(metin || "").trim();
-        if (!yazi || !window.speechSynthesis || typeof SpeechSynthesisUtterance !== "function") {
-            if (typeof bitti === "function") bitti();
-            return;
-        }
-        var soyle = function () {
-            var ses = turkceSesiBul(window.speechSynthesis.getVoices());
-            var u = new SpeechSynthesisUtterance(yazi);
-            u.lang = "tr-TR";
-            if (ses) u.voice = ses;
-            if (typeof bitti === "function") {
-                u.onend = bitti;
-                u.onerror = bitti;
-            }
-            window.speechSynthesis.speak(u);
-        };
-        var hazir = window.speechSynthesis.getVoices() || [];
-        if (hazir.length && turkceSesiBul(hazir)) {
-            soyle();
-            return;
-        }
-        var bittiBekleme = false;
-        var dinle = function () {
-            if (bittiBekleme) return;
-            bittiBekleme = true;
-            try { window.speechSynthesis.removeEventListener("voiceschanged", dinle); } catch (e) {}
-            soyle();
-        };
-        try { window.speechSynthesis.addEventListener("voiceschanged", dinle); } catch (e) {}
-        window.speechSynthesis.getVoices();
-        setTimeout(dinle, 800);
-    }
-
     socket.on("ses_kes", function (data) {
         if (!data || data.dukkan !== aktifDukkan) return;
         const zorunlu = data.zorunlu || data.tur === "satis" || data.tur === "sahne" || data.tur === "yeni_urun";
@@ -4567,21 +4560,6 @@
         moderatorSusma = setTimeout(function () {
             anonsuDevamEt();
         }, 1200);
-    });
-
-    var rehberAdimSesi = null;
-    socket.on("rehber_ses", function (data) {
-        if (!data) return;
-        if (data.mesaj && typeof showToast === "function") showToast(data.mesaj);
-        if (!data.audio_url) return;
-        try {
-            if (rehberAdimSesi) {
-                rehberAdimSesi.onended = null;
-                rehberAdimSesi.pause();
-            }
-            rehberAdimSesi = new Audio(data.audio_url);
-            rehberAdimSesi.play().catch(function () {});
-        } catch (e) {}
     });
 
     socket.on("ses_oynat", function (data) {
@@ -6493,7 +6471,7 @@
         const ogTitle = document.querySelector('meta[property="og:title"]');
         const ogImage = document.querySelector('meta[property="og:image"]');
         const ogDesc = document.querySelector('meta[property="og:description"]');
-        const kanonik = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(aktifDukkan || 'gumus');
+        const kanonik = 'https://halicantikcanli.com/?dukkan=' + encodeURIComponent(aktifDukkan || 'diger');
         if (ogUrl) ogUrl.setAttribute('content', kanonik);
         if (!urun) {
             if (etiket) {
@@ -6686,28 +6664,36 @@
         rehberVurgula();
         rehberAdiminiOynat();
     }
+    function rehberMetniniTemizle(ham) {
+        var s = String(ham || "");
+        s = s.replace(/%XX/gi, "belirlenen yüzde");
+        s = s.replace(/%\s*(\d+)/g, "yüzde $1");
+        s = s.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, " ");
+        s = s.replace(/[\u2600-\u27BF\uFE0F\u200D]/g, " ");
+        s = s.replace(/[^\w\sÇĞİÖŞÜçğıöşü.,!?:;'\-]/g, " ");
+        s = s.replace(/_/g, " ");
+        return s.replace(/\s+/g, " ").trim();
+    }
+    function rehberKartiMetni(kart) {
+        if (!kart) return "";
+        var paragraf = kart.querySelector("p");
+        var ham = paragraf ? (paragraf.innerText || paragraf.textContent || "") : (kart.innerText || "");
+        return rehberMetniniTemizle(ham);
+    }
     function rehberAdiminiOynat() {
         var durum = document.getElementById('rehberDurum');
         var kart = document.querySelector('#rehberAdimlar [data-rehber="' + rehberAdim + '"]');
-        var metin = kart ? (kart.innerText || "").replace(/\s+/g, " ").trim() : "";
-        if (rehberAdimSesi) {
-            try { rehberAdimSesi.pause(); } catch (e) {}
-            rehberAdimSesi = null;
-        }
+        var metin = rehberKartiMetni(kart);
         if (!metin) {
+            sunucuTtsDurdur();
             if (durum) durum.textContent = "Adım metni ekranda duruyor.";
-            return;
-        }
-        if (!window.speechSynthesis || typeof SpeechSynthesisUtterance !== "function") {
-            if (durum) durum.textContent = "Bu cihazda sesli okuma yok. Adım metni ekranda duruyor.";
             return;
         }
         rehberSesNesil += 1;
         var nesil = rehberSesNesil;
-        try { window.speechSynthesis.cancel(); } catch (e) {}
         rehberCanliSesiBeklet();
         if (durum) durum.textContent = "Adım " + rehberAdim + " okunuyor.";
-        turkceSesle(metin, function () {
+        sunucuTtsCal(metin, "", function () {
             if (nesil !== rehberSesNesil) return;
             rehberCanliSesiSurdur();
             if (durum) durum.textContent = "Adım " + rehberAdim + " sesi bitti.";
@@ -6739,16 +6725,13 @@
     function rehberKilavuzMetni() {
         var parcalar = [];
         document.querySelectorAll("#rehberAdimlar [data-rehber]").forEach(function (kart) {
-            var yazi = (kart.innerText || "").replace(/\s+/g, " ").trim();
+            var yazi = rehberKartiMetni(kart);
             if (yazi) parcalar.push(yazi);
         });
         return parcalar.join(" ");
     }
 
     function rehberCanliSesiBeklet() {
-        if (rehberAdimSesi && !rehberAdimSesi.paused) {
-            try { rehberAdimSesi.pause(); } catch (e) {}
-        }
         [currentAudio, moderatorAkisSesi, window.aktifSes, document.getElementById("stageVideo")].forEach(function (el) {
             if (!el || el.paused || rehberDurdurulanlar.indexOf(el) !== -1) return;
             try {
@@ -6778,9 +6761,7 @@
     function rehberKilavuzSesiniKapat() {
         rehberSesNesil += 1;
         rehberVideosunuDurdur();
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-        }
+        sunucuTtsDurdur();
         rehberCanliSesiSurdur();
     }
 
@@ -6792,56 +6773,20 @@
 
     function rehberKilavuzuSesliDinle() {
         var durum = document.getElementById("rehberDurum");
-        if (!window.speechSynthesis || typeof SpeechSynthesisUtterance !== "function") {
-            if (durum) durum.textContent = "Bu cihazda sesli okuma yok. Aşağıdaki adımları okuyabilirsiniz.";
+        var metin = rehberKilavuzMetni();
+        if (!metin) {
+            if (durum) durum.textContent = "Aşağıdaki adımları okuyabilirsiniz.";
             return;
         }
         rehberSesNesil += 1;
         var nesil = rehberSesNesil;
-        try { window.speechSynthesis.cancel(); } catch (e) {}
         rehberCanliSesiBeklet();
-        var ham = rehberKilavuzMetni();
-        var cumleler = ham.match(/[^.!?]+[.!?]?/g) || [ham];
-        var sira = 0;
-        function rehberCumlesiniOku() {
-            if (nesil !== rehberSesNesil) return;
-            if (sira >= cumleler.length) {
-                rehberCanliSesiSurdur();
-                if (durum) durum.textContent = "Kılavuz sesi bitti.";
-                return;
-            }
-            var cumle = String(cumleler[sira] || "").trim();
-            sira += 1;
-            if (!cumle) {
-                rehberCumlesiniOku();
-                return;
-            }
-            var ses = turkceSesiBul(window.speechSynthesis.getVoices() || []);
-            var u = new SpeechSynthesisUtterance(cumle);
-            u.lang = "tr-TR";
-            if (ses) u.voice = ses;
-            u.onend = function () { rehberCumlesiniOku(); };
-            u.onerror = function () {
-                if (nesil !== rehberSesNesil) return;
-                rehberCumlesiniOku();
-            };
-            window.speechSynthesis.speak(u);
-        }
         if (durum) durum.textContent = "Kılavuz Türkçe okunuyor.";
-        if (turkceSesiBul(window.speechSynthesis.getVoices() || [])) {
-            rehberCumlesiniOku();
-            return;
-        }
-        var basladi = false;
-        var baslat = function () {
-            if (basladi || nesil !== rehberSesNesil) return;
-            basladi = true;
-            try { window.speechSynthesis.removeEventListener("voiceschanged", baslat); } catch (e) {}
-            rehberCumlesiniOku();
-        };
-        try { window.speechSynthesis.addEventListener("voiceschanged", baslat); } catch (e) {}
-        window.speechSynthesis.getVoices();
-        setTimeout(baslat, 800);
+        sunucuTtsCal(metin, "", function () {
+            if (nesil !== rehberSesNesil) return;
+            rehberCanliSesiSurdur();
+            if (durum) durum.textContent = "Kılavuz sesi bitti.";
+        });
     }
 
     function rehberYoutubeEmbed(url) {
@@ -7448,14 +7393,22 @@
 
         kutu.addEventListener('pointerdown', function (e) {
             if (e.target.closest('button, a, input, textarea, select')) return;
-            try { kutu.setPointerCapture(e.pointerId); } catch (err) {}
-            parmaklar.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (e.pointerType !== 'touch') {
+                try { kutu.setPointerCapture(e.pointerId); } catch (err) {}
+            }
+            parmaklar.set(e.pointerId, { x: e.clientX, y: e.clientY, tur: e.pointerType });
             hareket = 0;
             if (parmaklar.size === 1) {
                 basX = e.clientX;
                 basY = e.clientY;
             }
             if (parmaklar.size >= 2) {
+                if (e.pointerType === 'touch') {
+                    pinchBas = null;
+                    panBas = null;
+                    parmaklar.clear();
+                    return;
+                }
                 const noktalar = Array.from(parmaklar.values());
                 const odak = orta(noktalar);
                 pinchBas = {
@@ -7477,6 +7430,12 @@
             const simdi = { x: e.clientX, y: e.clientY };
             hareket += Math.hypot(simdi.x - onceki.x, simdi.y - onceki.y);
             parmaklar.set(e.pointerId, simdi);
+            if (e.pointerType === 'touch' && parmaklar.size >= 2) {
+                pinchBas = null;
+                panBas = null;
+                parmaklar.clear();
+                return;
+            }
             if (parmaklar.size >= 2) {
                 const noktalar = Array.from(parmaklar.values());
                 const odak = orta(noktalar);
@@ -7546,6 +7505,7 @@
 
         kutu.addEventListener('wheel', function (e) {
             if (e.target.closest('button, a, input, textarea, select')) return;
+            if (!e.ctrlKey && !e.metaKey) return;
             e.preventDefault();
             zumNoktasi(olcek * (e.deltaY < 0 ? 1.08 : 0.92), e.clientX, e.clientY);
         }, { passive: false });

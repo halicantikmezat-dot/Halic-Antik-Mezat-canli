@@ -119,7 +119,7 @@
 <script>
     // DÜKKAN / ODA ALGISI (Örn: /overlay?dukkan=gumus veya /overlay?dukkan=antika)
     const urlParams = new URLSearchParams(window.location.search);
-    const aktifDukkan = urlParams.get('dukkan') || 'gumus';
+    const aktifDukkan = urlParams.get('dukkan') || 'diger';
 
     function mezatSocketAdresi() {
         const host = window.location.hostname;
