@@ -4019,7 +4019,7 @@ def doviz_kurlari():
 @app.route("/vitrin-urunler", methods=["GET"])
 def vitrin_urunler():
     try:
-        dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+        dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
         sayfa = max(1, int(request.args.get("sayfa", 1)))
         limit = min(60, max(10, int(request.args.get("limit", 40))))
         kategori = (request.args.get("kategori") or "").strip()
@@ -4261,7 +4261,7 @@ def admin_urun_ara_api():
 
 @app.route("/canli-durum", methods=["GET"])
 def canli_durum():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
 
     try:
         paket = _sahne_durumu_paketi(dukkan)
@@ -4352,7 +4352,7 @@ def api_durum():
 @app.route("/durum-getir", methods=["GET"])
 @admin_required
 def durum_getir():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
     oda = odalar[dukkan]
 
     try:
@@ -6860,7 +6860,7 @@ def tiktok_kopru_durdur():
 @app.route("/admin", methods=["GET"])
 @admin_required
 def admin_panel():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "gumus"))
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
     try:
         en_yuksek_lot = (
             db.session.query(func.max(Urun.lot_no))
@@ -10849,7 +10849,7 @@ def handle_connect():
         izleyici_sayisini_yayinla()
         emit(
             "izleyici_sayisi_guncelle",
-            {"sayi": len(aktif_izleyiciler), "dukkan": "gumus"},
+            {"sayi": len(aktif_izleyiciler), "dukkan": "diger"},
         )
     finally:
         db.session.remove()
@@ -11374,7 +11374,7 @@ def _katilana_sahneyi_ver(dukkan):
 def handle_join_dukkan(data):
     try:
         veri = data or {}
-        dukkan = dukkan_dogrula(veri.get("dukkan", "gumus"))
+        dukkan = dukkan_dogrula(veri.get("dukkan", "diger"))
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
         izleyici_adlari[request.sid] = ad
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))

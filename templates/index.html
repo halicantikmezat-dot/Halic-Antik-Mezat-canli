@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     {% set _canli_urun = ilk_sahne.aktif_urun if (ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun) else none %}
-    {% set _dukkan_ad = dukkanlar[secili_dukkan].ad if (secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar) else 'Gümüş' %}
+    {% set _dukkan_ad = dukkanlar[secili_dukkan].ad if (secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar) else 'Diğer - Her Şey' %}
     {% set _seo_baslik = ('Canlı Mezat: ' ~ _canli_urun.ad ~ ' | ' ~ _dukkan_ad) if _canli_urun else ('Haliç Antik Mezat - ' ~ _dukkan_ad ~ ' Canlı Mezat') %}
     {% set _seo_aciklama = ((_canli_urun.tanitim_yazisi or ('Haliç Antik canlı mezat. ' ~ _dukkan_ad ~ ' dükkanında eseri izleyin, pey verin veya hemen alın.'))[:180]) if _canli_urun else 'Haliç Antik Canlı Mezat - Antika, koleksiyon, gümüş, halı, resim ve sanat eserleri canlı online mezat ve açık artırma platformu.' %}
     {% set _seo_gorsel_ham = (_canli_urun.fotograflar[0] if (_canli_urun and _canli_urun.fotograflar) else '/static/img/varsayilan_urun.png') %}
@@ -2053,7 +2053,7 @@
             <h2>HALİÇ ANTİK CANLI</h2>
             <div class="header-lokasyon-rozet">
                 <span class="header-rozet-pulse"></span>
-                <span id="aktifDukkanRozet" data-dukkan="{{ secili_dukkan if secili_dukkan is defined else '' }}">{% if secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar %}{{ dukkanlar[secili_dukkan].ad }}{% else %}GÜMÜŞ{% endif %}</span>
+                <span id="aktifDukkanRozet" data-dukkan="{{ secili_dukkan if secili_dukkan is defined else 'diger' }}">{% if secili_dukkan is defined and dukkanlar is defined and secili_dukkan in dukkanlar %}{{ dukkanlar[secili_dukkan].ad }}{% else %}DİĞER - HER ŞEY{% endif %}</span>
             </div>
         </div>
         <div class="header-actions">

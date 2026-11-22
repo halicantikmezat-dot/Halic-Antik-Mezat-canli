@@ -638,12 +638,12 @@
         <div class="card" id="rejiSahneKontrol">
             <div class="card-title">
                 <span>🎬 Canlı Sahne Kontrolü</span>
-                <span id="seciliDukkanRozet" style="background:var(--accent-gold); color:#000; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:bold;">GÜMÜŞ</span>
+                <span id="seciliDukkanRozet" style="background:var(--accent-gold); color:#000; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:bold;">DİĞER - HER ŞEY</span>
             </div>
 
             <div style="background: #111827; border: 1.5px dashed var(--accent-gold); padding: 10px; border-radius: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <b style="color: var(--accent-gold); font-size: 13px;" id="otonomBaslikMetni">🤖 7/24 Otonom Mezat (Gümüş)</b>
+                    <b style="color: var(--accent-gold); font-size: 13px;" id="otonomBaslikMetni">🤖 7/24 Otonom Mezat (Diğer - Her Şey)</b>
                     <p style="font-size: 11px; color: #94a3b8; margin: 0;">Bu dükkanın ön tekliflerini ve kataloğunu sırayla otomatik satar.</p>
                 </div>
                 <div style="display: flex; gap: 6px;">
@@ -713,10 +713,10 @@
     <div class="grid-2">
         <div class="card">
             <div class="card-title">
-                <span id="urunEkleBaslik">➕ Manuel Tek Ürün Ekle (Gümüş)</span>
+                <span id="urunEkleBaslik">➕ Manuel Tek Ürün Ekle (Diğer - Her Şey)</span>
             </div>
             <form id="urunForm" onsubmit="urunYukle(event)">
-                <input type="hidden" id="formDukkan" value="gumus">
+                <input type="hidden" id="formDukkan" value="diger">
                 <label style="font-size: 11px; color: var(--accent-gold); font-weight: bold; display: block; margin-bottom: 2px;">
                     Lot Numarası (Sıradaki Lot Otomatik Getirildi):
                 </label>
@@ -1517,7 +1517,7 @@
 
     function yoneticiOdayaGir() {
         socket.emit("join_admin");
-        const kod = (typeof seciliDukkan === "string" && seciliDukkan) ? seciliDukkan : "gumus";
+        const kod = (typeof seciliDukkan === "string" && seciliDukkan) ? seciliDukkan : "diger";
         socket.emit("join_dukkan", { dukkan: kod, isim: "Yonetici" });
     }
     socket.on("connect", yoneticiOdayaGir);
@@ -1588,7 +1588,7 @@
         anonsuCal(data);
     });
 
-    let seciliDukkan = 'gumus';
+    let seciliDukkan = 'diger';
     let dukkanlar = {};
     let otonomDurumlari = {};
 

@@ -1,4 +1,4 @@
-var CACHE_NAME = "halic-antik-pwa-v4";
+var CACHE_NAME = "halic-antik-pwa-v5";
 var PWA_ONBELLEK = CACHE_NAME;
 var PWA_DOSYALAR = [
     "/static/img/icon-192.png",
@@ -20,6 +20,16 @@ function pwaDogrudanAg(request) {
     if (yol === "/api" || yol.indexOf("/api/") === 0) return true;
     if (/\.m3u8($|\?)/i.test(adres) || /\.ts($|\?)/i.test(adres)) return true;
     return false;
+}
+
+function pwaBelgeIstegi(request) {
+    if (request.mode === "navigate" || request.destination === "document") return true;
+    try {
+        var yol = new URL(request.url).pathname;
+        return yol === "/" || yol === "/index.html" || yol === "/admin";
+    } catch (e) {
+        return false;
+    }
 }
 
 function pwaOnbellekDosyasi(request) {
@@ -58,8 +68,12 @@ self.addEventListener("activate", function (event) {
 self.addEventListener("fetch", function (event) {
     var request = event.request;
     if (pwaDogrudanAg(request)) return;
-    if (request.mode === "navigate" || request.destination === "document") {
-        event.respondWith(fetch(request, { cache: "no-store" }));
+    if (pwaBelgeIstegi(request)) {
+        event.respondWith(
+            fetch(request, { cache: "no-store" }).catch(function () {
+                return caches.match(request);
+            })
+        );
         return;
     }
 
