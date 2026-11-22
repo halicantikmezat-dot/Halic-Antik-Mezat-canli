@@ -48,6 +48,7 @@ _BELLEK = {
     "restream_stream_key": "",
     "restream_video_id": "",
     "restream_audio_id": "",
+    "reji_platformlari": [],
 }
 _THREADPOOL = None
 _REDIS = None
@@ -677,7 +678,7 @@ def _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id):
     return {"uygulandi": True, "neden": ""}
 
 
-def _yorum_yayinla(dukkan, platform, kullanici, mesaj):
+def _yorum_yayinla(dukkan, platform, kullanici, mesaj, reji_ek=None):
     if _socketio is None:
         return
     import time
@@ -695,6 +696,10 @@ def _yorum_yayinla(dukkan, platform, kullanici, mesaj):
         },
         room=dukkan,
     )
+    try:
+        _reji_duvar_satiri_yayinla(dukkan, platform, kullanici, mesaj, reji_ek)
+    except Exception as hata:
+        print(f"[CANLI YAYIN] reji duvari atlandi: {hata}", flush=True)
 
 
 def _kalp_yayinla(dukkan, platform):
@@ -1090,6 +1095,7 @@ def _ayarlar_paketi():
         "restream_video_id": kayit.get("restream_video_id") or "",
         "restream_audio_id": kayit.get("restream_audio_id") or "",
         "restream_imza": _restream_imza(kayit),
+        "reji_platformlari": _reji_listesi_temizle(kayit.get("reji_platformlari") or []),
     }
 
 
@@ -1274,6 +1280,10 @@ def _kaydi_normallestir(ham):
     kayit["restream_stream_key"] = anahtar
     kayit["restream_video_id"] = str(ham.get("restream_video_id") or "")[:256]
     kayit["restream_audio_id"] = str(ham.get("restream_audio_id") or "")[:256]
+    if "reji_platformlari" in ham:
+        kayit["reji_platformlari"] = _reji_listesi_temizle(ham.get("reji_platformlari"))
+    else:
+        kayit["reji_platformlari"] = _reji_varsayilan()
     if kayit["aktif_dukkan"] != _SABIT_CANLI_DUKKAN:
         kayit["aktif_dukkan"] = ""
         kayit["baslangic_zamani"] = ""
@@ -2817,3 +2827,398 @@ def _restream_parca_al(veri):
     except Exception as hata:
         print(f"[RESTREAM] parca atlandi: {hata}", flush=True)
         return {"success": True, "atlandi": True}
+
+
+_REJI_TURLER = (
+    "youtube",
+    "tiktok",
+    "instagram",
+    "facebook",
+    "kick",
+    "x",
+    "telegram",
+    "ozel",
+)
+_REJI_TUR_ETIKET = {
+    "youtube": "YouTube",
+    "tiktok": "TikTok",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "kick": "Kick",
+    "x": "X",
+    "telegram": "Telegram",
+    "ozel": "Özel",
+}
+
+
+def _reji_varsayilan():
+    """Yönetici silmedikçe duran başlangıç şablonu. Dinleyici kanal sözlüğünden ayrıdır."""
+    sablon = (
+        ("yt-ana", "YouTube Ana Kanal", "youtube"),
+        ("tt-ana", "TikTok Ana Kanal", "tiktok"),
+        ("ig-ana", "Instagram Ana Kanal", "instagram"),
+        ("fb-ana", "Facebook Ana Kanal", "facebook"),
+        ("kk-ana", "Kick Ana Kanal", "kick"),
+    )
+    return [
+        {
+            "id": kim,
+            "ad": ad,
+            "tur": tur,
+            "yayin_url": "",
+            "sohbet_id": "",
+            "aktif": True,
+            "son_akis": [],
+        }
+        for kim, ad, tur in sablon
+    ]
+
+
+def _reji_yeni_id():
+    import time
+
+    ham = str(time.time_ns()) + ":" + str(threading.get_ident())
+    return "rp" + hashlib.sha1(ham.encode("utf-8")).hexdigest()[:12]
+
+
+def _reji_kimlik(ham):
+    kim = re.sub(r"[^a-z0-9_-]", "", str(ham or "").strip().lower())
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,39}", kim or ""):
+        return ""
+    return kim
+
+
+def _reji_tur_coz(ham):
+    temiz = str(ham or "").strip().strip("[]").strip().lower()
+    if temiz == "twitter":
+        return "x"
+    if temiz in _REJI_TURLER:
+        return temiz
+    for tur, etiket in _PLATFORM_AD.items():
+        if str(etiket or "").strip().lower() != temiz:
+            continue
+        if tur == "twitter":
+            return "x"
+        if tur in _REJI_TURLER:
+            return tur
+    return ""
+
+
+def _reji_akis_satiri(ham):
+    if not isinstance(ham, dict):
+        return None
+    metin = str(ham.get("mesaj") or "").strip()[:500]
+    if not metin:
+        return None
+    return {
+        "zaman": str(ham.get("zaman") or "")[:16],
+        "kullanici": str(ham.get("kullanici") or "İzleyici").strip()[:80] or "İzleyici",
+        "mesaj": metin,
+        "pey": bool(ham.get("pey")),
+        "tutar": str(ham.get("tutar") or "")[:24],
+        "yanit": bool(ham.get("yanit")),
+    }
+
+
+def _reji_url(deger):
+    adres = str(deger or "").strip()
+    if adres and not adres.startswith("http://") and not adres.startswith("https://"):
+        if " " not in adres and "." in adres:
+            adres = "https://" + adres
+    return _guvenli_url(adres)
+
+
+def _reji_platform_temizle(ham):
+    if not isinstance(ham, dict):
+        return None
+    kim = _reji_kimlik(ham.get("id"))
+    if not kim:
+        return None
+    tur = str(ham.get("tur") or "ozel").strip().lower()
+    if tur not in _REJI_TURLER:
+        tur = "ozel"
+    ad = str(ham.get("ad") or "").strip()[:80]
+    if not ad:
+        return None
+    aktif = ham.get("aktif")
+    if isinstance(aktif, str):
+        aktif = aktif.strip().lower() not in ("0", "false", "hayir", "pasif", "kapali", "")
+    else:
+        aktif = True if aktif is None else bool(aktif)
+    akis = []
+    for satir in list(ham.get("son_akis") or [])[-40:]:
+        temiz = _reji_akis_satiri(satir)
+        if temiz:
+            akis.append(temiz)
+    return {
+        "id": kim,
+        "ad": ad,
+        "tur": tur,
+        "yayin_url": _reji_url(ham.get("yayin_url") or ""),
+        "sohbet_id": str(ham.get("sohbet_id") or "").strip()[:120],
+        "aktif": bool(aktif),
+        "son_akis": akis,
+    }
+
+
+def _reji_listesi_temizle(ham):
+    if not isinstance(ham, list):
+        return []
+    temiz = []
+    gorulen = set()
+    for oge in ham:
+        kayit = _reji_platform_temizle(oge)
+        if not kayit or kayit["id"] in gorulen:
+            continue
+        gorulen.add(kayit["id"])
+        temiz.append(kayit)
+        if len(temiz) >= 200:
+            break
+    return temiz
+
+
+def _reji_akisa_yaz(kim, satir):
+    temiz = _reji_akis_satiri(satir)
+    if not temiz:
+        return False
+    with _KILIT:
+        for platform in _BELLEK.get("reji_platformlari") or []:
+            if isinstance(platform, dict) and platform.get("id") == kim:
+                akis = list(platform.get("son_akis") or [])
+                akis.append(temiz)
+                platform["son_akis"] = akis[-40:]
+                return True
+    return False
+
+
+def _reji_duvar_satiri_yayinla(dukkan, platform, kullanici, mesaj, ekstra=None):
+    """Telefon reji duvarı yönetici odasına düşer. Ortak sohbet olayı ayrıca durur."""
+    if _socketio is None:
+        return
+    import time
+
+    ek = ekstra if isinstance(ekstra, dict) else {}
+    platform_id = _reji_kimlik(ek.get("platform_id"))
+    tur = str(ek.get("tur") or "").strip().lower()
+    if tur not in _REJI_TURLER:
+        tur = _reji_tur_coz(platform)
+    if platform_id:
+        idler = [platform_id]
+    elif tur:
+        idler = [
+            kayit.get("id")
+            for kayit in (_kopya().get("reji_platformlari") or [])
+            if kayit.get("aktif") and kayit.get("tur") == tur and kayit.get("id")
+        ]
+    else:
+        idler = []
+    _socketio.emit(
+        "reji_duvar_satiri",
+        {
+            "platform": platform,
+            "kullanici": kullanici,
+            "mesaj": mesaj,
+            "zaman": str(ek.get("zaman") or time.strftime("%H:%M:%S"))[:16],
+            "dukkan": dukkan,
+            "havuz": True,
+            "tur": tur,
+            "reji_idler": idler,
+            "platform_id": platform_id,
+            "yanit": bool(ek.get("yanit")),
+            "pey": bool(ek.get("pey")),
+        },
+        room="admin_room",
+    )
+
+
+def _reji_paket(mesaj):
+    anlik = _kopya()
+    _kalici_yaz(anlik)
+    return {
+        "success": True,
+        "mesaj": mesaj,
+        "reji_platformlari": _reji_listesi_temizle(anlik.get("reji_platformlari") or []),
+    }
+
+
+def _reji_bul(kim):
+    for platform in _kopya().get("reji_platformlari") or []:
+        if platform.get("id") == kim:
+            return platform
+    return None
+
+
+def _reji_ekle(veri):
+    taslak = {
+        "id": _reji_yeni_id(),
+        "ad": (veri or {}).get("ad"),
+        "tur": (veri or {}).get("tur") or "ozel",
+        "yayin_url": (veri or {}).get("yayin_url"),
+        "sohbet_id": (veri or {}).get("sohbet_id"),
+        "aktif": (veri or {}).get("aktif", True),
+        "son_akis": [],
+    }
+    temiz = _reji_platform_temizle(taslak)
+    if not temiz:
+        return {"success": False, "kod": 400, "mesaj": "Platform adı gerekli."}
+    with _KILIT:
+        liste = list(_BELLEK.get("reji_platformlari") or [])
+        if len(liste) >= 200:
+            return {"success": False, "kod": 400, "mesaj": "Platform listesi dolu."}
+        liste.append(temiz)
+        _BELLEK["reji_platformlari"] = liste
+    return _reji_paket(temiz["ad"] + " eklendi.")
+
+
+def _reji_duzenle(veri):
+    kim = _reji_kimlik((veri or {}).get("id"))
+    if not kim or not _reji_bul(kim):
+        return {"success": False, "kod": 404, "mesaj": "Platform bulunamadı."}
+    temiz = _reji_platform_temizle(
+        {
+            "id": kim,
+            "ad": (veri or {}).get("ad"),
+            "tur": (veri or {}).get("tur") or "ozel",
+            "yayin_url": (veri or {}).get("yayin_url"),
+            "sohbet_id": (veri or {}).get("sohbet_id"),
+            "aktif": (veri or {}).get("aktif", True),
+            "son_akis": [],
+        }
+    )
+    if not temiz:
+        return {"success": False, "kod": 400, "mesaj": "Platform adı gerekli."}
+    with _KILIT:
+        bulundu = False
+        for platform in _BELLEK.get("reji_platformlari") or []:
+            if not isinstance(platform, dict) or platform.get("id") != kim:
+                continue
+            platform["ad"] = temiz["ad"]
+            platform["tur"] = temiz["tur"]
+            platform["yayin_url"] = temiz["yayin_url"]
+            platform["sohbet_id"] = temiz["sohbet_id"]
+            platform["aktif"] = temiz["aktif"]
+            bulundu = True
+            break
+    if not bulundu:
+        return {"success": False, "kod": 404, "mesaj": "Platform bulunamadı."}
+    return _reji_paket(temiz["ad"] + " güncellendi.")
+
+
+def _reji_sil(veri):
+    kim = _reji_kimlik((veri or {}).get("id"))
+    if not kim:
+        return {"success": False, "kod": 400, "mesaj": "Platform kimliği gerekli."}
+    with _KILIT:
+        liste = [
+            platform
+            for platform in (_BELLEK.get("reji_platformlari") or [])
+            if not (isinstance(platform, dict) and platform.get("id") == kim)
+        ]
+        if len(liste) == len(_BELLEK.get("reji_platformlari") or []):
+            return {"success": False, "kod": 404, "mesaj": "Platform bulunamadı."}
+        _BELLEK["reji_platformlari"] = liste
+    return _reji_paket("Platform silindi.")
+
+
+def _reji_aktif_yaz(veri, islem):
+    kim = _reji_kimlik((veri or {}).get("id"))
+    kayit = _reji_bul(kim) if kim else None
+    if not kayit:
+        return {"success": False, "kod": 404, "mesaj": "Platform bulunamadı."}
+    if islem == "pasif":
+        aktif = False
+    elif "aktif" in (veri or {}):
+        gelen = veri.get("aktif")
+        if isinstance(gelen, str):
+            aktif = gelen.strip().lower() not in ("0", "false", "hayir", "pasif", "kapali", "")
+        else:
+            aktif = bool(gelen)
+    else:
+        aktif = not bool(kayit.get("aktif"))
+    with _KILIT:
+        for platform in _BELLEK.get("reji_platformlari") or []:
+            if isinstance(platform, dict) and platform.get("id") == kim:
+                platform["aktif"] = bool(aktif)
+                break
+    return _reji_paket("Platform açıldı." if aktif else "Platform pasife alındı.")
+
+
+def _reji_cevap(veri):
+    import time
+
+    kim = _reji_kimlik((veri or {}).get("id"))
+    kayit = _reji_bul(kim) if kim else None
+    metin = str((veri or {}).get("mesaj") or "").strip()[:500]
+    if not kayit:
+        return {"success": False, "kod": 404, "mesaj": "Platform bulunamadı."}
+    if not metin:
+        return {"success": False, "kod": 400, "mesaj": "Yanıt metni gerekli."}
+    zaman = time.strftime("%H:%M:%S")
+    if not _reji_akisa_yaz(
+        kim,
+        {
+            "zaman": zaman,
+            "kullanici": "Yönetici",
+            "mesaj": metin,
+            "pey": False,
+            "tutar": "",
+            "yanit": True,
+        },
+    ):
+        return {"success": False, "kod": 404, "mesaj": "Platform kaydına yazılamadı."}
+    kod = str(_kopya().get("aktif_dukkan") or "") or _SABIT_CANLI_DUKKAN
+    _yorum_yayinla(
+        kod,
+        kayit.get("ad") or _REJI_TUR_ETIKET.get(kayit.get("tur") or "", "Özel"),
+        "Yönetici",
+        metin,
+        {
+            "platform_id": kim,
+            "tur": kayit.get("tur") or "ozel",
+            "yanit": True,
+            "zaman": zaman,
+        },
+    )
+    return _reji_paket("Yanıt ortak havuza ve platform kaydına düştü.")
+
+
+def _reji_islem(islem, veri):
+    if islem in ("liste", "listele", ""):
+        return {
+            "success": True,
+            "reji_platformlari": _reji_listesi_temizle(_kopya().get("reji_platformlari") or []),
+        }
+    if islem in ("platform_ekle", "ekle"):
+        return _reji_ekle(veri)
+    if islem in ("platform_duzenle", "duzenle"):
+        return _reji_duzenle(veri)
+    if islem in ("platform_sil", "sil"):
+        return _reji_sil(veri)
+    if islem in ("platform_aktif", "aktif", "pasif"):
+        return _reji_aktif_yaz(veri, islem)
+    if islem in ("platform_cevap", "cevap"):
+        return _reji_cevap(veri)
+    return {"success": False, "kod": 400, "mesaj": "Geçersiz platform işlemi."}
+
+
+def reji_platform_yaniti():
+    """Dinamik reji platformlarını ekler, düzenler, siler ve yanıtı havuza yazar."""
+    if not _yonetici_mi():
+        return jsonify({"success": False, "mesaj": "Yetki yok."}), 403
+    veri = request.get_json(silent=True) or {}
+    if not isinstance(veri, dict):
+        veri = {}
+    islem = str(veri.get("islem") or "liste").strip().lower()
+    sonuc = _reji_islem(islem, veri)
+    kod = 200 if sonuc.get("success") else int(sonuc.get("kod") or 400)
+    govde = {anahtar: deger for anahtar, deger in sonuc.items() if anahtar != "kod"}
+    return jsonify(govde), kod
+
+
+def _reji_ilk_sablon():
+    with _KILIT:
+        if not _BELLEK.get("reji_platformlari"):
+            _BELLEK["reji_platformlari"] = _reji_varsayilan()
+
+
+_reji_ilk_sablon()

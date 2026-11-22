@@ -521,7 +521,7 @@
                 <div style="font-size:11px; color:#94a3b8;">Boş bırakılırsa mevcut web yayını eskisi gibi sürer. Yalnızca Diğer - Her Şey canlı yayını açıkken ve iki alan da doluyken köprü kurulur.</div>
                 <input type="text" id="cyRestreamUrl" value="rtmp://live.restream.io/live" placeholder="Restream RTMP URL" autocomplete="off" spellcheck="false">
                 <div style="display:flex; gap:6px; align-items:center;">
-                    <input type="password" id="cyRestreamKey" placeholder="Restream Akış Anahtarı (Stream Key)" autocomplete="new-password" spellcheck="false" style="flex:1; margin:0;">
+                    <input type="password" id="cyRestreamKey" placeholder="Restream Akış Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
                     <button type="button" id="cyRestreamKeyGoster" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Göster</button>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
@@ -533,6 +533,40 @@
                 </div>
                 <div id="cyRestreamDurum" style="font-size:12px; color:#94a3b8; min-height:16px;"></div>
             </div>
+            <details id="rejiDuvarKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border);">
+                <summary style="cursor:pointer; font-size:13px; color:#e2e8f0; font-weight:bold;">📱 Canlı Platform Reji Duvarı</summary>
+                <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <button type="button" id="rejiPlatformEkleAc" class="btn btn-green btn-sm">+ Yeni Platform Ekle</button>
+                        <span id="rejiPlatformNot" style="font-size:12px; color:#86efac;"></span>
+                    </div>
+                    <div id="rejiPlatformForm" style="display:none; grid-template-columns:1fr 1fr; gap:8px;">
+                        <input type="hidden" id="rejiFormId" value="">
+                        <input type="text" id="rejiFormAd" maxlength="80" placeholder="Özel ad (ör. YouTube Ana Kanal)" autocomplete="off">
+                        <select id="rejiFormTur" style="margin:0;">
+                            <option value="youtube">YouTube</option>
+                            <option value="tiktok">TikTok</option>
+                            <option value="instagram">Instagram</option>
+                            <option value="facebook">Facebook</option>
+                            <option value="kick">Kick</option>
+                            <option value="x">X</option>
+                            <option value="telegram">Telegram</option>
+                            <option value="ozel">Özel</option>
+                        </select>
+                        <input type="url" id="rejiFormUrl" maxlength="500" placeholder="Canlı yayın izleme linki (https://...)" autocomplete="off">
+                        <input type="text" id="rejiFormSohbet" maxlength="120" placeholder="Sohbet kimliği (kanal kullanıcı adı / video ID)" autocomplete="off">
+                        <label style="font-size:12px; color:#e2e8f0; display:flex; align-items:center; gap:6px; margin:0;">
+                            <input type="checkbox" id="rejiFormAktif" checked> Aktif
+                        </label>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button type="button" id="rejiFormKaydet" class="btn btn-yellow btn-sm">Platformu Kaydet</button>
+                            <button type="button" id="rejiFormVazgec" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Vazgeç</button>
+                        </div>
+                    </div>
+                    <div id="rejiPlatformListe" style="display:flex; flex-direction:column; gap:4px;"></div>
+                    <div id="rejiDuvar" style="display:flex; gap:12px; overflow-x:auto; padding-bottom:8px; align-items:flex-start;"></div>
+                </div>
+            </details>
             <div id="canliYayinNot" style="font-size:12px; color:#86efac; min-height:16px;"></div>
         </div>
     </details>
@@ -2111,6 +2145,440 @@
         });
     }
     canliYayinDurumunuAl();
+
+    const REJI_IKON = {
+        youtube: '▶', tiktok: '♪', instagram: '◎', facebook: 'f',
+        kick: 'K', x: '𝕏', telegram: '✈', ozel: '✦'
+    };
+    const REJI_TUR_ETIKET = {
+        youtube: 'YouTube', tiktok: 'TikTok', instagram: 'Instagram', facebook: 'Facebook',
+        kick: 'Kick', x: 'X', telegram: 'Telegram', ozel: 'Özel'
+    };
+    let rejiDuvarSonImza = '';
+
+    function rejiNotu(metin) {
+        const kutu = document.getElementById('rejiPlatformNot');
+        if (kutu) kutu.textContent = metin || '';
+    }
+
+    function rejiPlatformlari() {
+        const ayar = (canliYayinKaydi && canliYayinKaydi.ayarlar) || {};
+        return Array.isArray(ayar.reji_platformlari) ? ayar.reji_platformlari : [];
+    }
+
+    function rejiPlatformBul(id) {
+        const kim = String(id || '');
+        return rejiPlatformlari().filter(function (kayit) { return kayit && kayit.id === kim; })[0] || null;
+    }
+
+    function rejiYapiImza(liste) {
+        return (liste || []).map(function (kayit) {
+            return [kayit.id, kayit.ad, kayit.tur, kayit.yayin_url, kayit.sohbet_id, kayit.aktif ? '1' : '0'].join('\u001f');
+        }).join('\u001e');
+    }
+
+    function rejiImza(satir) {
+        const veri = satir || {};
+        return [veri.zaman || '', veri.kullanici || '', veri.mesaj || '', veri.pey ? '1' : '0', veri.yanit ? '1' : '0'].join('|');
+    }
+
+    function rejiTurCoz(platform) {
+        const ham = String(platform || '').trim().toLowerCase();
+        if (ham === 'twitter') return 'x';
+        if (Object.prototype.hasOwnProperty.call(REJI_TUR_ETIKET, ham)) return ham;
+        const etiketler = Object.keys(REJI_TUR_ETIKET);
+        for (let i = 0; i < etiketler.length; i++) {
+            if (REJI_TUR_ETIKET[etiketler[i]].toLowerCase() === ham) return etiketler[i];
+        }
+        return '';
+    }
+
+    function rejiFormAc(kayit) {
+        const kutu = document.getElementById('rejiDuvarKutu');
+        const form = document.getElementById('rejiPlatformForm');
+        if (kutu) kutu.open = true;
+        if (!form) return;
+        document.getElementById('rejiFormId').value = kayit && kayit.id ? kayit.id : '';
+        document.getElementById('rejiFormAd').value = kayit && kayit.ad ? kayit.ad : '';
+        document.getElementById('rejiFormTur').value = kayit && REJI_TUR_ETIKET[kayit.tur] ? kayit.tur : 'ozel';
+        document.getElementById('rejiFormUrl').value = kayit && kayit.yayin_url ? kayit.yayin_url : '';
+        document.getElementById('rejiFormSohbet').value = kayit && kayit.sohbet_id ? kayit.sohbet_id : '';
+        document.getElementById('rejiFormAktif').checked = !kayit || kayit.aktif !== false;
+        form.style.display = 'grid';
+        const ad = document.getElementById('rejiFormAd');
+        if (ad) ad.focus();
+    }
+
+    function rejiFormKapat() {
+        const form = document.getElementById('rejiPlatformForm');
+        if (form) form.style.display = 'none';
+        const kim = document.getElementById('rejiFormId');
+        if (kim) kim.value = '';
+    }
+
+    function rejiEkranBellek() {
+        const bellek = {};
+        document.querySelectorAll('.reji-telefon').forEach(function (kart) {
+            const id = kart.getAttribute('data-id');
+            const ekran = kart.querySelector('.reji-ekran');
+            if (!id || !ekran) return;
+            const satirlar = [];
+            ekran.querySelectorAll('[data-imza]').forEach(function (satir) {
+                satirlar.push({
+                    zaman: satir.getAttribute('data-zaman') || '',
+                    kullanici: satir.getAttribute('data-kullanici') || '',
+                    mesaj: satir.getAttribute('data-mesaj') || '',
+                    pey: satir.getAttribute('data-pey') === '1',
+                    yanit: satir.getAttribute('data-yanit') === '1'
+                });
+            });
+            bellek[id] = satirlar.slice(-40);
+        });
+        return bellek;
+    }
+
+    function rejiAkilariBirlestir(liste, bellek) {
+        (liste || []).forEach(function (kayit) {
+            const eski = (bellek && bellek[kayit.id]) || [];
+            const birlesik = eski.slice();
+            (kayit.son_akis || []).forEach(function (satir) {
+                const imza = rejiImza(satir);
+                const varMi = birlesik.some(function (oge) { return rejiImza(oge) === imza; });
+                if (!varMi) birlesik.push(satir);
+            });
+            kayit.son_akis = birlesik.slice(-40);
+        });
+        return liste;
+    }
+
+    function rejiPlatformIstegi(govde) {
+        const bellek = rejiEkranBellek();
+        return fetch('/api/canli-yayin/reji-platform', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(govde || {})
+        }).then(function (yanit) {
+            return yanit.json().then(function (veri) { return veri || {}; });
+        }).then(function (veri) {
+            if (veri.success === false) {
+                rejiNotu(veri.mesaj || 'Platform işlemi tamamlanamadı.');
+                return veri;
+            }
+            if (Array.isArray(veri.reji_platformlari)) {
+                if (!canliYayinKaydi) canliYayinKaydi = {};
+                if (!canliYayinKaydi.ayarlar) canliYayinKaydi.ayarlar = {};
+                canliYayinKaydi.ayarlar.reji_platformlari = rejiAkilariBirlestir(veri.reji_platformlari, bellek);
+                rejiDuvarSonImza = '';
+                rejiDuvarCiz();
+            }
+            if (veri.mesaj) rejiNotu(veri.mesaj);
+            return veri;
+        }).catch(function () {
+            rejiNotu('Bağlantı kurulamadı.');
+            return { success: false };
+        });
+    }
+
+    function rejiFormKaydet() {
+        const id = (document.getElementById('rejiFormId').value || '').trim();
+        const govde = {
+            islem: id ? 'platform_duzenle' : 'platform_ekle',
+            id: id,
+            ad: (document.getElementById('rejiFormAd').value || '').trim(),
+            tur: document.getElementById('rejiFormTur').value,
+            yayin_url: (document.getElementById('rejiFormUrl').value || '').trim(),
+            sohbet_id: (document.getElementById('rejiFormSohbet').value || '').trim(),
+            aktif: !!document.getElementById('rejiFormAktif').checked
+        };
+        if (!govde.ad) {
+            rejiNotu('Platform adı gerekli.');
+            return;
+        }
+        rejiPlatformIstegi(govde).then(function (veri) {
+            if (veri && veri.success !== false) rejiFormKapat();
+        });
+    }
+
+    function rejiYayiniGor(url) {
+        const adres = String(url || '').trim();
+        if (!/^https?:\/\//i.test(adres)) {
+            rejiNotu('Bu platformda yayın linki yok.');
+            return;
+        }
+        window.open(adres, 'rejiYayinOnizleme', 'popup=yes,width=390,height=700');
+    }
+
+    function rejiCevapGonder(id) {
+        let girdi = null;
+        document.querySelectorAll('.reji-telefon').forEach(function (kart) {
+            if (kart.getAttribute('data-id') === id) girdi = kart.querySelector('.reji-cevap');
+        });
+        const metin = girdi ? girdi.value.trim() : '';
+        if (!metin) {
+            rejiNotu('Yanıt metni gerekli.');
+            return;
+        }
+        rejiPlatformIstegi({ islem: 'platform_cevap', id: id, mesaj: metin }).then(function (veri) {
+            if (veri && veri.success !== false && girdi) girdi.value = '';
+        });
+    }
+
+    function rejiSatirBuKarta(kart, data) {
+        const id = kart.getAttribute('data-id');
+        const veri = data || {};
+        if (veri.platform_id) return veri.platform_id === id;
+        const idler = Array.isArray(veri.reji_idler) ? veri.reji_idler : [];
+        return idler.indexOf(id) !== -1;
+    }
+
+    function rejiKartaSatir(kart, data) {
+        const ekran = kart.querySelector('.reji-ekran');
+        if (!ekran) return;
+        const veri = data || {};
+        const satir = {
+            zaman: veri.zaman || '',
+            kullanici: veri.kullanici || 'İzleyici',
+            mesaj: veri.mesaj || '',
+            pey: !!veri.pey,
+            yanit: !!veri.yanit
+        };
+        if (!satir.mesaj) return;
+        const imza = rejiImza(satir);
+        let varMi = false;
+        ekran.querySelectorAll('[data-imza]').forEach(function (oge) {
+            if (oge.getAttribute('data-imza') === imza) varMi = true;
+        });
+        if (varMi) return;
+        const kutu = document.createElement('div');
+        kutu.setAttribute('data-imza', imza);
+        kutu.setAttribute('data-zaman', satir.zaman);
+        kutu.setAttribute('data-kullanici', satir.kullanici);
+        kutu.setAttribute('data-mesaj', satir.mesaj);
+        kutu.setAttribute('data-pey', satir.pey ? '1' : '0');
+        kutu.setAttribute('data-yanit', satir.yanit ? '1' : '0');
+        kutu.style.cssText = 'background:#111827; border-radius:8px; padding:6px 8px; font-size:12px;';
+        const ust = document.createElement('div');
+        ust.style.cssText = 'display:flex; justify-content:space-between; gap:6px; color:' + (satir.pey ? '#fde68a' : (satir.yanit ? '#86efac' : '#7dd3fc')) + '; font-weight:bold;';
+        const kim = document.createElement('span');
+        kim.textContent = satir.kullanici;
+        const saat = document.createElement('span');
+        saat.style.cssText = 'color:#94a3b8; font-weight:normal; font-size:10px;';
+        saat.textContent = satir.zaman;
+        ust.appendChild(kim);
+        ust.appendChild(saat);
+        const govde = document.createElement('div');
+        govde.style.cssText = 'color:#f8fafc; word-break:break-word; margin-top:2px;';
+        govde.textContent = satir.mesaj;
+        kutu.appendChild(ust);
+        kutu.appendChild(govde);
+        ekran.appendChild(kutu);
+        ekran.scrollTop = ekran.scrollHeight;
+    }
+
+    function rejiDuvarSatiri(data) {
+        document.querySelectorAll('.reji-telefon').forEach(function (kart) {
+            if (rejiSatirBuKarta(kart, data)) rejiKartaSatir(kart, data);
+        });
+    }
+
+    function rejiMiniButon(etiket, islem, id) {
+        const dugme = document.createElement('button');
+        dugme.type = 'button';
+        dugme.className = 'btn btn-sm';
+        dugme.style.cssText = 'background:#1e293b; color:#e2e8f0; padding:3px 6px; font-size:11px;';
+        dugme.textContent = etiket;
+        dugme.setAttribute('data-reji-islem', islem);
+        dugme.setAttribute('data-reji-id', id || '');
+        return dugme;
+    }
+
+    function rejiYonetimCiz(liste) {
+        const kutu = document.getElementById('rejiPlatformListe');
+        if (!kutu) return;
+        kutu.replaceChildren();
+        (liste || []).forEach(function (kayit) {
+            const satir = document.createElement('div');
+            satir.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:#0f172a; border-radius:8px; padding:6px 8px;';
+            const ad = document.createElement('span');
+            ad.style.cssText = 'font-size:12px; color:#f8fafc; font-weight:bold;';
+            ad.textContent = (REJI_IKON[kayit.tur] || '✦') + ' ' + (kayit.ad || '');
+            const tur = document.createElement('span');
+            tur.style.cssText = 'font-size:11px; color:#94a3b8;';
+            tur.textContent = REJI_TUR_ETIKET[kayit.tur] || 'Özel';
+            const lamba = document.createElement('span');
+            lamba.style.cssText = 'font-size:11px; color:' + (kayit.aktif ? '#86efac' : '#fca5a5') + ';';
+            lamba.textContent = kayit.aktif ? '● açık' : '● pasif';
+            satir.appendChild(ad);
+            satir.appendChild(tur);
+            satir.appendChild(lamba);
+            satir.appendChild(rejiMiniButon('Düzenle', 'duzenle', kayit.id));
+            satir.appendChild(rejiMiniButon(kayit.aktif ? 'Pasif yap' : 'Aç', 'aktif', kayit.id));
+            satir.appendChild(rejiMiniButon('Sil', 'sil', kayit.id));
+            kutu.appendChild(satir);
+        });
+    }
+
+    function rejiTelefonCiz(kayit) {
+        const kart = document.createElement('article');
+        kart.className = 'reji-telefon';
+        kart.setAttribute('data-id', kayit.id);
+        kart.setAttribute('data-tur', kayit.tur || '');
+        kart.setAttribute('data-aktif', '1');
+        kart.style.cssText = 'width:300px; height:580px; flex:0 0 300px; box-sizing:border-box; background:#0f172a; border:1px solid #334155; border-radius:28px; padding:12px; display:flex; flex-direction:column; gap:8px;';
+        const ust = document.createElement('div');
+        ust.style.cssText = 'display:flex; flex-direction:column; gap:6px;';
+        const baslik = document.createElement('div');
+        baslik.style.cssText = 'display:flex; align-items:center; gap:6px; min-width:0;';
+        const ikon = document.createElement('span');
+        ikon.textContent = REJI_IKON[kayit.tur] || '✦';
+        ikon.style.color = '#fde68a';
+        const ad = document.createElement('strong');
+        ad.style.cssText = 'flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#f8fafc; font-size:13px;';
+        ad.textContent = kayit.ad || '';
+        const lamba = document.createElement('span');
+        lamba.title = 'Canlı';
+        lamba.style.cssText = 'width:10px; height:10px; border-radius:50%; background:#22c55e; box-shadow:0 0 8px #22c55e; flex:0 0 auto;';
+        baslik.appendChild(ikon);
+        baslik.appendChild(ad);
+        baslik.appendChild(lamba);
+        const dugmeler = document.createElement('div');
+        dugmeler.style.cssText = 'display:flex; flex-wrap:wrap; gap:4px;';
+        dugmeler.appendChild(rejiMiniButon('Düzenle', 'duzenle', kayit.id));
+        dugmeler.appendChild(rejiMiniButon('Pasif yap', 'pasif', kayit.id));
+        const gor = rejiMiniButon('👁️ Yayını Gör', 'gor', kayit.id);
+        gor.setAttribute('data-reji-url', kayit.yayin_url || '');
+        dugmeler.appendChild(gor);
+        ust.appendChild(baslik);
+        if (kayit.sohbet_id) {
+            const sohbet = document.createElement('div');
+            sohbet.style.cssText = 'font-size:10px; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+            sohbet.textContent = kayit.sohbet_id;
+            ust.appendChild(sohbet);
+        }
+        ust.appendChild(dugmeler);
+        const ekran = document.createElement('div');
+        ekran.className = 'reji-ekran';
+        ekran.style.cssText = 'flex:1; min-height:0; overflow:auto; background:#020617; border-radius:16px; padding:8px; display:flex; flex-direction:column; gap:6px;';
+        const cubuk = document.createElement('div');
+        cubuk.style.cssText = 'display:flex; gap:6px; align-items:center;';
+        const girdi = document.createElement('input');
+        girdi.type = 'text';
+        girdi.className = 'reji-cevap';
+        girdi.maxLength = 500;
+        girdi.placeholder = 'Cevap / Müdahale Yaz...';
+        girdi.setAttribute('autocomplete', 'off');
+        girdi.setAttribute('data-lpignore', 'true');
+        girdi.style.cssText = 'flex:1; margin:0; min-width:0;';
+        const gonder = document.createElement('button');
+        gonder.type = 'button';
+        gonder.className = 'btn btn-yellow btn-sm';
+        gonder.textContent = 'Gönder';
+        gonder.setAttribute('data-reji-islem', 'cevap');
+        gonder.setAttribute('data-reji-id', kayit.id);
+        cubuk.appendChild(girdi);
+        cubuk.appendChild(gonder);
+        kart.appendChild(ust);
+        kart.appendChild(ekran);
+        kart.appendChild(cubuk);
+        (kayit.son_akis || []).forEach(function (satir) {
+            rejiKartaSatir(kart, satir);
+        });
+        return kart;
+    }
+
+    function rejiDuvarCiz() {
+        const liste = rejiPlatformlari();
+        const imza = rejiYapiImza(liste);
+        if (imza === rejiDuvarSonImza && document.getElementById('rejiDuvar')) return;
+        rejiDuvarSonImza = imza;
+        rejiYonetimCiz(liste);
+        const duvar = document.getElementById('rejiDuvar');
+        if (!duvar) return;
+        duvar.replaceChildren();
+        const aktifler = liste.filter(function (kayit) { return kayit && kayit.aktif; });
+        if (!aktifler.length) {
+            const bos = document.createElement('div');
+            bos.style.cssText = 'font-size:12px; color:#94a3b8;';
+            bos.textContent = 'Aktif platform yok. Yeni platform ekleyin veya pasif kaydı açın.';
+            duvar.appendChild(bos);
+            return;
+        }
+        aktifler.forEach(function (kayit) { duvar.appendChild(rejiTelefonCiz(kayit)); });
+    }
+
+    function rejiTikla(olay) {
+        const hedef = olay.target.closest('[data-reji-islem]');
+        const kutu = document.getElementById('rejiDuvarKutu');
+        if (!hedef || !kutu || !kutu.contains(hedef)) return;
+        const islem = hedef.getAttribute('data-reji-islem');
+        const id = hedef.getAttribute('data-reji-id') || '';
+        const kayit = rejiPlatformBul(id);
+        if (islem === 'duzenle' && kayit) {
+            rejiFormAc(kayit);
+            return;
+        }
+        if (islem === 'gor') {
+            rejiYayiniGor(hedef.getAttribute('data-reji-url') || (kayit && kayit.yayin_url));
+            return;
+        }
+        if (islem === 'pasif' && id) {
+            rejiPlatformIstegi({ islem: 'platform_aktif', id: id, aktif: false });
+            return;
+        }
+        if (islem === 'aktif' && kayit) {
+            rejiPlatformIstegi({ islem: 'platform_aktif', id: id, aktif: !kayit.aktif });
+            return;
+        }
+        if (islem === 'sil' && id) {
+            if (!window.confirm('Bu platform kaydı silinsin mi?')) return;
+            rejiPlatformIstegi({ islem: 'platform_sil', id: id });
+            return;
+        }
+        if (islem === 'cevap' && id) rejiCevapGonder(id);
+    }
+
+    const rejiDuvarKutu = document.getElementById('rejiDuvarKutu');
+    if (rejiDuvarKutu) {
+        rejiDuvarKutu.addEventListener('click', rejiTikla);
+        rejiDuvarKutu.addEventListener('keydown', function (olay) {
+            if (olay.key !== 'Enter' || !olay.target.classList.contains('reji-cevap')) return;
+            olay.preventDefault();
+            const kart = olay.target.closest('.reji-telefon');
+            if (kart) rejiCevapGonder(kart.getAttribute('data-id'));
+        });
+    }
+    const rejiPlatformEkleAc = document.getElementById('rejiPlatformEkleAc');
+    if (rejiPlatformEkleAc) rejiPlatformEkleAc.addEventListener('click', function () { rejiFormAc(null); });
+    const rejiFormKaydetDugme = document.getElementById('rejiFormKaydet');
+    if (rejiFormKaydetDugme) rejiFormKaydetDugme.addEventListener('click', rejiFormKaydet);
+    const rejiFormVazgec = document.getElementById('rejiFormVazgec');
+    if (rejiFormVazgec) rejiFormVazgec.addEventListener('click', rejiFormKapat);
+    const _rejiDuvarEskiCiz = canliYayinPaneliCiz;
+    canliYayinPaneliCiz = function () {
+        _rejiDuvarEskiCiz();
+        try { rejiDuvarCiz(); } catch (hata) { console.error(hata); }
+    };
+    socket.on('reji_duvar_satiri', function (data) {
+        rejiDuvarSatiri(data || {});
+    });
+    socket.on('pey_guncellendi', function (data) {
+        if (!data || !adminOlayBirKez('reji_pey_duvar', data)) return;
+        const tur = rejiTurCoz(data.platform || '');
+        if (!tur) return;
+        const idler = rejiPlatformlari().filter(function (kayit) {
+            return kayit && kayit.aktif && kayit.tur === tur;
+        }).map(function (kayit) { return kayit.id; });
+        rejiDuvarSatiri({
+            tur: tur,
+            reji_idler: idler,
+            kullanici: data.ad || data.kazanan || 'Pey',
+            mesaj: 'PEY ' + (data.pey != null ? data.pey : '') + ' TL',
+            pey: true,
+            zaman: ''
+        });
+    });
+
     restreamCihazlariYukle();
 
     let restreamAkis = null;

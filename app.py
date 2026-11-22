@@ -12022,6 +12022,11 @@ try:
     def api_canli_yayin_push_abone():
         return _canli_yayin_havuzu.push_abone_yaniti()
 
+    @app.route("/api/canli-yayin/reji-platform", methods=["POST"])
+    @admin_required
+    def api_canli_yayin_reji_platform():
+        return _canli_yayin_havuzu.reji_platform_yaniti()
+
     print("[BOOT] canli yayin havuzu hazir", flush=True)
 except Exception as hata:
     print(f"[BOOT] canli yayin havuzu atlandi: {hata}", flush=True)
