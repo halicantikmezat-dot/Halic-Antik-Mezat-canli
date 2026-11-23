@@ -288,3 +288,45 @@ def urunu_analiz_et(ham_kare):
     ai = bool(secere)
     taramayi_yaz(ad, secere, ai)
     return {"urun_adi": ad, "secere": secere, "ai": ai}
+
+
+_ODUNC = {}
+
+
+def _odunc_anahtar(urun_id):
+    try:
+        return int(urun_id)
+    except (TypeError, ValueError):
+        return 0
+
+
+def odunc_yaz(kaynak_id, sahne_id):
+    """Kaynak katalog kaydı sahnedeyken otonomun aynı ürünü seçmemesi için."""
+    kaynak = _odunc_anahtar(kaynak_id)
+    sahne = _odunc_anahtar(sahne_id)
+    if not kaynak or not sahne:
+        return
+    _ODUNC.clear()
+    _ODUNC[kaynak] = sahne
+
+
+def odunc_mu(urun_id):
+    return _odunc_anahtar(urun_id) in _ODUNC
+
+
+def odunc_idleri():
+    return list(_ODUNC.keys())
+
+
+def odunc_sahne_mi(urun_id):
+    sahne = _odunc_anahtar(urun_id)
+    return bool(sahne) and sahne in _ODUNC.values()
+
+
+def odunc_birak():
+    """Satışta veya pas geçişte bağı koparır. Kaynak satırı buradan değiştirilmez."""
+    if not _ODUNC:
+        return 0
+    kaynak = next(iter(_ODUNC))
+    _ODUNC.pop(kaynak, None)
+    return kaynak

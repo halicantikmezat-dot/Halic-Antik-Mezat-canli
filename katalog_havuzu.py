@@ -515,6 +515,48 @@ def _kendi_xml():
     return app_yaniti(govde)
 
 
+def _havuz_satiri(dukkan_adlari, satir):
+    kod = str((satir or {}).get("dukkan") or "")
+    ad = ""
+    bilgi = (dukkan_adlari or {}).get(kod)
+    if isinstance(bilgi, dict):
+        ad = str(bilgi.get("ad") or "")
+    teklif_id = int((satir or {}).get("teklif_id") or 0)
+    on_teklif = _sayi((satir or {}).get("on_teklif")) if teklif_id else 0.0
+    acilis = _sayi((satir or {}).get("acilis_fiyat"))
+    return {
+        "urun_id": (satir or {}).get("urun_id"),
+        "lot": (satir or {}).get("lot"),
+        "dukkan": kod,
+        "dukkan_adi": ad or kod,
+        "baslik": str((satir or {}).get("baslik") or ""),
+        "aciklama": str((satir or {}).get("aciklama") or ""),
+        "gorsel": str((satir or {}).get("gorsel") or ""),
+        "acilis_fiyat": acilis,
+        "hemen_al_fiyat": _sayi((satir or {}).get("hemen_al_fiyat")),
+        "on_teklif": on_teklif,
+        "teklif_veren": str((satir or {}).get("teklif_veren") or ""),
+        "teklif_id": teklif_id,
+        "tutar": on_teklif if teklif_id else acilis,
+    }
+
+
+def capraz_havuz_cevap(dukkan_adlari, on_teklif_satirlari, katalog_satirlari):
+    """Tüm dükkanların katalog ve ön teklif özeti. XML dosyasına ve kurallarına yazmaz."""
+    on_teklifliler = [
+        _havuz_satiri(dukkan_adlari, satir)
+        for satir in (on_teklif_satirlari or [])
+        if isinstance(satir, dict)
+    ]
+    on_teklifliler.sort(key=lambda satir: satir.get("teklif_id") or 0, reverse=True)
+    tum_urunler = [
+        _havuz_satiri(dukkan_adlari, satir)
+        for satir in (katalog_satirlari or [])
+        if isinstance(satir, dict)
+    ]
+    return {"on_teklifliler": on_teklifliler, "tum_urunler": tum_urunler}
+
+
 def app_yaniti(govde):
     from flask import Response
     return Response(govde, mimetype="application/xml; charset=utf-8")

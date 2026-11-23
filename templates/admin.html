@@ -142,6 +142,13 @@
             padding: 15px;
         }
         .card-title { font-size: 15px; font-weight: bold; color: var(--accent-gold); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        #digerHavuzPanel[hidden] { display: none !important; }
+        .havuz-sekme { background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+        .havuz-sekme.secili { background:#14532d; color:#fff; border-color:#22c55e; }
+        .havuz-rozet { background:#b45309; color:#fff; border-radius:10px; padding:1px 6px; margin-left:4px; font-size:11px; }
+        .havuz-satir { display:flex; gap:8px; align-items:center; background:#0d121a; border:1px solid #233044; border-radius:6px; padding:6px; }
+        .havuz-satir img { width:42px; height:42px; object-fit:cover; border-radius:4px; background:#111; flex:none; }
+        .havuz-etiket { font-size:10px; font-weight:800; color:#fde68a; letter-spacing:.02em; }
 
         input, select, textarea {
             width: 100%;
@@ -847,6 +854,24 @@
                 <button onclick="tiktokDurdur()" class="btn btn-red" style="padding:9px 15px;">Durdur</button>
             </div>
             <div id="tiktokDurum" style="font-size:12px; margin-top:8px; color:#aaa;">Durum: Bağlantı Yok</div>
+        </div>
+    </div>
+
+    <div class="card" id="digerHavuzPanel" hidden style="margin-top:15px;">
+        <div class="card-title">
+            <span>Gelen Ön Teklifler &amp; Tüm Dükkanlar Havuzu</span>
+            <span id="digerHavuzDurum" style="font-size:11px; color:#94a3b8; font-weight:600;"></span>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+            <button type="button" id="digerHavuzSekmeTeklif" class="havuz-sekme secili" onclick="digerHavuzSekmesi('teklif')">Gelen Ön Teklifler (Canlı) <span id="digerHavuzRozet" class="havuz-rozet">0</span></button>
+            <button type="button" id="digerHavuzSekmeTum" class="havuz-sekme" onclick="digerHavuzSekmesi('tum')">Tüm Dükkanların Ürünleri</button>
+        </div>
+        <div id="digerHavuzFiltre" hidden style="display:none; gap:6px; margin-bottom:8px;">
+            <select id="digerHavuzDukkan" style="margin:0; width:42%;" onchange="digerHavuzYukle()"></select>
+            <input type="text" id="digerHavuzArama" placeholder="Ürün adı ara" style="margin:0; width:58%;" oninput="digerHavuzAramaYazildi()">
+        </div>
+        <div class="item-list" id="digerHavuzListe" style="max-height:320px;">
+            <div style="color:#94a3b8; font-size:12px;">Havuz yükleniyor...</div>
         </div>
     </div>
 
@@ -1769,6 +1794,7 @@
         if (cyFiyatSatiri) cyFiyatSatiri.style.display = kod === 'diger' ? 'grid' : 'none';
         const cyTaraSatiri = document.getElementById('cyTaraSatiri');
         if (cyTaraSatiri) cyTaraSatiri.style.display = kod === 'diger' ? 'flex' : 'none';
+        if (typeof digerHavuzPaneliniGuncelle === "function") digerHavuzPaneliniGuncelle();
 
         if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
             otonomButonlariniCiz(!!otonomDurumlari[kod]);
@@ -4359,6 +4385,7 @@
     socket.on('admin_satis_guncelle', function () {
         veriCekAdmin();
         if (typeof adminUrunAra === "function") adminUrunAra();
+        if (seciliDukkan === "diger" && typeof digerHavuzYukle === "function") digerHavuzYukle();
     });
 
     socket.on('sayac_bitti', function(data) {
@@ -4368,6 +4395,7 @@
             setTimeout(() => {
                 veriCekAdmin();
                 adminUrunAra();
+                if (seciliDukkan === "diger" && typeof digerHavuzYukle === "function") digerHavuzYukle();
             }, 1000);
         }
     });
@@ -5481,6 +5509,148 @@
 
     let digerUrunTarandi = false;
     let digerSecereMetni = '';
+
+    let digerHavuzSekme = "teklif";
+    let digerHavuzZamanlayici = null;
+    let digerHavuzAramaZaman = null;
+
+    function digerHavuzKacis(deger) {
+        return String(deger == null ? "" : deger)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function digerHavuzTl(sayi) {
+        return Math.round(Number(sayi) || 0).toLocaleString("tr-TR") + " TL";
+    }
+
+    function digerHavuzPaneliniGuncelle() {
+        const panel = document.getElementById("digerHavuzPanel");
+        if (!panel) return;
+        const acik = seciliDukkan === "diger";
+        panel.hidden = !acik;
+        if (!acik) {
+            if (digerHavuzZamanlayici) {
+                clearInterval(digerHavuzZamanlayici);
+                digerHavuzZamanlayici = null;
+            }
+            return;
+        }
+        digerHavuzYukle();
+        if (!digerHavuzZamanlayici) digerHavuzZamanlayici = setInterval(digerHavuzYukle, 8000);
+    }
+
+    function digerHavuzSekmesi(sekme) {
+        digerHavuzSekme = sekme === "tum" ? "tum" : "teklif";
+        const teklifBtn = document.getElementById("digerHavuzSekmeTeklif");
+        const tumBtn = document.getElementById("digerHavuzSekmeTum");
+        const filtre = document.getElementById("digerHavuzFiltre");
+        if (teklifBtn) teklifBtn.classList.toggle("secili", digerHavuzSekme === "teklif");
+        if (tumBtn) tumBtn.classList.toggle("secili", digerHavuzSekme === "tum");
+        if (filtre) {
+            filtre.hidden = digerHavuzSekme !== "tum";
+            filtre.style.display = digerHavuzSekme === "tum" ? "flex" : "none";
+        }
+        digerHavuzYukle();
+    }
+
+    function digerHavuzAramaYazildi() {
+        clearTimeout(digerHavuzAramaZaman);
+        digerHavuzAramaZaman = setTimeout(digerHavuzYukle, 300);
+    }
+
+    function digerHavuzSatirHtml(satir) {
+        const tutar = satir.teklif_id ? satir.on_teklif : satir.acilis_fiyat;
+        const etiket = satir.teklif_id
+            ? ("Ön teklif " + digerHavuzTl(tutar) + (satir.teklif_veren ? " — " + satir.teklif_veren : ""))
+            : ("Açılış " + digerHavuzTl(satir.acilis_fiyat));
+        const gorsel = '<img src="' + digerHavuzKacis(satir.gorsel || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7") + '" alt="">';
+        return '<div class="havuz-satir">'
+            + gorsel
+            + '<div style="flex:1; min-width:0;">'
+            + '<div class="havuz-etiket">' + digerHavuzKacis(satir.dukkan_adi || satir.dukkan) + '</div>'
+            + '<div style="font-size:12px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">'
+            + digerHavuzKacis(satir.baslik || "Ürün") + '</div>'
+            + '<div style="font-size:11px; color:#86efac;">' + digerHavuzKacis(etiket) + '</div>'
+            + '</div>'
+            + '<button type="button" class="btn btn-green btn-sm" data-havuz-sahne="1" data-urun="'
+            + digerHavuzKacis(satir.urun_id) + '" data-dukkan="' + digerHavuzKacis(satir.dukkan)
+            + '">Sahneye Al</button></div>';
+    }
+
+    function digerHavuzYukle() {
+        if (seciliDukkan !== "diger") return;
+        const dukkanAlan = document.getElementById("digerHavuzDukkan");
+        const aramaAlan = document.getElementById("digerHavuzArama");
+        const dukkan = dukkanAlan ? dukkanAlan.value : "";
+        const arama = aramaAlan ? aramaAlan.value.trim() : "";
+        const adres = "/api/diger/havuz-urunler?dukkan=" + encodeURIComponent(dukkan)
+            + "&arama=" + encodeURIComponent(arama);
+        fetch(adres).then(function (r) { return r.json(); }).then(function (data) {
+            if (seciliDukkan !== "diger") return;
+            const gelen = data || {};
+            const rozet = document.getElementById("digerHavuzRozet");
+            const teklifler = gelen.on_teklifliler || [];
+            if (rozet) rozet.textContent = String(teklifler.length);
+            if (dukkanAlan && dukkanAlan.options.length === 0) {
+                dukkanAlan.innerHTML = '<option value="">Tüm Dükkanlar</option>';
+                (gelen.dukkanlar || []).forEach(function (d) {
+                    const opt = document.createElement("option");
+                    opt.value = d.kod;
+                    opt.textContent = d.ad || d.kod;
+                    dukkanAlan.appendChild(opt);
+                });
+            }
+            const liste = document.getElementById("digerHavuzListe");
+            if (!liste) return;
+            const satirlar = digerHavuzSekme === "tum" ? (gelen.tum_urunler || []) : teklifler;
+            if (!satirlar.length) {
+                liste.innerHTML = '<div style="color:#94a3b8; font-size:12px;">'
+                    + (digerHavuzSekme === "tum" ? "Bu filtrede ürün yok." : "Gelen ön teklif yok.")
+                    + '</div>';
+                return;
+            }
+            liste.innerHTML = satirlar.map(digerHavuzSatirHtml).join("");
+        }).catch(function () {
+            const durum = document.getElementById("digerHavuzDurum");
+            if (durum) durum.textContent = "Liste yenilenemedi";
+        });
+    }
+
+    function havuzdanSahneyeAl(urunId, dukkan) {
+        playClickSound();
+        const durum = document.getElementById("digerHavuzDurum");
+        if (durum) durum.textContent = "Sahneye alınıyor...";
+        fetch("/api/diger/havuzdan-sahneye-al", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urun_id: Number(urunId), kaynak_dukkan: dukkan })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || !data.success) {
+                if (durum) durum.textContent = "";
+                alert((data && data.mesaj) || "Sahneye alınamadı.");
+                return;
+            }
+            if (durum) durum.textContent = "Yayın başladı";
+            if (typeof veriCekAdmin === "function") veriCekAdmin();
+            digerHavuzYukle();
+        }).catch(function () {
+            if (durum) durum.textContent = "";
+            alert("Sahneye alınamadı.");
+        });
+    }
+
+    const digerHavuzListe = document.getElementById("digerHavuzListe");
+    if (digerHavuzListe && !digerHavuzListe.dataset.baglandi) {
+        digerHavuzListe.dataset.baglandi = "1";
+        digerHavuzListe.addEventListener("click", function (olay) {
+            const btn = olay.target.closest("[data-havuz-sahne]");
+            if (!btn) return;
+            havuzdanSahneyeAl(btn.getAttribute("data-urun"), btn.getAttribute("data-dukkan"));
+        });
+    }
 
     function digerCanliDurumunuUygula(data) {
         data = data || {};

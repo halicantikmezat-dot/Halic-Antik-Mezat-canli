@@ -2570,6 +2570,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         db.session.add(urun)
         OnTeklif.query.filter_by(urun_id=urun.id).delete()
         db.session.commit()
+        _havuz_kaynagini_dusur(urun)
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
 
     _pey_duyur(
@@ -2823,6 +2824,7 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                     db.session.add(urun)
                     OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                     db.session.commit()
+                    _havuz_kaynagini_dusur(urun)
                     urunu_kazanana_sepete_ekle(
                         biten_urun_id,
                         kapanis["kazanan"],
@@ -2842,6 +2844,8 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                     db.session.add(urun)
                     db.session.commit()
                     oda["durum"]["durum"] = "Pas"
+                    if dukkan == "diger":
+                        _havuz_odunc_pas(biten_urun_id)
 
     _iki_odayi(
         "sayac_bitti",
@@ -3025,11 +3029,16 @@ def _otonom_satilmamis_lotlar(dukkan):
         .order_by(Urun.lot_no.asc(), Urun.id.asc())
         .all()
     )
+    try:
+        from diger_canli_sahne import odunc_mu as _odunc_mu
+    except Exception:
+        _odunc_mu = None
     return [
         urun
         for urun in adaylar
         if not _otonom_urun_satildi(urun)
         and str(getattr(urun, "kaynak_tipi", "") or "") != "canli_yayin"
+        and not (_odunc_mu(urun.id) if _odunc_mu else False)
     ]
 
 
@@ -3266,6 +3275,29 @@ def dukkan_otonom_dongusu(dukkan):
                                 .order_by(OnTeklif.id.asc())
                                 .first()
                             )
+                            try:
+                                from diger_canli_sahne import odunc_idleri as _odunc_idleri
+                                from diger_canli_sahne import odunc_mu as _odunc_mu
+                            except Exception:
+                                _odunc_mu = None
+                                _odunc_idleri = None
+                            if (
+                                en_iyi_ot
+                                and _odunc_mu
+                                and _odunc_idleri
+                                and _odunc_mu(en_iyi_ot.urun_id)
+                            ):
+                                haric = _odunc_idleri()
+                                en_iyi_ot = (
+                                    OnTeklif.query.filter(
+                                        OnTeklif.dukkan_kodu == dukkan,
+                                        ~OnTeklif.urun_id.in_(haric),
+                                    )
+                                    .order_by(OnTeklif.id.asc())
+                                    .first()
+                                    if haric
+                                    else None
+                                )
                             if en_iyi_ot:
                                 on_urun = db.session.get(Urun, en_iyi_ot.urun_id)
                                 if (
@@ -5934,6 +5966,7 @@ def pey_ver():
                 OnTeklif.query.filter_by(urun_id=urun.id).delete()
                 _satisi_kesinlestir(urun, etiket_ad, kullanici.id, hemen_al_fiyat)
                 db.session.commit()
+                _havuz_kaynagini_dusur(urun)
 
                 urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
 
@@ -7061,6 +7094,15 @@ def sahneye_al():
         return jsonify({"success": False, "mesaj": "Ürün bulunamadı!"})
 
     dukkan = urun.dukkan_kodu or "gumus"
+    try:
+        from diger_canli_sahne import odunc_mu as _odunc_mu
+    except Exception:
+        _odunc_mu = None
+    if _odunc_mu and _odunc_mu(urun.id) and dukkan != "diger":
+        return jsonify({
+            "success": False,
+            "mesaj": "Bu ürün şu an Diğer canlı sahnesinde.",
+        })
     oda = odalar[dukkan]
 
     with oda_kilitleri[dukkan]:
@@ -7195,6 +7237,12 @@ def mezat_baslat():
                 veri.get("hemen_al_fiyat"),
             )
             yer = _diger_canli_hazirla(db, Urun, acilis_fiyat, hemen_al_fiyat)
+            if yer is not None:
+                from diger_canli_sahne import odunc_birak as _odunc_birak
+                from diger_canli_sahne import odunc_sahne_mi as _odunc_sahne_mi
+
+                if _odunc_sahne_mi(yer.id):
+                    _odunc_birak()
         except Exception as hata:
             db.session.rollback()
             print(f"[CANLI SAHNE] urun acilamadi: {hata}", flush=True)
@@ -7411,6 +7459,293 @@ def diger_urun_tanit():
     return jsonify({"success": True})
 
 
+def _havuz_gorsel(urun):
+    for foto in list(getattr(urun, "fotograflar", None) or []):
+        adres = str(foto or "").strip()
+        if adres:
+            return adres
+    return str(getattr(urun, "video", None) or "").strip()
+
+
+def _havuz_ham_satir(urun, teklif=None, sira_id=0):
+    return {
+        "urun_id": urun.id,
+        "lot": urun.lot_no,
+        "dukkan": urun.dukkan_kodu or "gumus",
+        "baslik": urun.urun_adi or "",
+        "aciklama": urun.tanitim_yazisi or "",
+        "gorsel": _havuz_gorsel(urun),
+        "acilis_fiyat": float(urun.acilis_fiyati or 0),
+        "hemen_al_fiyat": float(urun.hemen_al_fiyati or 0),
+        "on_teklif": float(teklif.teklif) if teklif is not None else 0,
+        "teklif_veren": (teklif.musteri_adi if teklif is not None else "") or "",
+        "teklif_id": int(sira_id or (teklif.id if teklif is not None else 0) or 0),
+    }
+
+
+def _aktif_on_teklif_haritasi():
+    """Ürün başına en yüksek ön teklif. Sıra, en yeni teklifin kimliğidir."""
+    ham = OnTeklif.query.order_by(OnTeklif.id.desc()).all()
+    if not ham:
+        return {}
+    urunler = {
+        kayit.id: kayit
+        for kayit in Urun.query.filter(Urun.id.in_({satir.urun_id for satir in ham})).all()
+    }
+    harita = {}
+    for teklif in ham:
+        urun = urunler.get(teklif.urun_id)
+        if (
+            urun is None
+            or urun.silindi_mi
+            or _otonom_urun_satildi(urun)
+            or (urun.dukkan_kodu or "") not in DUKKANLAR
+            or str(getattr(urun, "kaynak_tipi", "") or "") == "canli_yayin"
+        ):
+            continue
+        kutu = harita.get(urun.id)
+        if kutu is None:
+            harita[urun.id] = {"urun": urun, "teklif": teklif, "yeni_id": teklif.id}
+            continue
+        kutu["yeni_id"] = max(int(kutu["yeni_id"]), int(teklif.id))
+        onceki = kutu["teklif"]
+        if float(teklif.teklif or 0) > float(onceki.teklif or 0) or (
+            float(teklif.teklif or 0) == float(onceki.teklif or 0) and teklif.id > onceki.id
+        ):
+            kutu["teklif"] = teklif
+    return harita
+
+
+def _havuz_kaynagini_dusur(sahne_urun):
+    """Sahne satılınca kaynak katalog kaydı ve ön teklifleri düşer. Ciroya ikinci satır yazılmaz."""
+    try:
+        from diger_canli_sahne import odunc_birak, odunc_sahne_mi
+    except Exception:
+        return
+    if sahne_urun is None or not odunc_sahne_mi(getattr(sahne_urun, "id", None)):
+        return
+    kaynak_id = odunc_birak()
+    if not kaynak_id:
+        return
+    try:
+        kaynak = db.session.get(Urun, int(kaynak_id))
+        if kaynak is None or kaynak.silindi_mi or _otonom_urun_satildi(kaynak):
+            return
+        kaynak.durum = "Satıldı"
+        kaynak.kazanan_adi = "Yok"
+        kaynak.kazanan_id = None
+        stok_satis_sonrasi_dus(kaynak)
+        OnTeklif.query.filter_by(urun_id=kaynak.id).delete(synchronize_session=False)
+        db.session.add(kaynak)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _havuz_odunc_pas(urun_id):
+    """Pas geçilirse kaynak kayda dokunulmaz, yalnız sahne bağı kalkar."""
+    try:
+        from diger_canli_sahne import odunc_birak, odunc_sahne_mi
+    except Exception:
+        return
+    if odunc_sahne_mi(urun_id):
+        odunc_birak()
+
+
+@app.route("/api/diger/havuz-urunler", methods=["GET"])
+@admin_required
+def diger_havuz_urunler():
+    try:
+        from katalog_havuzu import capraz_havuz_cevap
+
+        harita = _aktif_on_teklif_haritasi()
+        on_satirlar = [
+            _havuz_ham_satir(kutu["urun"], kutu["teklif"], kutu["yeni_id"])
+            for kutu in harita.values()
+        ]
+        dukkan = str(request.args.get("dukkan") or "").strip().lower()
+        arama = str(request.args.get("arama") or "").strip()
+        sorgu = Urun.query.filter(
+            Urun.silindi_mi.is_(False),
+            Urun.durum != "Satıldı",
+            Urun.dukkan_kodu.in_(list(DUKKANLAR.keys())),
+            or_(Urun.kaynak_tipi.is_(None), Urun.kaynak_tipi != "canli_yayin"),
+        )
+        if dukkan in DUKKANLAR:
+            sorgu = sorgu.filter(Urun.dukkan_kodu == dukkan)
+        if arama:
+            if arama.isdigit():
+                sorgu = sorgu.filter(
+                    or_(Urun.lot_no == int(arama), Urun.urun_adi.ilike("%" + arama + "%"))
+                )
+            else:
+                sorgu = sorgu.filter(Urun.urun_adi.ilike("%" + arama + "%"))
+        katalog = []
+        for urun in sorgu.order_by(Urun.id.desc()).limit(120).all():
+            if _otonom_urun_satildi(urun):
+                continue
+            kutu = harita.get(urun.id)
+            katalog.append(
+                _havuz_ham_satir(
+                    urun,
+                    kutu["teklif"] if kutu else None,
+                    kutu["yeni_id"] if kutu else 0,
+                )
+            )
+        paket = capraz_havuz_cevap(DUKKANLAR, on_satirlar, katalog)
+        paket["success"] = True
+        paket["dukkanlar"] = [
+            {"kod": kod, "ad": (bilgi or {}).get("ad") or kod}
+            for kod, bilgi in DUKKANLAR.items()
+        ]
+        return jsonify(paket)
+    except Exception as hata:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "mesaj": "Havuz listesi alınamadı.",
+            "on_teklifliler": [],
+            "tum_urunler": [],
+            "hata": str(hata),
+        }), 200
+    finally:
+        db.session.remove()
+
+
+@app.route("/api/diger/havuzdan-sahneye-al", methods=["POST"])
+@admin_required
+def diger_havuzdan_sahneye_al():
+    from diger_canli_sahne import hazirla as _diger_canli_hazirla
+    from diger_canli_sahne import odunc_birak, odunc_yaz
+
+    veri = request.json or {}
+    try:
+        urun_id = int(veri.get("urun_id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "mesaj": "Geçersiz ürün."}), 400
+    urun = db.session.get(Urun, urun_id)
+    if (
+        urun is None
+        or urun.silindi_mi
+        or _otonom_urun_satildi(urun)
+        or str(getattr(urun, "kaynak_tipi", "") or "") == "canli_yayin"
+    ):
+        return jsonify({"success": False, "mesaj": "Ürün katalogda yok."}), 404
+    kaynak = urun.dukkan_kodu or "gumus"
+    if kaynak not in DUKKANLAR:
+        return jsonify({"success": False, "mesaj": "Kaynak dükkan bulunamadı."}), 400
+    istenen = str(veri.get("kaynak_dukkan") or kaynak).strip().lower()
+    if istenen and istenen != kaynak:
+        return jsonify({"success": False, "mesaj": "Kaynak dükkan ürünle eşleşmiyor."}), 400
+    for kod, kaynak_oda in odalar.items():
+        if kod != "diger" and kaynak_oda.get("aktif_urun_id") == urun.id:
+            return jsonify({
+                "success": False,
+                "mesaj": "Bu ürün kendi dükkanının canlı sahnesinde.",
+            }), 409
+    en_yuksek = (
+        OnTeklif.query.filter_by(urun_id=urun.id)
+        .order_by(OnTeklif.teklif.desc(), OnTeklif.id.desc())
+        .first()
+    )
+    if en_yuksek is not None:
+        baslangic = float(en_yuksek.teklif or 0)
+        kazanan = en_yuksek.musteri_adi or "Yok"
+        kazanan_id = en_yuksek.musteri_id
+    else:
+        baslangic = float(urun.acilis_fiyati or 0)
+        kazanan = "Yok"
+        kazanan_id = None
+    try:
+        odunc_birak()
+        yer = _diger_canli_hazirla(db, Urun, baslangic, urun.hemen_al_fiyati)
+        if yer is None:
+            return jsonify({"success": False, "mesaj": "Canlı sahne açılamadı."}), 500
+        yer.urun_adi = (urun.urun_adi or "Ürün")[:200]
+        yer.tanitim_yazisi = (urun.tanitim_yazisi or "")[:1500]
+        yer.fotograflar = list(urun.fotograflar or [])
+        yer.video = urun.video or ""
+        yer.kategori = urun.kategori or "Genel"
+        yer.hemen_al_fiyati = float(urun.hemen_al_fiyati or 0)
+        yer.acilis_fiyati = baslangic
+        yer.guncel_fiyat = baslangic
+        yer.kazanan_adi = kazanan
+        yer.kazanan_id = kazanan_id
+        yer.durum = "Aktif"
+        yer.stok_adedi = 1
+        yer.silindi_mi = False
+        yer.lot_no = int(urun.lot_no or 1)
+        yer.kaynak_tipi = "canli_yayin"
+        db.session.add(yer)
+        db.session.commit()
+        odunc_yaz(urun.id, yer.id)
+        oda = odalar["diger"]
+        with oda_kilitleri["diger"]:
+            oda["sayac_aktif"] = False
+            oda["sayac_gorev_id"] += 1
+            oda["sayac_kalan"] = 0
+            _gizli_pazarligi_kapat(oda)
+            oda["aktif_urun_id"] = yer.id
+            oda["canli_secere"] = (yer.tanitim_yazisi or "")[:1500]
+            gorev = _pazarligi_hazirla(oda, yer)
+            oda["durum"]["pey"] = baslangic
+            oda["durum"]["kazanan"] = kazanan
+            oda["durum"]["kazanan_id"] = kazanan_id
+            oda["son_teklif_veren_id"] = kazanan_id
+            oda["lot_kapanis"] = ""
+            oda["satildi"] = False
+            oda["satis_tebrik_bekleniyor"] = False
+            oda["karar_pey_geldi"] = False
+            oda["son_hareket"] = time.time()
+        paket = yer.to_dict()
+        socketio.start_background_task(dukkan_geri_sayim_gorevi, "diger", gorev, "pazarlik")
+        sahneyi_herkese_yayinla(
+            "diger",
+            paket,
+            {
+                "dukkan": "diger",
+                "urun_id": yer.id,
+                "pey": baslangic,
+                "kazanan": kazanan,
+                "kazanan_id": kazanan_id,
+            },
+            yeni_urun=True,
+        )
+        _iki_odayi(
+            "diger_canli_sahne",
+            {
+                "dukkan": "diger",
+                "canli_yayin": True,
+                "secere": yer.tanitim_yazisi or "",
+                "tarandi": bool((yer.tanitim_yazisi or "").strip()),
+                "ai": False,
+                "urun_adi": yer.urun_adi,
+                "ad": yer.urun_adi,
+                "lot": yer.lot_no,
+            },
+            "diger",
+        )
+        socketio.emit("mezat_basladi_muzik", room="diger")
+        ahmet_kisa_acilis_seslendir("diger", yer.urun_adi or "", baslangic, yer.lot_no or "")
+        return jsonify({
+            "success": True,
+            "mesaj": "Ürün Diğer sahnesine alındı. 180 saniyelik sayaç başladı.",
+            "urun_id": urun.id,
+            "kaynak_dukkan": kaynak,
+            "baslangic": baslangic,
+            "kazanan": kazanan,
+        })
+    except Exception as hata:
+        db.session.rollback()
+        try:
+            odunc_birak()
+        except Exception:
+            pass
+        return jsonify({"success": False, "mesaj": "Sahneye alınamadı: " + str(hata)}), 500
+    finally:
+        db.session.remove()
+
+
 @app.route("/satis-bitir", methods=["POST"])
 @admin_required
 def satis_bitir():
@@ -7448,6 +7783,7 @@ def satis_bitir():
                 db.session.add(urun)
                 OnTeklif.query.filter_by(urun_id=biten_urun_id).delete()
                 db.session.commit()
+                _havuz_kaynagini_dusur(urun)
                 urunu_kazanana_sepete_ekle(
                     biten_urun_id,
                     oda["durum"]["kazanan"],
