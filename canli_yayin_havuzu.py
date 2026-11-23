@@ -200,6 +200,10 @@ def bagla(
             _otonom_pas_uygula(True)
     except Exception as hata:
         print(f"[CANLI YAYIN] dinleyici acilisi atlandi: {hata}", flush=True)
+    try:
+        _restream_istek_guncelle()
+    except Exception as hata:
+        print(f"[RESTREAM] acilis atlandi: {hata}", flush=True)
     print(
         "[CANLI YAYIN] pytchat="
         + ("acik" if _PYTCHAT_VAR else "pasif")
@@ -2582,10 +2586,11 @@ def _push_dagit(kayit):
 
 # --- Restream RTMP köprüsü (izole). Web yayını bu blok hata verse de sürer. ---
 
-_RESTREAM_KILIT = threading.Lock()
+_RESTREAM_KILIT = threading.RLock()
 _RESTREAM_PROC = None
 _RESTREAM_ISTEK = False
 _RESTREAM_HEDEF = ""
+_RESTREAM_SON_HATA = ""
 
 
 def _restream_anahtar_temizle(deger):
@@ -2680,6 +2685,41 @@ def _restream_sureci_kapat():
             pass
 
 
+def _restream_hata_yaz(metin):
+    """Akış anahtarını loga ve panele taşımaz."""
+    global _RESTREAM_SON_HATA
+    satir = str(metin or "").strip().replace("\n", " ")
+    satir = re.sub(
+        r"(rtmps?://live\.restream\.io/live/)[^\s\"']+",
+        r"\1***",
+        satir,
+        flags=re.IGNORECASE,
+    )
+    satir = satir[:240]
+    with _RESTREAM_KILIT:
+        if satir:
+            _RESTREAM_SON_HATA = satir
+    return satir
+
+
+def _restream_hata_oku():
+    with _RESTREAM_KILIT:
+        return _RESTREAM_SON_HATA
+
+
+def _restream_stderr_oku(proc):
+    try:
+        akis = proc.stderr
+        if akis is None:
+            return
+        for satir in iter(akis.readline, b""):
+            if not satir:
+                break
+            _restream_hata_yaz(satir.decode("utf-8", "replace"))
+    except Exception:
+        return
+
+
 def _restream_ffmpeg_yolu():
     """PATH'te ffmpeg varsa onu kullanır. Yoksa imageio-ffmpeg ikilisini yedek alır."""
     try:
@@ -2709,12 +2749,14 @@ def _restream_surec_ac(hedef, mime):
         return None
     bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
     komut = [
-        "ffmpeg",
+        _restream_ffmpeg_yolu(),
         "-hide_banner",
         "-loglevel",
-        "error",
+        "warning",
         "-fflags",
-        "+genpts",
+        "+genpts+discardcorrupt",
+        "-seekable",
+        "0",
         "-f",
         bicim,
         "-i",
@@ -2722,7 +2764,7 @@ def _restream_surec_ac(hedef, mime):
         "-c:v",
         "libx264",
         "-preset",
-        "veryfast",
+        "ultrafast",
         "-tune",
         "zerolatency",
         "-pix_fmt",
@@ -2731,6 +2773,16 @@ def _restream_surec_ac(hedef, mime):
         "25",
         "-g",
         "50",
+        "-keyint_min",
+        "50",
+        "-vf",
+        "scale=1280:-2",
+        "-b:v",
+        "2500k",
+        "-maxrate",
+        "2500k",
+        "-bufsize",
+        "5000k",
         "-c:a",
         "aac",
         "-ar",
@@ -2739,25 +2791,29 @@ def _restream_surec_ac(hedef, mime):
         "128k",
         "-f",
         "flv",
+        "-flvflags",
+        "no_duration_filesize",
         hedef,
     ]
-    komut[0] = _restream_ffmpeg_yolu()
     ayar = {}
     if os.name == "nt":
         bayrak = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         if bayrak:
             ayar["creationflags"] = bayrak
     try:
-        return subprocess.Popen(
+        proc = subprocess.Popen(
             komut,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             **ayar,
         )
     except Exception as hata:
+        _restream_hata_yaz("FFmpeg acilamadi. OBS ile gonderin.")
         print(f"[RESTREAM] ffmpeg atlandi: {hata}", flush=True)
         return None
+    threading.Thread(target=_restream_stderr_oku, args=(proc,), daemon=True).start()
+    return proc
 
 
 def _restream_yaz(hedef, paket, baslik, mime):
@@ -2777,10 +2833,17 @@ def _restream_yaz(hedef, paket, baslik, mime):
             proc = _restream_surec_ac(hedef, mime)
             _RESTREAM_PROC = proc
         if proc is None or proc.stdin is None:
+            if not _restream_hata_oku():
+                _restream_hata_yaz("FFmpeg acilamadi. OBS ile gonderin.")
             return False
         stdin = proc.stdin
     try:
-        stdin.write(paket)
+        kalan = paket
+        while kalan:
+            yazilan = stdin.write(kalan)
+            if not yazilan:
+                raise OSError("ffmpeg stdin kapandi")
+            kalan = kalan[yazilan:]
         stdin.flush()
     except Exception:
         with _RESTREAM_KILIT:
@@ -2803,9 +2866,19 @@ def _restream_parca_al(veri):
             istek = _RESTREAM_ISTEK
             hedef = _RESTREAM_HEDEF
         if not istek or not hedef:
-            return {"success": True, "atlandi": True}
+            return {
+                "success": True,
+                "atlandi": True,
+                "restream": False,
+                "mesaj": "Köprü sunucuda kapalı. Diğer yayını açıkken ayarları kaydedin.",
+            }
         if str(_kopya().get("aktif_dukkan") or "") != _SABIT_CANLI_DUKKAN:
-            return {"success": True, "atlandi": True}
+            return {
+                "success": True,
+                "atlandi": True,
+                "restream": False,
+                "mesaj": "Köprü yalnızca Diğer canlı yayınında açılır.",
+            }
         ham = str((veri or {}).get("parca") or "")
         if not ham or len(ham) > 2800000:
             return {"success": True, "atlandi": True}
@@ -2822,8 +2895,24 @@ def _restream_parca_al(veri):
             str((veri or {}).get("mime") or ""),
         )
         if sonuc == "yeniden":
-            return {"success": True, "yeniden": True}
-        return {"success": True, "restream": bool(sonuc)}
+            return {
+                "success": True,
+                "yeniden": True,
+                "restream": False,
+                "mesaj": _restream_hata_oku() or "FFmpeg akışı kesti, yeniden bağlanıyor.",
+            }
+        if sonuc:
+            return {
+                "success": True,
+                "restream": True,
+                "mesaj": "Restream yayını sunucudan aktarılıyor.",
+            }
+        return {
+            "success": True,
+            "restream": False,
+            "atlandi": True,
+            "mesaj": _restream_hata_oku() or "Paket Restream'e yazılamadı. OBS ile gönderin.",
+        }
     except Exception as hata:
         print(f"[RESTREAM] parca atlandi: {hata}", flush=True)
         return {"success": True, "atlandi": True}

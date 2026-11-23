@@ -532,6 +532,11 @@
                     <button type="button" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;" onclick="restreamCihazIzni()">Kamera ve Mikrofonu Listele</button>
                 </div>
                 <div id="cyRestreamDurum" style="font-size:12px; color:#94a3b8; min-height:16px;"></div>
+                <div style="font-size:11px; color:#cbd5e1; line-height:1.45;">
+                    OBS ile göndermek için: Ayarlar → Yayın → Servis: Özel.
+                    Sunucu <b>rtmp://live.restream.io/live</b>, yayın anahtarı yukarıdaki Stream Key.
+                    OBS’te Yayını Başlat deyince Restream çevrimiçi olur. Tarayıcı köprüsü ancak sunucu “aktarılıyor” derse aynı işi görür.
+                </div>
             </div>
             <details id="rejiDuvarKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border);">
                 <summary style="cursor:pointer; font-size:13px; color:#e2e8f0; font-weight:bold;">📱 Canlı Platform Reji Duvarı</summary>
@@ -2734,7 +2739,7 @@
             }
             restreamAkis = akis;
             restreamKaydiBaslat();
-            restreamDurumYaz('Restream köprüsü kamera paketini gönderiyor.');
+            restreamDurumYaz('Kamera açık. Sunucunun Restream yanıtı bekleniyor.');
         }).catch(function () {
             restreamAcik = false;
             restreamDurumYaz('Seçilen kamera veya mikrofon açılamadı. Web yayını sürüyor.');
@@ -2786,10 +2791,18 @@
                         mime: mime || ''
                     })
                 }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
-                    if (veri && veri.yeniden && restreamAcik && restreamYeniden < 2) {
+                    if (!restreamAcik || !veri) return null;
+                    if (veri.restream) {
+                        restreamDurumYaz('Restream yayını sunucudan aktarılıyor.');
+                        restreamYeniden = 0;
+                    } else if (veri.mesaj) {
+                        restreamDurumYaz(veri.mesaj);
+                    }
+                    if (veri.yeniden && restreamYeniden < 2) {
                         restreamYeniden += 1;
                         restreamKaydiYenile();
                     }
+                    return null;
                 });
             });
         }).catch(function () {});
