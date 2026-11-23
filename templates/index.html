@@ -2994,6 +2994,8 @@
     let aktifUrunMedyalari = [];
     let peyGonderiliyorMu = false;
     let aramaZamanlayici = null;
+    let katalogAramaNesli = 0;
+    let kategoriFiltreNesli = 0;
     let aktifHemenAlStatik = 0;
 
     let zoomDonguZamanlayici = null;
@@ -3178,6 +3180,7 @@
         document.querySelectorAll('#shopNavBar a, #menuDukkanlar a').forEach(function (el) {
             el.classList.toggle('active', el.getAttribute('data-dukkan') === kod);
         });
+        if (katalogPaneliAcikMi()) katalogAcikkenDukkanYenile();
         satildiDamgasiniGizle();
         odayaKatil();
         canliDurumuGetirHafif();
@@ -5475,7 +5478,47 @@
         };
     }
 
+    function katalogPaneliAcikMi() {
+        const kutu = document.getElementById('altCekmece');
+        const katalog = document.getElementById('catalogDrawer');
+        return !!(kutu && kutu.classList.contains('acik') && katalog && katalog.style.display === 'block');
+    }
+
+    function katalogAcikkenDukkanYenile() {
+        clearTimeout(aramaZamanlayici);
+        aramaZamanlayici = null;
+        katalogdan_incelemeye_gecildi = false;
+        katalogKaydirmaKonumu = 0;
+        katalogCekmeceKaydirma = 0;
+        if (incelemeAcik) {
+            incelemeAcik = false;
+            sonYuklenenSahneMedyaUrl = null;
+            sahneMedyaImza = "";
+            canliSahneAnlik = null;
+            const serit = document.getElementById('incelemeSeridi');
+            if (serit) serit.hidden = true;
+        }
+        const arama = document.getElementById('katalogAramaInput');
+        if (arama) arama.value = '';
+        const kat = document.getElementById('kategoriFiltre');
+        if (kat) kat.value = '';
+        secilenArsivUrunId = null;
+        const onizleme = document.getElementById('secilenUrunOnizleme');
+        if (onizleme) onizleme.style.display = 'none';
+        const kutu = document.getElementById('altCekmece');
+        const katalog = document.getElementById('catalogDrawer');
+        if (kutu) kutu.classList.add('acik');
+        if (katalog) katalog.style.display = 'block';
+        const liste = document.getElementById('katalogSonucListesi');
+        if (liste) liste.scrollTop = 0;
+        if (kutu) kutu.scrollTop = 0;
+        kategorileriDoldurIzleyici();
+        katalogSunucudanAra();
+    }
+
     async function katalogSunucudanAra() {
+        const nesil = ++katalogAramaNesli;
+        const dukkan = aktifDukkan;
         const arama = (document.getElementById('katalogAramaInput').value || '').trim();
         const kat = (document.getElementById('kategoriFiltre').value || '').trim();
         const listeDiv = document.getElementById('katalogSonucListesi');
@@ -5483,8 +5526,10 @@
         listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Aranıyor...</div>';
 
         try {
-            const res = await fetch(`/vitrin-urunler?dukkan=${encodeURIComponent(aktifDukkan)}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
+            const res = await fetch(`/vitrin-urunler?dukkan=${encodeURIComponent(dukkan)}&arama=${encodeURIComponent(arama)}&kategori=${encodeURIComponent(kat)}`);
+            if (nesil !== katalogAramaNesli) return;
             const data = await res.json();
+            if (nesil !== katalogAramaNesli) return;
             const urunler = (data.urunler || []).map(katalogUrununuUyarla);
             if (!urunler.length) {
                 listeDiv.innerHTML = '<div style="color: var(--text-muted); font-size: 10px; text-align: center; padding: 4px;">Bu dükkanda ürün bulunamadı.</div>';
@@ -5507,6 +5552,7 @@
                 listeDiv.appendChild(div);
             });
         } catch (e) {
+            if (nesil !== katalogAramaNesli) return;
             listeDiv.innerHTML = '<div style="color: #ef4444; font-size: 10px; text-align: center; padding: 4px;">Hata oluştu.</div>';
         }
     }
@@ -5678,7 +5724,9 @@
     }
 
     function kategorileriDoldurIzleyici() {
+        const nesil = ++kategoriFiltreNesli;
         fetch('/kategoriler-listesi').then(res => res.json()).then(data => {
+            if (nesil !== kategoriFiltreNesli) return;
             const select = document.getElementById('kategoriFiltre');
             if (!select) return;
             let eskiSecim = select.value;
