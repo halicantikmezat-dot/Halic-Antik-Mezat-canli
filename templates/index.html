@@ -1728,18 +1728,39 @@
         #medyaKapsayici { position: relative; }
         #canliKameraVideo {
             display: none;
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            object-fit: cover !important;
+            object-position: center center;
+            border-radius: inherit;
+            background: transparent !important;
+            transform: none !important;
+            z-index: 1;
+        }
+        #medyaKapsayici.canli-kamera-acik {
             position: absolute;
             inset: 0;
             width: 100%;
             height: 100%;
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            background: #000;
-            z-index: 5;
+            max-height: none;
+            aspect-ratio: auto;
+            background: transparent;
         }
+        #stageWrapper:has(#medyaKapsayici.canli-kamera-acik) { background: transparent; }
         #medyaKapsayici.canli-kamera-acik > :not(#canliKameraVideo) { display: none !important; }
-        #medyaKapsayici.canli-kamera-acik > #canliKameraVideo { display: block; }
+        #medyaKapsayici.canli-kamera-acik > #canliKameraVideo { display: block !important; }
+        #stageWrapper:has(#medyaKapsayici.canli-kamera-acik) .sahne-bekleme { z-index: 30; }
+        #stageWrapper:has(#medyaKapsayici.canli-kamera-acik) .lot-galeri-satiri,
+        #stageWrapper:has(#medyaKapsayici.canli-kamera-acik) .lot-rozet { z-index: 40; }
+        .mobile-container:has(#medyaKapsayici.canli-kamera-acik) #audioUnlockPrompt { z-index: 90; }
+        .mobile-container:has(#medyaKapsayici.canli-kamera-acik) .mezat-sayaci,
+        .mobile-container:has(#medyaKapsayici.canli-kamera-acik) .guncel-pey-kutu { z-index: 60; }
+        .mobile-container:has(#medyaKapsayici.canli-kamera-acik) .sabit-pey-bar { z-index: 1000; }
+        .mobile-container:has(#medyaKapsayici.canli-kamera-acik) .sayac-hoparlor-satiri { z-index: 1002; }
         #medyaKapsayici.kamera-bekliyor > :not([data-kamera-bekleme]) { display: none !important; }
         #medyaKapsayici.kamera-bekliyor > [data-kamera-bekleme] {
             display: block !important;
