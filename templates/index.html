@@ -1753,6 +1753,126 @@
             transform: none !important;
             z-index: 1;
         }
+        #yuzerCanli {
+            position: fixed;
+            right: 8px;
+            bottom: calc(12px + env(safe-area-inset-bottom));
+            width: 160px;
+            max-width: calc(100vw - 16px);
+            height: 220px;
+            z-index: 12500;
+            display: flex;
+            flex-direction: column;
+            background: #0b1220;
+            color: #fff;
+            border: 1px solid #d4af37;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.55);
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        #yuzerCanli[hidden] { display: none !important; }
+        #yuzerCanliTutamac {
+            flex: 0 0 22px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 0 4px;
+            background: #111827;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        #yuzerCanliTutamac span {
+            flex: 1;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: .04em;
+            color: #fef08a;
+        }
+        #yuzerCanliTutamac button,
+        #yuzerCanliDon {
+            border: none;
+            background: #1f2937;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 800;
+            border-radius: 4px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        #yuzerCanliTutamac button { width: 18px; height: 16px; padding: 0; }
+        #yuzerCanliVideo {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            background: #000;
+        }
+        #yuzerCanliVideo #canliKameraVideo {
+            display: block !important;
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-height: none !important;
+            object-fit: cover !important;
+        }
+        .yuzer-canli-serit {
+            flex: 0 0 36px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1px;
+            padding: 2px 6px;
+            background: #111827;
+            line-height: 1.15;
+        }
+        #yuzerCanliAd {
+            font-size: 9px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .yuzer-canli-alt {
+            display: flex;
+            justify-content: space-between;
+            gap: 4px;
+            font-size: 8px;
+            color: #fde68a;
+            font-weight: 700;
+        }
+        #yuzerCanliDon {
+            flex: 0 0 22px;
+            width: 100%;
+            background: #d4af37;
+            color: #111;
+        }
+        #yuzerCanliBildirim {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 22px;
+            z-index: 3;
+            background: rgba(8,12,19,.94);
+            color: #fef08a;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1.25;
+            padding: 4px 6px;
+        }
+        #yuzerCanliBildirim[hidden] { display: none !important; }
+        #yuzerCanliBildirim button {
+            display: inline;
+            width: auto;
+            border: none;
+            background: transparent;
+            color: #fff;
+            font-size: 9px;
+            font-weight: 800;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 0;
+        }
         #medyaKapsayici.canli-kamera-acik {
             position: absolute;
             inset: 0;
@@ -2081,6 +2201,20 @@
 
 <div id="canliKalpSahne" aria-hidden="true"></div>
 <div id="liveToast"></div>
+<div id="yuzerCanli" hidden>
+    <div id="yuzerCanliTutamac">
+        <span>CANLI</span>
+        <button type="button" id="yuzerCanliPip" hidden onclick="yuzerDisPencere()" title="PiP (Dış Pencere)" aria-label="PiP dış pencere">⧉</button>
+        <button type="button" id="yuzerCanliKapat" onclick="yuzerCanliKapat()" aria-label="Mini yayını kapat">✕</button>
+    </div>
+    <div id="yuzerCanliVideo"></div>
+    <div class="yuzer-canli-serit">
+        <b id="yuzerCanliAd">Canlı ürün</b>
+        <div class="yuzer-canli-alt"><span id="yuzerCanliPey">—</span><span id="yuzerCanliSure">--</span></div>
+    </div>
+    <button type="button" id="yuzerCanliDon" onclick="yuzerCanliSahneyeDon()">Sahneye Dön</button>
+    <div id="yuzerCanliBildirim" hidden>Ön teklifiniz canlı sahne havuzuna iletildi — <button type="button" onclick="yuzerCanliSahneyeDon()">Sahneye Dön</button></div>
+</div>
 <div id="pazarlikPopup" class="pazarlik-popup" onclick="this.classList.remove('acik')">
     <b>Pazarlık Başarılı - Ürün Satıldı!</b>
     <span id="pazarlikPopupDetay"></span>
@@ -3300,6 +3434,10 @@
     let canliKameraBuzKuyrugu = [];
     let canliKameraYayinda = false;
     let canliKameraBekleme = null;
+    let yuzerCanliAcik = false;
+    let yuzerCanliZamanlayici = null;
+    let yuzerCanliHazir = false;
+    let yuzerCanliBaglaniyor = false;
 
     function canliKameraVideosunuAyir() {
         const video = document.getElementById('canliKameraVideo');
@@ -3308,11 +3446,22 @@
     }
 
     function canliKameraVideosunuYerlestir(video) {
-        const kutu = document.getElementById('medyaKapsayici');
         const el = video || document.getElementById('canliKameraVideo');
-        if (!kutu || !el) return;
-        if (el.parentNode !== kutu) kutu.appendChild(el);
+        if (!el) return;
         const canli = !!(el.srcObject && el.srcObject.getVideoTracks && el.srcObject.getVideoTracks().some(function (iz) { return iz.readyState === 'live'; }));
+        if (yuzerCanliAcik) {
+            const slot = document.getElementById('yuzerCanliVideo');
+            if (slot && el.parentNode !== slot) slot.appendChild(el);
+            const sahne = document.getElementById('medyaKapsayici');
+            if (sahne) {
+                sahne.classList.remove('canli-kamera-acik');
+                sahne.classList.remove('kamera-bekliyor');
+            }
+            return;
+        }
+        const kutu = document.getElementById('medyaKapsayici');
+        if (!kutu) return;
+        if (el.parentNode !== kutu) kutu.appendChild(el);
         kutu.classList.toggle('canli-kamera-acik', canli);
         if (canli) kutu.classList.remove('kamera-bekliyor');
     }
@@ -3324,6 +3473,7 @@
     }
 
     function canliKameraBeklemesiGoster() {
+        if (yuzerCanliAcik) return;
         const kutu = document.getElementById('medyaKapsayici');
         const video = document.getElementById('canliKameraVideo');
         if (video) video.srcObject = null;
@@ -3342,6 +3492,7 @@
 
     function canliKameraBeklet() {
         if (aktifDukkan !== 'diger') {
+            if (yuzerCanliAcik && yuzerCanliYayinVarMi()) return;
             canliKameraKapat();
             return;
         }
@@ -3393,7 +3544,7 @@
         pc.addIceCandidate(aday).catch(function () {});
     }
 
-    function canliKameraKapat() {
+    function canliKameraKapat(koruPencere) {
         canliKameraYayinda = false;
         canliKameraYayinci = '';
         canliKameraBuzKuyrugu = [];
@@ -3402,13 +3553,15 @@
             try { canliKameraPc.close(); } catch (e) {}
             canliKameraPc = null;
         }
+        if (!koruPencere) yuzerCanliGizle();
         const video = document.getElementById('canliKameraVideo');
         if (video) {
             video.srcObject = null;
-            video.muted = true;
+            if (!koruPencere) video.muted = true;
         }
+        if (!koruPencere) canliKameraVideosunuYerlestir(video);
         const kutu = document.getElementById('medyaKapsayici');
-        if (kutu) {
+        if (kutu && !koruPencere) {
             kutu.classList.remove('canli-kamera-acik');
             kutu.classList.remove('kamera-bekliyor');
             const yazi = kutu.querySelector('[data-kamera-bekleme]');
@@ -3416,11 +3569,182 @@
         }
     }
 
-    function canliKameraIzle() {
-        if (aktifDukkan !== 'diger') {
+    function yuzerCanliYayinVarMi() {
+        const video = document.getElementById('canliKameraVideo');
+        if (!video || !video.srcObject || !video.srcObject.getVideoTracks) return false;
+        return video.srcObject.getVideoTracks().some(function (iz) { return iz.readyState === 'live'; });
+    }
+
+    function yuzerPipDestekli() {
+        const video = document.getElementById('canliKameraVideo');
+        if (!video) return false;
+        if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function') return true;
+        return typeof video.webkitSetPresentationMode === 'function';
+    }
+
+    function yuzerDisPencere() {
+        const video = document.getElementById('canliKameraVideo');
+        if (!video) return;
+        if (document.pictureInPictureElement === video) {
+            document.exitPictureInPicture().catch(function () {});
+            return;
+        }
+        if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function') {
+            const istek = video.requestPictureInPicture();
+            if (istek && istek.catch) istek.catch(function () {});
+            return;
+        }
+        if (typeof video.webkitSetPresentationMode === 'function') {
+            const mod = video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture';
+            video.webkitSetPresentationMode(mod);
+        }
+    }
+
+    function yuzerCanliSureMetni(data) {
+        if (!data || data.asama === 'bekliyor' || !data.aktif_urun) return '--';
+        const ham = Math.max(0, parseInt(data.kalan_sure != null ? data.kalan_sure : data.kalan, 10) || 0);
+        if (data.asama === 'pazarlik' || data.asama === 'karar') {
+            return Math.floor(ham / 60) + ':' + String(ham % 60).padStart(2, '0');
+        }
+        if (data.sayac_gorunsun === false) return '--';
+        return String(ham).padStart(2, '0');
+    }
+
+    function yuzerCanliSeridiYaz(data) {
+        const urun = data && data.aktif_urun;
+        const adEl = document.getElementById('yuzerCanliAd');
+        const peyEl = document.getElementById('yuzerCanliPey');
+        const sureEl = document.getElementById('yuzerCanliSure');
+        if (adEl) adEl.textContent = urun ? String(urun.ad || 'Canlı ürün') : 'Sahne bekleniyor';
+        const pey = data && data.pey != null ? data.pey : (urun ? urun.guncel_fiyat : null);
+        if (peyEl) peyEl.textContent = pey == null ? '—' : formatFiyat(pey);
+        if (sureEl) sureEl.textContent = yuzerCanliSureMetni(data || {});
+    }
+
+    function yuzerCanliAnlikYaz() {
+        const ad = document.getElementById('aktif_baslik');
+        const pey = document.getElementById('currentBid');
+        const sure = document.getElementById('timerDigits');
+        const adEl = document.getElementById('yuzerCanliAd');
+        const peyEl = document.getElementById('yuzerCanliPey');
+        const sureEl = document.getElementById('yuzerCanliSure');
+        const adYazi = ad ? String(ad.textContent || '').replace(/^LOT\s*#\S+\s*-\s*/i, '').trim() : '';
+        if (adEl) adEl.textContent = adYazi || 'Canlı ürün';
+        if (peyEl) peyEl.textContent = pey && String(pey.textContent || '').trim() ? (String(pey.textContent).trim() + ' TL') : '—';
+        if (sureEl) sureEl.textContent = sure && String(sure.textContent || '').trim() ? String(sure.textContent).trim() : '--';
+    }
+
+    function yuzerCanliSor() {
+        if (!yuzerCanliAcik) return;
+        if (!yuzerCanliYayinVarMi()) {
+            if (yuzerCanliBaglaniyor) return;
             canliKameraKapat();
             return;
         }
+        fetch('/canli-durum?dukkan=diger&t=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!yuzerCanliAcik || !data || data.dukkan && data.dukkan !== 'diger') return;
+                yuzerCanliSeridiYaz(data);
+            })
+            .catch(function () {});
+    }
+
+    function yuzerCanliEtkilesim() {
+        if (yuzerCanliHazir) return;
+        const kutu = document.getElementById('yuzerCanli');
+        const tutamac = document.getElementById('yuzerCanliTutamac');
+        if (!kutu || !tutamac) return;
+        yuzerCanliHazir = true;
+        let suruk = null;
+        tutamac.addEventListener('pointerdown', function (e) {
+            if (e.target.closest && e.target.closest('button')) return;
+            const rect = kutu.getBoundingClientRect();
+            suruk = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+            try { tutamac.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        tutamac.addEventListener('pointermove', function (e) {
+            if (!suruk) return;
+            const gen = kutu.offsetWidth || 160;
+            const yuk = kutu.offsetHeight || 220;
+            let sol = e.clientX - suruk.x;
+            let ust = e.clientY - suruk.y;
+            sol = Math.max(4, Math.min(sol, window.innerWidth - gen - 4));
+            ust = Math.max(4, Math.min(ust, window.innerHeight - yuk - 4));
+            kutu.style.left = sol + 'px';
+            kutu.style.top = ust + 'px';
+            kutu.style.right = 'auto';
+            kutu.style.bottom = 'auto';
+        });
+        function birak() { suruk = null; }
+        tutamac.addEventListener('pointerup', birak);
+        tutamac.addEventListener('pointercancel', birak);
+    }
+
+    function yuzerCanliGizle() {
+        yuzerCanliAcik = false;
+        if (yuzerCanliZamanlayici) {
+            clearInterval(yuzerCanliZamanlayici);
+            yuzerCanliZamanlayici = null;
+        }
+        const bildirim = document.getElementById('yuzerCanliBildirim');
+        if (bildirim) bildirim.hidden = true;
+        const pencere = document.getElementById('yuzerCanli');
+        if (pencere) pencere.hidden = true;
+        const video = document.getElementById('canliKameraVideo');
+        if (video && document.pictureInPictureElement === video && document.exitPictureInPicture) {
+            document.exitPictureInPicture().catch(function () {});
+        }
+    }
+
+    function yuzerCanliAc() {
+        if (!yuzerCanliYayinVarMi()) {
+            yuzerCanliGizle();
+            return;
+        }
+        const ilk = !yuzerCanliAcik;
+        yuzerCanliAcik = true;
+        canliKameraVideosunuYerlestir(document.getElementById('canliKameraVideo'));
+        const kutu = document.getElementById('yuzerCanli');
+        if (kutu) kutu.hidden = false;
+        const pip = document.getElementById('yuzerCanliPip');
+        if (pip) pip.hidden = !yuzerPipDestekli();
+        if (ilk) yuzerCanliAnlikYaz();
+        canliKameraSesiniAc();
+        yuzerCanliEtkilesim();
+        yuzerCanliSor();
+        if (!yuzerCanliZamanlayici) yuzerCanliZamanlayici = setInterval(yuzerCanliSor, 3000);
+    }
+
+    function yuzerCanliSahneyeBirak() {
+        yuzerCanliGizle();
+        canliKameraVideosunuYerlestir(document.getElementById('canliKameraVideo'));
+    }
+
+    function yuzerCanliSahneyeDon() {
+        const bildirim = document.getElementById('yuzerCanliBildirim');
+        if (bildirim) bildirim.hidden = true;
+        if (aktifDukkan !== 'diger') dukkanDegistir('diger');
+        else yuzerCanliSahneyeBirak();
+    }
+
+    function yuzerCanliKapat() {
+        canliKameraKapat();
+    }
+
+    function yuzerCanliTeklifBildir() {
+        if (!yuzerCanliAcik) return;
+        const bildirim = document.getElementById('yuzerCanliBildirim');
+        if (bildirim) bildirim.hidden = false;
+    }
+
+    function canliKameraIzle() {
+        if (aktifDukkan !== 'diger') {
+            if (yuzerCanliYayinVarMi()) yuzerCanliAc();
+            else canliKameraKapat();
+            return;
+        }
+        if (yuzerCanliAcik) yuzerCanliSahneyeBirak();
         if (socket && socket.connected) socket.emit('kamera_izle', { dukkan: 'diger' });
     }
 
@@ -3436,8 +3760,10 @@
     }
 
     function canliKameraTeklif(veri) {
-        if (aktifDukkan !== 'diger' || !veri || !veri.sdp || !window.RTCPeerConnection) return;
-        canliKameraKapat();
+        const pencerede = yuzerCanliAcik;
+        if ((aktifDukkan !== 'diger' && !pencerede) || !veri || !veri.sdp || !window.RTCPeerConnection) return;
+        yuzerCanliBaglaniyor = pencerede;
+        canliKameraKapat(pencerede);
         canliKameraYayinci = String(veri.yayinci || '');
         const pc = new RTCPeerConnection({ iceServers: buzSunuculari() });
         canliKameraPc = pc;
@@ -3445,14 +3771,18 @@
             const video = document.getElementById('canliKameraVideo');
             const akis = (olay.streams && olay.streams[0]) || new MediaStream([olay.track]);
             if (!video) return;
+            yuzerCanliBaglaniyor = false;
             canliKameraYayinda = true;
             canliKameraBeklemeDurdur();
             if (olay.track) olay.track.onended = function () { canliKameraBeklet(); };
             video.srcObject = akis;
             video.muted = true;
             canliKameraVideosunuYerlestir(video);
-            const deneme = video.play();
-            if (deneme && deneme.catch) deneme.catch(function () {});
+            if (yuzerCanliAcik) canliKameraSesiniAc();
+            else {
+                const deneme = video.play();
+                if (deneme && deneme.catch) deneme.catch(function () {});
+            }
         };
         pc.onicecandidate = function (olay) {
             if (!olay.candidate || !canliKameraYayinci) return;
@@ -3474,6 +3804,7 @@
                 sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }
             });
         }).catch(function () {
+            yuzerCanliBaglaniyor = false;
             if (canliKameraYayinda) canliKameraBeklet();
             else canliKameraKapat();
         });
@@ -6589,9 +6920,10 @@
             })
         }).then(res => res.json()).then(d => {
             if (onOdemeYanitiMi(d)) return;
-            if (d.success) { 
-                alert(d.mesaj || "Ön teklif başarıyla kaydedildi."); 
-                document.getElementById('onTeklifMiktari').value = ""; 
+            if (d.success) {
+                yuzerCanliTeklifBildir();
+                alert(d.mesaj || "Ön teklif başarıyla kaydedildi.");
+                document.getElementById('onTeklifMiktari').value = "";
             } else {
                 alert(d.mesaj);
             }
