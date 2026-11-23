@@ -787,6 +787,15 @@
                 <button class="btn btn-red" onclick="sonPeyiIptalEt()">⚠️ Son Peyi İptal Et</button>
                 <button class="btn btn-green" onclick="satisBitir()">🔨 Satışı Bitir (Satıldı)</button>
             </div>
+            <div id="digerSatisTakip" style="margin-top:10px; border-top:1px solid var(--card-border); padding-top:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+                    <span style="font-size:12px; font-weight:800; color:#fef08a;">Canlı Satış &amp; Kazanan Takibi</span>
+                    <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
+                </div>
+                <div id="digerSatisListesi" style="max-height:168px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+                    <div style="font-size:11px; color:#64748b;">Henüz canlı satış yok.</div>
+                </div>
+            </div>
         </div>
 
         <!-- ÇOKLU PLATFORM CANLI SOHBET & BAS-KONUŞ GELEN KUTUSU -->
@@ -1663,6 +1672,9 @@
         socket.emit("join_admin");
         const kod = (typeof seciliDukkan === "string" && seciliDukkan) ? seciliDukkan : "diger";
         socket.emit("join_dukkan", { dukkan: kod, isim: "Yonetici" });
+        if (kod !== "diger") {
+            socket.emit("join_dukkan", { dukkan: "diger", isim: "Yonetici", dinle: true });
+        }
         if (typeof kameraYayininiYenile === "function") kameraYayininiYenile();
     }
     socket.on("connect", yoneticiOdayaGir);
@@ -1806,9 +1818,14 @@
         playClickSound();
         const yeniPanel = document.getElementById('yeniUrunlerPanel');
         if (yeniPanel) yeniPanel.hidden = true;
-        socket.emit('leave_dukkan', { dukkan: seciliDukkan });
+        if (seciliDukkan && seciliDukkan !== kod && seciliDukkan !== "diger") {
+            socket.emit('leave_dukkan', { dukkan: seciliDukkan });
+        }
         seciliDukkan = kod;
-        socket.emit('join_dukkan', { dukkan: seciliDukkan });
+        socket.emit('join_dukkan', { dukkan: seciliDukkan, isim: "Yonetici" });
+        if (kod !== "diger") {
+            socket.emit('join_dukkan', { dukkan: "diger", isim: "Yonetici", dinle: true });
+        }
 
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         const activeTab = document.getElementById(`tab_${kod}`);
@@ -4369,6 +4386,7 @@
 
     window.onload = async function() {
         await dukkanlariYukleAdmin();
+        digerSatisListesiniYenile();
         kategorileriDoldurAdmin();
         tedarikcileriYukleAdmin();
         laboratuvarKurallariniGetir();
@@ -4510,8 +4528,132 @@
         document.getElementById('aktifKazanan').innerText = 'Yok';
     });
 
+    let digerSatisKayitlari = [];
+    const digerPlatformRenk = {
+        Web: "#334155",
+        TikTok: "#111827",
+        Instagram: "#9d174d",
+        Facebook: "#1d4ed8"
+    };
+
+    function digerSatisListesiniCiz() {
+        const liste = document.getElementById("digerSatisListesi");
+        const sayac = document.getElementById("digerSatisSayac");
+        if (sayac) sayac.textContent = digerSatisKayitlari.length + " satış";
+        if (!liste) return;
+        liste.innerHTML = "";
+        if (!digerSatisKayitlari.length) {
+            const bos = document.createElement("div");
+            bos.style.cssText = "font-size:11px; color:#64748b;";
+            bos.textContent = "Henüz canlı satış yok.";
+            liste.appendChild(bos);
+            return;
+        }
+        digerSatisKayitlari.forEach(function (kayit) {
+            const satir = document.createElement("div");
+            satir.style.cssText = "background:#0f141c; border:1px solid #334155; border-radius:6px; padding:6px; display:flex; flex-direction:column; gap:4px;";
+            const ust = document.createElement("div");
+            ust.style.cssText = "display:flex; justify-content:space-between; gap:6px; align-items:flex-start;";
+            const sol = document.createElement("div");
+            sol.style.cssText = "min-width:0; font-size:11px; color:#f8fafc; line-height:1.35;";
+            const baslik = document.createElement("div");
+            baslik.style.fontWeight = "800";
+            baslik.textContent = "Lot #" + (kayit.lot_no !== undefined && kayit.lot_no !== "" ? kayit.lot_no : "-") + " · " + (kayit.urun_adi || "Eser");
+            const alt = document.createElement("div");
+            alt.style.cssText = "display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:2px;";
+            const ad = document.createElement("span");
+            ad.textContent = kayit.kazanan_adi || "Yok";
+            const rozet = document.createElement("span");
+            const platform = kayit.kazanan_platform || "Web";
+            rozet.textContent = platform;
+            rozet.style.cssText = "font-size:10px; font-weight:800; color:#fff; border-radius:999px; padding:1px 6px; background:" + (digerPlatformRenk[platform] || "#334155") + ";";
+            const tutar = document.createElement("span");
+            tutar.style.color = "#fef08a";
+            tutar.textContent = (kayit.son_fiyat != null ? kayit.son_fiyat : 0) + " TL";
+            const saat = document.createElement("span");
+            saat.style.color = "#94a3b8";
+            saat.textContent = kayit.saat || "";
+            const durum = document.createElement("span");
+            durum.style.color = kayit.durum === "Ödendi" ? "#86efac" : "#fdba74";
+            durum.textContent = kayit.durum || "Ödeme Bekliyor";
+            alt.appendChild(ad);
+            alt.appendChild(rozet);
+            alt.appendChild(tutar);
+            alt.appendChild(saat);
+            alt.appendChild(durum);
+            sol.appendChild(baslik);
+            sol.appendChild(alt);
+            ust.appendChild(sol);
+            satir.appendChild(ust);
+            const dugmeler = document.createElement("div");
+            dugmeler.style.cssText = "display:flex; gap:4px;";
+            const wp = document.createElement("button");
+            wp.type = "button";
+            wp.className = "btn btn-sm";
+            wp.style.cssText = "background:#128C7E; color:#fff; flex:1;";
+            wp.textContent = "WhatsApp Mesajı Kopyala / Gönder";
+            wp.addEventListener("click", function () { digerSatisWhatsapp(kayit.id, wp); });
+            const oden = document.createElement("button");
+            oden.type = "button";
+            oden.className = "btn btn-sm btn-green";
+            oden.textContent = kayit.durum === "Ödendi" ? "Ödendi" : "Ödendi İşaretle";
+            oden.disabled = kayit.durum === "Ödendi";
+            oden.addEventListener("click", function () { digerSatisOdendi(kayit.id); });
+            dugmeler.appendChild(wp);
+            dugmeler.appendChild(oden);
+            satir.appendChild(dugmeler);
+            liste.appendChild(satir);
+        });
+    }
+
+    function digerSatisListesiniYenile() {
+        fetch("/api/diger/satis-kayitlari", { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                digerSatisKayitlari = (data && data.kayitlar) || [];
+                digerSatisListesiniCiz();
+            })
+            .catch(function () {});
+    }
+
+    function digerSatisWhatsapp(id, dugme) {
+        const kayit = digerSatisKayitlari.find(function (satir) { return String(satir.id) === String(id); });
+        if (!kayit) return;
+        const metin = kayit.mesaj || "";
+        const ac = function () {
+            const tel = String(kayit.telefon || "").replace(/\D/g, "");
+            const url = tel.length >= 10
+                ? ("https://wa.me/" + tel + "?text=" + encodeURIComponent(metin))
+                : ("https://wa.me/?text=" + encodeURIComponent(metin));
+            window.open(url, "_blank", "noopener");
+        };
+        const onceki = dugme ? dugme.textContent : "";
+        if (dugme) dugme.textContent = "Kopyalandı";
+        const geri = function () {
+            if (dugme) setTimeout(function () { dugme.textContent = onceki; }, 1200);
+            ac();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(metin).then(geri).catch(geri);
+            return;
+        }
+        geri();
+    }
+
+    function digerSatisOdendi(id) {
+        fetch("/api/diger/satis-odendi", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: id })
+        }).then(function (r) { return r.json(); }).then(function () {
+            digerSatisListesiniYenile();
+        }).catch(function () {});
+    }
+
     socket.on('urun_satildi_erken', function(data) {
         if (!adminOlayBirKez("urun_satildi_erken", data)) return;
+        if (data && data.dukkan === "diger") digerSatisListesiniYenile();
         if (!data || data.dukkan !== seciliDukkan) return;
         const detay = document.getElementById('pazarlikPopupDetay');
         if (detay) detay.innerText = data.mesaj || 'Pazarlık Başarılı - Ürün Satıldı!';
@@ -4520,7 +4662,8 @@
         adminCanliLotuTemizle();
     });
 
-    socket.on('admin_satis_guncelle', function () {
+    socket.on('admin_satis_guncelle', function (data) {
+        if (!data || data.dukkan === "diger") digerSatisListesiniYenile();
         veriCekAdmin();
         if (typeof adminUrunAra === "function") adminUrunAra();
         if (seciliDukkan === "diger" && typeof digerHavuzYukle === "function") digerHavuzYukle();
@@ -4528,6 +4671,7 @@
 
     socket.on('sayac_bitti', function(data) {
         if (!adminOlayBirKez("sayac_bitti", data)) return;
+        if (data && data.dukkan === "diger" && data.satildi_mi) digerSatisListesiniYenile();
         if(data && data.dukkan === seciliDukkan) {
             document.getElementById('aktifDurum').innerText = data.satildi_mi ? "Satıldı — sıradaki ürün hazırlanıyor" : "Pas — yeni ürün bekleniyor";
             setTimeout(() => {

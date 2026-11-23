@@ -2,6 +2,7 @@
 
 import math
 import threading
+import time
 
 DUKKAN = "diger"
 AD = "Canlı Yayın Ürünü"
@@ -456,3 +457,129 @@ def kuyruk_basa_koy(kart):
         _KUYRUK[:] = [kayit for kayit in _KUYRUK if kayit.get("urun_id") != temiz["urun_id"]]
         _KUYRUK.insert(0, temiz)
         return [dict(x) for x in _KUYRUK]
+
+
+# Diğer canlı sahnesinin satış listesi. Kuyruğa, sahneye ve diğer dükkanlara yazılmaz.
+_SATIS_KILIT = threading.Lock()
+_SATISLAR = []
+_SATIS_SIRA = 0
+_SATIS_TAVAN = 80
+_PLATFORMLAR = {
+    "web": "Web",
+    "tiktok": "TikTok",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+}
+
+
+def _platform_adi(ham):
+    return _PLATFORMLAR.get(str(ham or "").strip().casefold(), "")
+
+
+def kazanan_ayir(kazanan_adi, platform=None):
+    """[TikTok] Ayşe gibi etiketleri ad ve rozet olarak ayırır."""
+    ham = str(kazanan_adi or "").strip()
+    secilen = _platform_adi(platform)
+    ad = ham
+    if ham.startswith("[") and "]" in ham:
+        etiket, kalan = ham[1:].split("]", 1)
+        if not secilen:
+            secilen = _platform_adi(etiket)
+        ad = kalan.strip() or ham
+    if not ad:
+        ad = "Yok"
+    return ad[:80], (secilen or "Web")
+
+
+def _satis_herkese(kayit):
+    return {
+        "id": kayit["id"],
+        "urun_id": kayit["urun_id"],
+        "lot_no": kayit["lot_no"],
+        "urun_adi": kayit["urun_adi"],
+        "son_fiyat": kayit["son_fiyat"],
+        "kazanan_adi": kayit["kazanan_adi"],
+        "kazanan_platform": kayit["kazanan_platform"],
+        "telefon": kayit["telefon"],
+        "saat": kayit["saat"],
+        "durum": kayit["durum"],
+    }
+
+
+def satis_kaydi_ekle(
+    urun_id,
+    lot_no,
+    urun_adi,
+    son_fiyat,
+    kazanan_adi,
+    platform=None,
+    telefon="",
+):
+    """Aynı ürün kısa aralıkta ikinci kez düşerse yeni satır açmaz."""
+    global _SATIS_SIRA
+    try:
+        kimlik = int(urun_id or 0)
+    except (TypeError, ValueError):
+        kimlik = 0
+    if lot_no in (None, ""):
+        lot = ""
+    else:
+        try:
+            lot = int(lot_no)
+        except (TypeError, ValueError):
+            lot = str(lot_no)[:40]
+    try:
+        tutar = float(son_fiyat or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    ad, rozet = kazanan_ayir(kazanan_adi, platform)
+    simdi = time.time()
+    with _SATIS_KILIT:
+        for eski in reversed(_SATISLAR):
+            if simdi - eski["an"] > 25:
+                break
+            ayni_urun = kimlik > 0 and eski["urun_id"] == kimlik
+            ayni_lot = (
+                kimlik <= 0
+                and eski["lot_no"] == lot
+                and eski["kazanan_adi"] == ad
+                and eski["son_fiyat"] == tutar
+            )
+            if ayni_urun or ayni_lot:
+                return _satis_herkese(eski)
+        _SATIS_SIRA += 1
+        kayit = {
+            "id": _SATIS_SIRA,
+            "urun_id": kimlik,
+            "lot_no": lot,
+            "urun_adi": str(urun_adi or AD).strip()[:200] or AD,
+            "son_fiyat": tutar,
+            "kazanan_adi": ad,
+            "kazanan_platform": rozet,
+            "telefon": str(telefon or "").strip()[:40],
+            "saat": time.strftime("%H:%M:%S"),
+            "durum": "Ödeme Bekliyor",
+            "an": simdi,
+        }
+        _SATISLAR.append(kayit)
+        if len(_SATISLAR) > _SATIS_TAVAN:
+            del _SATISLAR[: len(_SATISLAR) - _SATIS_TAVAN]
+        return _satis_herkese(kayit)
+
+
+def satis_kayitlari():
+    with _SATIS_KILIT:
+        return [_satis_herkese(kayit) for kayit in reversed(_SATISLAR)]
+
+
+def satis_odendi_isaretle(kayit_id):
+    try:
+        hedef = int(kayit_id)
+    except (TypeError, ValueError):
+        return None
+    with _SATIS_KILIT:
+        for kayit in _SATISLAR:
+            if kayit["id"] == hedef:
+                kayit["durum"] = "Ödendi"
+                return _satis_herkese(kayit)
+    return None

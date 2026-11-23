@@ -2575,6 +2575,40 @@ def _satis_olay_alanlari(urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lo
         }
 
 
+def _diger_canli_satis_kaydet(
+    dukkan, urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lot_no=None, platform=None,
+):
+    """Yalnızca Diğer canlı sahnesinin satış listesine yazar. Sahne akışını değiştirmez."""
+    if str(dukkan or "") != "diger":
+        return
+    try:
+        from diger_canli_sahne import satis_kaydi_ekle
+    except Exception:
+        return
+    telefon = ""
+    if kazanan_id not in (None, "", "None"):
+        try:
+            kisi = db.session.get(Kullanici, int(kazanan_id))
+            if kisi is not None:
+                telefon = str(getattr(kisi, "telefon", "") or "")
+        except Exception:
+            telefon = ""
+    ad_urun = urun_adi if urun_adi not in (None, "") else getattr(urun, "urun_adi", "")
+    lot = lot_no if lot_no not in (None, "") else getattr(urun, "lot_no", "")
+    try:
+        satis_kaydi_ekle(
+            urun_id=getattr(urun, "id", None),
+            lot_no=lot,
+            urun_adi=ad_urun,
+            son_fiyat=fiyat,
+            kazanan_adi=kazanan_adi,
+            platform=platform,
+            telefon=telefon,
+        )
+    except Exception as hata:
+        print(f"[DIGER SATIS] kayit yazilamadi: {hata}", flush=True)
+
+
 def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konusma_adi):
     """Kilidi çağıran tutar. Gizli eşik hiçbir yayına konmaz."""
     oda["sayac_aktif"] = False
@@ -2599,6 +2633,7 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
         _havuz_kaynagini_dusur(urun)
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici_id)
 
+    _diger_canli_satis_kaydet(dukkan, urun, etiket_ad, kullanici_id, tutar)
     _pey_duyur(
         dukkan,
         {
@@ -2853,6 +2888,15 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                         biten_urun_id,
                         kapanis["kazanan"],
                         kapanis["kazanan_id"],
+                    )
+                    _diger_canli_satis_kaydet(
+                        dukkan,
+                        urun,
+                        kapanis["kazanan"],
+                        kapanis["kazanan_id"],
+                        kapanis["pey"],
+                        urun_adi=satis_ad,
+                        lot_no=satis_lot,
                     )
                     oda["durum"]["durum"] = "Satıldı"
                     _son_satisi_yaz(
@@ -5206,6 +5250,9 @@ def api_hemen_al_tetikle():
         db.session.add(urun)
         db.session.commit()
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, None)
+        _diger_canli_satis_kaydet(
+            dukkan, urun, etiket_ad, None, fiyat, platform=platform,
+        )
     _kopru_paket = {
         "dukkan": dukkan,
         "urun_id": biten_id,
@@ -6012,6 +6059,9 @@ def pey_ver():
                 _havuz_kaynagini_dusur(urun)
 
                 urunu_kazanana_sepete_ekle(urun.id, etiket_ad, kullanici.id)
+                _diger_canli_satis_kaydet(
+                    dukkan, urun, etiket_ad, kullanici.id, hemen_al_fiyat, platform="Web",
+                )
 
                 _pey_duyur(
                     dukkan,
@@ -7927,6 +7977,77 @@ def diger_havuzdan_sahneye_al():
     return jsonify(paket), kod
 
 
+def _kurumsal_satiri_var(deger):
+    metin = str(deger or "").strip()
+    if not metin or "girilecek" in metin.casefold():
+        return ""
+    sade = metin.replace(" ", "")
+    if sade.upper().startswith("TR") and set(sade[2:]) <= {"0"}:
+        return ""
+    return metin
+
+
+def _diger_satis_mesaji(kayit):
+    kurumsal = {}
+    try:
+        kurumsal = kurumsal_bilgileri_oku() or {}
+    except Exception:
+        kurumsal = {}
+    try:
+        tutar = float(kayit.get("son_fiyat") or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    tutar_yazi = str(int(tutar)) if tutar == int(tutar) else str(tutar)
+    satirlar = [
+        "Sayın {ad},".format(ad=kayit.get("kazanan_adi") or "kazanan"),
+        "Lot #{lot} — {urun}".format(
+            lot=kayit.get("lot_no") if kayit.get("lot_no") not in (None, "") else "-",
+            urun=kayit.get("urun_adi") or "Eser",
+        ),
+        "Tutar: {tutar} TL".format(tutar=tutar_yazi),
+        "Ödemeniz bekleniyor. Havale/EFT açıklamasına adınızı ve lot numarasını yazınız.",
+    ]
+    banka = _kurumsal_satiri_var(kurumsal.get("bankaAdi"))
+    alici = _kurumsal_satiri_var(kurumsal.get("aliciAdi"))
+    iban = _kurumsal_satiri_var(kurumsal.get("iban"))
+    telefon = _kurumsal_satiri_var(kurumsal.get("telefon"))
+    if banka:
+        satirlar.append("Banka: {0}".format(banka))
+    if alici:
+        satirlar.append("Alıcı: {0}".format(alici))
+    if iban:
+        satirlar.append("IBAN: {0}".format(iban))
+    if telefon:
+        satirlar.append("WhatsApp: {0}".format(telefon))
+    return "\n".join(satirlar)
+
+
+@app.route("/api/diger/satis-kayitlari", methods=["GET"])
+@admin_required
+def diger_satis_kayitlari():
+    from diger_canli_sahne import satis_kayitlari
+
+    kayitlar = []
+    for kayit in satis_kayitlari():
+        satir = dict(kayit)
+        satir["mesaj"] = _diger_satis_mesaji(satir)
+        kayitlar.append(satir)
+    return jsonify({"success": True, "kayitlar": kayitlar})
+
+
+@app.route("/api/diger/satis-odendi", methods=["POST"])
+@admin_required
+def diger_satis_odendi():
+    from diger_canli_sahne import satis_odendi_isaretle
+
+    veri = request.json or {}
+    kayit = satis_odendi_isaretle(veri.get("id"))
+    if kayit is None:
+        return jsonify({"success": False, "mesaj": "Satış kaydı bulunamadı."}), 404
+    kayit = dict(kayit)
+    kayit["mesaj"] = _diger_satis_mesaji(kayit)
+    return jsonify({"success": True, "kayit": kayit})
+
 
 @app.route("/satis-bitir", methods=["POST"])
 @admin_required
@@ -7978,6 +8099,15 @@ def satis_bitir():
                     oda["durum"].get("kazanan_id"),
                 )
 
+        _diger_canli_satis_kaydet(
+            dukkan,
+            urun,
+            oda["durum"].get("kazanan"),
+            oda["durum"].get("kazanan_id"),
+            satis_fiyat,
+            urun_adi=satis_ad,
+            lot_no=satis_lot,
+        )
         _bitir_paket = {
             "dukkan": dukkan,
             "urun_id": biten_urun_id,
@@ -12172,6 +12302,10 @@ def handle_join_dukkan(data):
     try:
         veri = data or {}
         dukkan = dukkan_dogrula(veri.get("dukkan", "diger"))
+        if veri.get("dinle"):
+            if session.get("is_admin") and dukkan == "diger":
+                join_room(dukkan)
+            return
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
         izleyici_adlari[request.sid] = ad
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
