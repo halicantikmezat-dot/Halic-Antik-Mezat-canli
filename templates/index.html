@@ -3194,6 +3194,9 @@
     let izleyiciIsimleri = [];
     let incelemeAcik = false;
     let canliSahneAnlik = null;
+    let katalogdan_incelemeye_gecildi = false;
+    let katalogKaydirmaKonumu = 0;
+    let katalogCekmeceKaydirma = 0;
 
     function genelMenuAcKapa() {
         const menu = document.getElementById('genelMenu');
@@ -4021,8 +4024,13 @@
 
     function altCekmeceKapat() {
         playUserClickSound();
+        katalogdan_incelemeye_gecildi = false;
+        katalogKaydirmaKonumu = 0;
+        katalogCekmeceKaydirma = 0;
         const kutu = document.getElementById('altCekmece');
         if (kutu) kutu.classList.remove('acik');
+        const katalog = document.getElementById('catalogDrawer');
+        if (katalog) katalog.style.display = 'none';
         menuGeriGetir();
     }
 
@@ -5549,9 +5557,38 @@
         if (katalog) katalog.style.display = 'none';
     }
 
+    function katalogListesiniGeriAc() {
+        const kutu = document.getElementById('altCekmece');
+        const sohbet = document.getElementById('chatDrawer');
+        const elestiri = document.getElementById('elestiriPaneli');
+        const katalog = document.getElementById('catalogDrawer');
+        if (sohbet) sohbet.style.display = 'none';
+        if (elestiri) elestiri.style.display = 'none';
+        if (katalog) katalog.style.display = 'block';
+        if (kutu) kutu.classList.add('acik');
+        const konum = katalogKaydirmaKonumu;
+        const cekmeceKonum = katalogCekmeceKaydirma;
+        const uygula = function () {
+            const liste = document.getElementById('katalogSonucListesi');
+            if (liste) liste.scrollTop = konum;
+            if (kutu) kutu.scrollTop = cekmeceKonum;
+        };
+        uygula();
+        requestAnimationFrame(function () {
+            uygula();
+            requestAnimationFrame(uygula);
+        });
+    }
+
     function urunIncele(urunId) {
         const secilen = sonBulunanUrunler.find(u => String(u.id) === String(urunId));
         if (!secilen) return;
+        const liste = document.getElementById('katalogSonucListesi');
+        const cekmece = document.getElementById('altCekmece');
+        katalogKaydirmaKonumu = liste ? liste.scrollTop : 0;
+        katalogCekmeceKaydirma = cekmece ? cekmece.scrollTop : 0;
+        katalogdan_incelemeye_gecildi = true;
+        katalogCekmecesiniKapat();
         const eskiId = aktifSahneUrunId;
         const eskiSatildi = sahnedekiUrunSatildiMi;
         const eskiHemen = aktifHemenAlStatik;
@@ -5591,6 +5628,7 @@
         } else {
             canliDurumuGetirHafif();
         }
+        if (katalogdan_incelemeye_gecildi) katalogListesiniGeriAc();
     }
 
     function katalogUrununuSepeteEkle() {
@@ -5619,6 +5657,9 @@
 
     function katalogKapat() {
         playUserClickSound();
+        katalogdan_incelemeye_gecildi = false;
+        katalogKaydirmaKonumu = 0;
+        katalogCekmeceKaydirma = 0;
         const kutu = document.getElementById('altCekmece');
         if (kutu) kutu.classList.remove('acik');
         document.getElementById('catalogDrawer').style.display = 'none';
