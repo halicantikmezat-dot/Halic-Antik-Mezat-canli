@@ -538,6 +538,18 @@
                     OBS’te Yayını Başlat deyince Restream çevrimiçi olur. Tarayıcı köprüsü ancak sunucu “aktarılıyor” derse aynı işi görür.
                 </div>
             </div>
+            <div id="sosyalHavuzKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Çoklu Sosyal Medya Yayın Havuzu (Instagram / Facebook / TikTok)</div>
+                <div style="font-size:11px; color:#94a3b8;">Üstteki Restream köprüsü olduğu gibi kalır. Diğer - Her Şey yayını açılınca yalnızca “Yayına Dahil Et” işaretli hesaplara, her biri ayrı FFmpeg süreciyle, ana Restream hedefiyle birlikte yayın gider. Bir hesabın hatası diğerlerini kesmez.</div>
+                <input type="text" id="syhAd" maxlength="80" placeholder="Hesap / Sayfa Adı (örn. Instagram 1, FB Grup 2)" autocomplete="off">
+                <input type="text" id="syhUrl" maxlength="500" placeholder="RTMP Sunucu URL (rtmp:// veya rtmps://)" autocomplete="off" spellcheck="false">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="password" id="syhKey" maxlength="400" placeholder="Yayın Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
+                    <button type="button" id="syhEkle" class="btn btn-green btn-sm">+ Listeye Ekle</button>
+                </div>
+                <div id="syhListe" style="display:flex; flex-direction:column; gap:8px;"></div>
+                <div id="syhNot" style="font-size:12px; color:#86efac; min-height:16px;"></div>
+            </div>
             <details id="rejiDuvarKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border);">
                 <summary style="cursor:pointer; font-size:13px; color:#e2e8f0; font-weight:bold;">📱 Canlı Platform Reji Duvarı</summary>
                 <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
@@ -2166,6 +2178,269 @@
             cyRestreamKeyGoster.textContent = acik ? 'Gizle' : 'Göster';
         });
     }
+
+    let sosyalHavuzDahilSayisi = 0;
+    let sosyalHavuzDokunma = 0;
+
+    function sosyalHavuzSecili() {
+        if (typeof sosyalHavuzDahilSayisi === 'number' && sosyalHavuzDahilSayisi > 0) return true;
+        const kutular = document.querySelectorAll('.syh-dahil');
+        for (let i = 0; i < kutular.length; i++) {
+            if (kutular[i].checked) return true;
+        }
+        return false;
+    }
+
+    function kopruMedyasiGerekli() {
+        const alan = restreamAlanlari();
+        return !!(alan.restream_rtmp_url && alan.restream_stream_key) || sosyalHavuzSecili();
+    }
+
+    const SYH_DURUM = {
+        pasif: ['Pasif', '#334155', '#cbd5e1'],
+        bekliyor: ['Bekliyor', '#713f12', '#fde68a'],
+        yayinda: ['Yayında', '#14532d', '#86efac'],
+        hata: ['Hata', '#7f1d1d', '#fecaca']
+    };
+    let sosyalHavuzImza = '';
+    let sosyalHavuzZamanlayici = null;
+
+    function sosyalHavuzNotu(metin, hata) {
+        const kutu = document.getElementById('syhNot');
+        if (!kutu) return;
+        kutu.style.color = hata ? '#fecaca' : '#86efac';
+        kutu.textContent = metin || '';
+    }
+
+    function sosyalHavuzGonder(islem, ek) {
+        sosyalHavuzDokunma = Date.now();
+        return fetch('/api/canli-yayin/kontrol', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ islem: islem }, ek || {}))
+        }).then(function (yanit) { return yanit.json(); });
+    }
+
+    function sosyalHavuzYayiniTazele() {
+        if (typeof iriunCanliMi !== 'function' || !iriunCanliMi()) return;
+        if (typeof iriunVideoCanli !== 'function' || !iriunVideoCanli(restreamAkis)) return;
+        if (!sosyalHavuzSecili() && !kopruMedyasiGerekli()) return;
+        if (!restreamKayit || restreamKayit.state === 'inactive') restreamKaydiBaslat();
+    }
+
+    function sosyalHavuzRozet(durum) {
+        return SYH_DURUM[durum] || SYH_DURUM.pasif;
+    }
+
+    function sosyalHavuzImzaHesapla(hesaplar) {
+        return (hesaplar || []).map(function (kayit) {
+            return [kayit.id, kayit.ad, kayit.rtmp_url, kayit.dahil ? '1' : '0', kayit.stream_key].join('\u001f');
+        }).join('\u001e');
+    }
+
+    function sosyalHavuzRozetleriGuncelle(hesaplar) {
+        (hesaplar || []).forEach(function (kayit) {
+            const rozet = document.querySelector('[data-syh-rozet="' + kayit.id + '"]');
+            if (!rozet) return;
+            const boya = sosyalHavuzRozet(kayit.durum);
+            rozet.textContent = boya[0];
+            rozet.style.background = boya[1];
+            rozet.style.color = boya[2];
+            rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+        });
+    }
+
+    function sosyalHavuzSatir(kayit) {
+        const satir = document.createElement('div');
+        satir.setAttribute('data-syh-satir', kayit.id);
+        satir.style.cssText = 'display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid #334155; border-radius:8px; background:#0f172a;';
+        const ust = document.createElement('div');
+        ust.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;';
+        const sol = document.createElement('label');
+        sol.style.cssText = 'display:flex; align-items:center; gap:6px; margin:0; font-size:12px; color:#e2e8f0;';
+        const kutu = document.createElement('input');
+        kutu.type = 'checkbox';
+        kutu.className = 'syh-dahil';
+        kutu.setAttribute('data-syh-dahil', kayit.id);
+        kutu.checked = !!kayit.dahil;
+        const yazi = document.createElement('span');
+        yazi.textContent = 'Yayına Dahil Et';
+        sol.appendChild(kutu);
+        sol.appendChild(yazi);
+        const boya = sosyalHavuzRozet(kayit.durum);
+        const rozet = document.createElement('span');
+        rozet.setAttribute('data-syh-rozet', kayit.id);
+        rozet.textContent = boya[0];
+        rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+        rozet.style.cssText = 'padding:3px 8px; border-radius:999px; font-size:12px; background:' + boya[1] + '; color:' + boya[2] + ';';
+        ust.appendChild(sol);
+        ust.appendChild(rozet);
+        const ad = document.createElement('div');
+        ad.style.cssText = 'font-size:13px; color:#f8fafc; font-weight:bold;';
+        ad.textContent = kayit.ad || '';
+        const url = document.createElement('div');
+        url.style.cssText = 'font-size:11px; color:#94a3b8; word-break:break-all;';
+        url.textContent = kayit.rtmp_url || '';
+        const alt = document.createElement('div');
+        alt.style.cssText = 'display:flex; gap:6px; align-items:center; flex-wrap:wrap;';
+        const anahtar = document.createElement('input');
+        anahtar.type = 'password';
+        anahtar.setAttribute('data-syh-key', kayit.id);
+        anahtar.value = kayit.stream_key || '';
+        anahtar.maxLength = 400;
+        anahtar.autocomplete = 'new-password';
+        anahtar.spellcheck = false;
+        anahtar.placeholder = 'Yayın Anahtarı (Stream Key)';
+        anahtar.style.cssText = 'flex:1; min-width:180px; margin:0;';
+        const guncelle = document.createElement('button');
+        guncelle.type = 'button';
+        guncelle.className = 'btn btn-sm';
+        guncelle.style.cssText = 'background:#1e293b; color:#e2e8f0;';
+        guncelle.setAttribute('data-syh-guncelle', kayit.id);
+        guncelle.textContent = 'Güncelle';
+        const sil = document.createElement('button');
+        sil.type = 'button';
+        sil.className = 'btn btn-red btn-sm';
+        sil.setAttribute('data-syh-sil', kayit.id);
+        sil.textContent = 'Sil';
+        alt.appendChild(anahtar);
+        alt.appendChild(guncelle);
+        alt.appendChild(sil);
+        satir.appendChild(ust);
+        satir.appendChild(ad);
+        satir.appendChild(url);
+        satir.appendChild(alt);
+        return satir;
+    }
+
+    function sosyalHavuzCiz(hesaplar) {
+        const liste = document.getElementById('syhListe');
+        if (!liste) return;
+        const dizi = Array.isArray(hesaplar) ? hesaplar : [];
+        sosyalHavuzDahilSayisi = dizi.filter(function (kayit) { return kayit && kayit.dahil; }).length;
+        const imza = sosyalHavuzImzaHesapla(dizi);
+        if (imza === sosyalHavuzImza && liste.childElementCount) {
+            sosyalHavuzRozetleriGuncelle(dizi);
+            return;
+        }
+        const odak = document.activeElement;
+        const odakId = odak && odak.getAttribute ? odak.getAttribute('data-syh-key') : '';
+        const odakDeger = odakId ? odak.value : '';
+        const odakBas = odakId && typeof odak.selectionStart === 'number' ? odak.selectionStart : null;
+        liste.replaceChildren();
+        if (!dizi.length) {
+            const bos = document.createElement('div');
+            bos.style.cssText = 'font-size:12px; color:#94a3b8;';
+            bos.textContent = 'Kayıtlı hesap yok. Üstten dilediğiniz kadar ekleyebilirsiniz.';
+            liste.appendChild(bos);
+        } else {
+            dizi.forEach(function (kayit) {
+                if (kayit && kayit.id) liste.appendChild(sosyalHavuzSatir(kayit));
+            });
+        }
+        sosyalHavuzImza = imza;
+        if (odakId) {
+            const alan = liste.querySelector('[data-syh-key="' + odakId + '"]');
+            if (alan) {
+                alan.value = odakDeger;
+                alan.focus();
+                if (odakBas !== null && alan.setSelectionRange) {
+                    try { alan.setSelectionRange(odakBas, odakBas); } catch (e) {}
+                }
+            }
+        }
+    }
+
+    function sosyalHavuzUygula(veri, sessiz) {
+        if (!veri || veri.success === false) {
+            sosyalHavuzNotu((veri && veri.mesaj) || 'Havuz kaydedilemedi.', true);
+            return;
+        }
+        if (Array.isArray(veri.hesaplar)) sosyalHavuzCiz(veri.hesaplar);
+        if (!sessiz && veri.mesaj) sosyalHavuzNotu(veri.mesaj, false);
+    }
+
+    function sosyalHavuzYukle(sessiz) {
+        if (!sessiz && Date.now() - sosyalHavuzDokunma < 1200) return;
+        sosyalHavuzGonder('sosyal_havuz_liste').then(function (veri) {
+            const onceki = sosyalHavuzDahilSayisi;
+            sosyalHavuzUygula(veri, true);
+            if (sosyalHavuzDahilSayisi > 0 && onceki === 0) {
+                if (typeof iriunVideoCanli === 'function' && iriunVideoCanli(restreamAkis) && (!restreamKayit || restreamKayit.state === 'inactive')) {
+                    restreamKaydiBaslat();
+                }
+            }
+        }).catch(function () {});
+    }
+
+    function sosyalHavuzBaslat() {
+        const ekle = document.getElementById('syhEkle');
+        const liste = document.getElementById('syhListe');
+        if (ekle) {
+            ekle.addEventListener('click', function () {
+                const ad = document.getElementById('syhAd');
+                const url = document.getElementById('syhUrl');
+                const anahtar = document.getElementById('syhKey');
+                sosyalHavuzGonder('sosyal_havuz_ekle', {
+                    ad: ad ? ad.value : '',
+                    rtmp_url: url ? url.value : '',
+                    stream_key: anahtar ? anahtar.value : ''
+                }).then(function (veri) {
+                    sosyalHavuzUygula(veri, false);
+                    if (veri && veri.success !== false) {
+                        if (ad) ad.value = '';
+                        if (url) url.value = '';
+                        if (anahtar) anahtar.value = '';
+                    }
+                }).catch(function () { sosyalHavuzNotu('Bağlantı kurulamadı.', true); });
+            });
+        }
+        if (liste) {
+            liste.addEventListener('change', function (olay) {
+                const hedef = olay.target;
+                if (!hedef || !hedef.getAttribute) return;
+                const kim = hedef.getAttribute('data-syh-dahil');
+                if (!kim) return;
+                sosyalHavuzGonder('sosyal_havuz_dahil', { id: kim, dahil: !!hedef.checked }).then(function (veri) {
+                    sosyalHavuzUygula(veri, false);
+                    if (!veri || veri.success === false) return;
+                    if (hedef.checked) sosyalHavuzYayiniTazele();
+                    else if (!kopruMedyasiGerekli() && restreamKayit && restreamKayit.state !== 'inactive') {
+                        try { restreamKayit.stop(); } catch (e) {}
+                        restreamKayit = null;
+                    }
+                }).catch(function () { sosyalHavuzNotu('Bağlantı kurulamadı.', true); });
+            });
+            liste.addEventListener('click', function (olay) {
+                const hedef = olay.target;
+                if (!hedef || !hedef.getAttribute) return;
+                const guncelle = hedef.getAttribute('data-syh-guncelle');
+                const sil = hedef.getAttribute('data-syh-sil');
+                if (guncelle) {
+                    const alan = liste.querySelector('[data-syh-key="' + guncelle + '"]');
+                    const kutu = liste.querySelector('[data-syh-dahil="' + guncelle + '"]');
+                    sosyalHavuzGonder('sosyal_havuz_guncelle', {
+                        id: guncelle,
+                        stream_key: alan ? alan.value : ''
+                    }).then(function (veri) {
+                        sosyalHavuzUygula(veri, false);
+                        if (veri && veri.success !== false && kutu && kutu.checked) sosyalHavuzYayiniTazele();
+                    }).catch(function () { sosyalHavuzNotu('Bağlantı kurulamadı.', true); });
+                    return;
+                }
+                if (!sil) return;
+                if (!window.confirm('Bu hesap havuzdan silinsin mi?')) return;
+                sosyalHavuzGonder('sosyal_havuz_sil', { id: sil }).then(function (veri) {
+                    sosyalHavuzUygula(veri, false);
+                }).catch(function () { sosyalHavuzNotu('Bağlantı kurulamadı.', true); });
+            });
+        }
+        sosyalHavuzYukle(true);
+        if (sosyalHavuzZamanlayici) clearInterval(sosyalHavuzZamanlayici);
+        sosyalHavuzZamanlayici = setInterval(function () { sosyalHavuzYukle(false); }, 3000);
+    }
+    sosyalHavuzBaslat();
     canliYayinDurumunuAl();
 
     const REJI_IKON = {
@@ -2813,7 +3088,7 @@
         if (deviceId) iriunSecimiYaz(deviceId);
         kameraYayininiAc();
         const alan = restreamAlanlari();
-        if (alan.restream_rtmp_url && alan.restream_stream_key) restreamKaydiBaslat();
+        if (kopruMedyasiGerekli()) restreamKaydiBaslat();
         const sesVar = akis.getAudioTracks && akis.getAudioTracks().length > 0;
         restreamDurumYaz(sesVar
             ? 'Kamera açık. Vitrin, sahne izleme ve Restream aynı görüntüyü alıyor.'
@@ -2892,6 +3167,7 @@
         const acik = iriunCanliMi();
         const alan = restreamAlanlari();
         const restreamHazir = !!(alan.restream_rtmp_url && alan.restream_stream_key);
+        const medyaGerekli = restreamHazir || sosyalHavuzSecili();
         const imza = String(ayar.restream_imza || '');
         if (!acik) {
             iriunBeklemeyiDurdur();
@@ -2899,7 +3175,7 @@
             restreamDurumYaz('');
             return;
         }
-        if (!restreamHazir && restreamKayit) {
+        if (!medyaGerekli && restreamKayit) {
             if (restreamKayit.state !== 'inactive') {
                 try { restreamKayit.stop(); } catch (e) {}
             }

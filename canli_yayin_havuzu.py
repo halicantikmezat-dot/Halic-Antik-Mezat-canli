@@ -236,6 +236,14 @@ def kontrol_yaniti():
         return jsonify(_webhook_test())
     if islem == "restream_parca":
         return jsonify(_restream_parca_al(veri))
+    if islem in (
+        "sosyal_havuz_liste",
+        "sosyal_havuz_ekle",
+        "sosyal_havuz_guncelle",
+        "sosyal_havuz_sil",
+        "sosyal_havuz_dahil",
+    ):
+        return jsonify(_sosyal_havuz_islem(islem, veri))
     return jsonify({"success": False, "mesaj": "Geçersiz canlı yayın işlemi."}), 400
 
 
@@ -2653,6 +2661,7 @@ def _restream_istek_guncelle():
         _RESTREAM_ISTEK = bool(hedef)
     if (not hedef) or hedef != eski:
         _restream_sureci_kapat()
+    _sosyal_kapisi(canli)
 
 
 def _restream_kopru_durdur():
@@ -2661,6 +2670,7 @@ def _restream_kopru_durdur():
         _RESTREAM_ISTEK = False
         _RESTREAM_HEDEF = ""
     _restream_sureci_kapat()
+    _sosyal_kapisi(False)
 
 
 def _restream_sureci_kapat():
@@ -2857,6 +2867,47 @@ def _restream_yaz(hedef, paket, baslik, mime):
     return True
 
 
+def _sosyal_kapisi(acik):
+    """Havuz kapısı hata verse de ana Restream köprüsü sürer."""
+    try:
+        import sosyal_yayin_havuzu as havuz
+
+        havuz.yayin_kapisi(bool(acik))
+    except Exception as hata:
+        print(f"[SOSYAL HAVUZ] kapisi atlandi: {hata}", flush=True)
+
+
+def _sosyal_parca_dagit(paket, baslik, mime):
+    try:
+        import sosyal_yayin_havuzu as havuz
+
+        sonuc = havuz.parca_yaz(paket, bool(baslik), str(mime or "")) or {}
+    except Exception as hata:
+        print(f"[SOSYAL HAVUZ] parca atlandi: {hata}", flush=True)
+        return {}
+    return sonuc if isinstance(sonuc, dict) else {}
+
+
+def _sosyal_havuz_islem(islem, veri):
+    if not _yonetici_mi():
+        return {"success": False, "mesaj": "Yetki yok."}
+    try:
+        import sosyal_yayin_havuzu as havuz
+
+        return havuz.api(islem, veri)
+    except Exception as hata:
+        print(f"[SOSYAL HAVUZ] islem atlandi: {hata}", flush=True)
+        return {"success": False, "mesaj": "Yayın havuzu kaydedilemedi."}
+
+
+def _sosyal_yanita_ekle(paket, sosyal):
+    if not sosyal or not sosyal.get("yeniden"):
+        return paket
+    kopya = dict(paket)
+    kopya["yeniden"] = True
+    return kopya
+
+
 def _restream_parca_al(veri):
     """Tarayıcı medya parçasını FFmpeg stdin'ine yazar. Hata olursa sessizce atlar."""
     try:
@@ -2865,54 +2916,70 @@ def _restream_parca_al(veri):
         with _RESTREAM_KILIT:
             istek = _RESTREAM_ISTEK
             hedef = _RESTREAM_HEDEF
+        diger = str(_kopya().get("aktif_dukkan") or "") == _SABIT_CANLI_DUKKAN
+        baslik = bool((veri or {}).get("baslik"))
+        mime = str((veri or {}).get("mime") or "")
+        paket = b""
+        if diger:
+            ham = str((veri or {}).get("parca") or "")
+            if ham and len(ham) <= 2800000:
+                try:
+                    paket = base64.b64decode(ham, validate=False)
+                except Exception:
+                    paket = b""
+                if paket and len(paket) > 2000000:
+                    paket = b""
+        sosyal = _sosyal_parca_dagit(paket, baslik, mime) if paket else {}
         if not istek or not hedef:
+            if sosyal.get("adet"):
+                return _sosyal_yanita_ekle(
+                    {"success": True, "restream": False, "sosyal_havuz": True},
+                    sosyal,
+                )
             return {
                 "success": True,
                 "atlandi": True,
                 "restream": False,
                 "mesaj": "Köprü sunucuda kapalı. Diğer yayını açıkken ayarları kaydedin.",
             }
-        if str(_kopya().get("aktif_dukkan") or "") != _SABIT_CANLI_DUKKAN:
+        if not diger:
             return {
                 "success": True,
                 "atlandi": True,
                 "restream": False,
                 "mesaj": "Köprü yalnızca Diğer canlı yayınında açılır.",
             }
-        ham = str((veri or {}).get("parca") or "")
-        if not ham or len(ham) > 2800000:
+        if not paket:
             return {"success": True, "atlandi": True}
-        try:
-            paket = base64.b64decode(ham, validate=False)
-        except Exception:
-            return {"success": True, "atlandi": True}
-        if not paket or len(paket) > 2000000:
-            return {"success": True, "atlandi": True}
-        sonuc = _restream_yaz(
-            hedef,
-            paket,
-            bool((veri or {}).get("baslik")),
-            str((veri or {}).get("mime") or ""),
-        )
+        sonuc = _restream_yaz(hedef, paket, baslik, mime)
         if sonuc == "yeniden":
-            return {
-                "success": True,
-                "yeniden": True,
-                "restream": False,
-                "mesaj": _restream_hata_oku() or "FFmpeg akışı kesti, yeniden bağlanıyor.",
-            }
+            return _sosyal_yanita_ekle(
+                {
+                    "success": True,
+                    "yeniden": True,
+                    "restream": False,
+                    "mesaj": _restream_hata_oku() or "FFmpeg akışı kesti, yeniden bağlanıyor.",
+                },
+                sosyal,
+            )
         if sonuc:
-            return {
+            return _sosyal_yanita_ekle(
+                {
+                    "success": True,
+                    "restream": True,
+                    "mesaj": "Restream yayını sunucudan aktarılıyor.",
+                },
+                sosyal,
+            )
+        return _sosyal_yanita_ekle(
+            {
                 "success": True,
-                "restream": True,
-                "mesaj": "Restream yayını sunucudan aktarılıyor.",
-            }
-        return {
-            "success": True,
-            "restream": False,
-            "atlandi": True,
-            "mesaj": _restream_hata_oku() or "Paket Restream'e yazılamadı. OBS ile gönderin.",
-        }
+                "restream": False,
+                "atlandi": True,
+                "mesaj": _restream_hata_oku() or "Paket Restream'e yazılamadı. OBS ile gönderin.",
+            },
+            sosyal,
+        )
     except Exception as hata:
         print(f"[RESTREAM] parca atlandi: {hata}", flush=True)
         return {"success": True, "atlandi": True}
