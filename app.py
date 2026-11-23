@@ -2973,7 +2973,12 @@ def _otonom_satilmamis_lotlar(dukkan):
         .order_by(Urun.lot_no.asc(), Urun.id.asc())
         .all()
     )
-    return [urun for urun in adaylar if not _otonom_urun_satildi(urun)]
+    return [
+        urun
+        for urun in adaylar
+        if not _otonom_urun_satildi(urun)
+        and str(getattr(urun, "kaynak_tipi", "") or "") != "canli_yayin"
+    ]
 
 
 def _otonom_secere_oku(dukkan, urun, acilis):
@@ -7087,6 +7092,20 @@ def mezat_baslat():
     except (TypeError, ValueError):
         sure = 180
 
+    canli_oturum = False
+    if not urun_id and dukkan == "diger" and sure >= 180:
+        try:
+            from diger_canli_sahne import hazirla as _diger_canli_hazirla
+
+            yer = _diger_canli_hazirla(db, Urun)
+        except Exception as hata:
+            db.session.rollback()
+            print(f"[CANLI SAHNE] urun acilamadi: {hata}", flush=True)
+            yer = None
+        if yer is not None:
+            urun_id = yer.id
+            canli_oturum = True
+
     if not urun_id:
         return jsonify({"success": False, "mesaj": "Bu dükkanda ürün seçilmedi!"})
 
@@ -7129,6 +7148,11 @@ def mezat_baslat():
         oda["sayac_aktif"] = True
         gorev = oda["sayac_gorev_id"]
         urun = db.session.get(Urun, int(urun_id))
+        if canli_oturum:
+            oda["durum"]["pey"] = float(getattr(urun, "guncel_fiyat", 0) or 0) if urun else 0
+            oda["durum"]["kazanan"] = "Yok"
+            oda["durum"]["kazanan_id"] = None
+            oda["son_teklif_veren_id"] = None
         if sure >= 180:
             gorev = _pazarligi_hazirla(oda, urun)
             akis = "pazarlik"
@@ -7137,7 +7161,20 @@ def mezat_baslat():
             oda["sayac_aktif"] = True
             oda["sayac_kalan"] = 60
             akis = "karar"
+        canli_paket = urun.to_dict() if canli_oturum and urun is not None else None
 
+    if canli_paket:
+        sahneyi_herkese_yayinla(
+            dukkan,
+            canli_paket,
+            {
+                "urun_id": canli_paket.get("id"),
+                "pey": 0,
+                "kazanan": "Yok",
+                "kazanan_id": None,
+            },
+            yeni_urun=True,
+        )
     socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, akis)
     socketio.emit("mezat_basladi_muzik", room=dukkan)
     return jsonify({"success": True, "dukkan": dukkan})
@@ -11728,6 +11765,30 @@ aktif_izleyiciler = set()
 izleyici_adlari = {}
 
 
+def _diger_canli_sahneyi_birak():
+    """Özel yayın kapanınca yalnız geçici canlı ürünü sahneden indirir."""
+    dukkan = "diger"
+    oda = odalar.get(dukkan)
+    if oda is None or not oda.get("aktif_urun_id"):
+        return
+    urun = db.session.get(Urun, oda.get("aktif_urun_id"))
+    try:
+        from diger_canli_sahne import kaynak_mi
+    except Exception:
+        return
+    if not kaynak_mi(urun):
+        return
+    with oda_kilitleri[dukkan]:
+        oda["sayac_aktif"] = False
+        oda["sayac_gorev_id"] = int(oda.get("sayac_gorev_id") or 0) + 1
+        oda["durum"]["pey"] = 0
+        oda["durum"]["kazanan"] = "Yok"
+        oda["durum"]["kazanan_id"] = None
+        oda["aktif_urun_id"] = None
+        _gizli_pazarligi_kapat(oda)
+    _sahneyi_bosa_al(dukkan, "bekleme")
+
+
 def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False):
     """Sahne değişimini ilgili dükkân odasına bir kez duyurur."""
     oda = odalar.get(dukkan)
@@ -12006,6 +12067,8 @@ try:
                         "push_public_key": govde.get("push_public_key") or "",
                     }
                     socketio.emit("aktif_canli_yayin", durum_payload, namespace="/")
+                    if islem in ("durdur", "kapat", "stop"):
+                        _diger_canli_sahneyi_birak()
         except Exception as hata:
             print(f"[CANLI YAYIN] global soket yayini: {hata}", flush=True)
         return yanit

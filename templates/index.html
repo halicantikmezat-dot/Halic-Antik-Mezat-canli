@@ -2787,6 +2787,13 @@
     let aktifSahneUrunId = null;
     let sahnedekiUrunSatildiMi = false;
     let sahneKapali = false;
+    let digerCanliPey = false;
+
+    function digerCanliPeyMi(urun) {
+        if (aktifDukkan !== 'diger' || !urun) return false;
+        const ad = String(urun.ad || urun.urun_adi || '');
+        return ad === 'Canlı Yayın Ürünü' || urun.kaynak_tipi === 'canli_yayin';
+    }
     let sahneBeklemeMetni = "Yeni ürün sahneye bekleniyor...";
     let sonBulunanUrunler = [];
     let audioCtx = null;
@@ -5583,6 +5590,19 @@
             if (data.asama === 'pazarlik') {
                 serbestArtis = true;
                 const ham = Math.max(0, parseInt(kalan, 10) || 0);
+                if (digerCanliPey) {
+                    if (digits) {
+                        digits.classList.remove('satildi-yazi');
+                        digits.classList.add('pazarlik-sayac');
+                        digits.innerText = Math.floor(ham / 60) + ':' + String(ham % 60).padStart(2, '0');
+                    }
+                    const oran = Math.max(0, Math.min(1, ham / 180));
+                    if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * oran);
+                    if (cockpit) cockpit.classList.toggle('urgent', ham > 0 && ham <= 15);
+                    if (statusTitle) statusTitle.innerText = ham <= 15 ? 'SON ' + ham + ' SN' : 'GERİ SAYIM';
+                    if (ham > 0 && ham <= 15) mekanikTikTakSesiCal(true);
+                    return;
+                }
                 const sn = Math.max(0, ham - 60);
                 if (digits) {
                     digits.classList.remove('satildi-yazi');
@@ -5735,7 +5755,9 @@
             if (btnHemenAl) {
                 btnHemenAl.classList.add('btn-disabled-sold');
                 btnHemenAl.innerText = "🔒 Sıradaki ürün bekleniyor";
+                btnHemenAl.removeAttribute('data-canli-pey');
             }
+            digerCanliPey = false;
             
             if (hlsInstance) {
                 hlsInstance.detachMedia();
@@ -5796,7 +5818,14 @@
             if (btnSerbest) btnSerbest.classList.remove('btn-disabled-sold');
             if (btnHemenAl) {
                 btnHemenAl.classList.remove('btn-disabled-sold');
-                btnHemenAl.innerText = `Hemen Al (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
+                digerCanliPey = digerCanliPeyMi(urunObj);
+                if (digerCanliPey) {
+                    btnHemenAl.innerText = 'Teklif Ver';
+                    btnHemenAl.setAttribute('data-canli-pey', '1');
+                } else {
+                    btnHemenAl.removeAttribute('data-canli-pey');
+                    btnHemenAl.innerText = `Hemen Al (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
+                }
             }
         }
         }
@@ -6261,6 +6290,11 @@
     }
 
     function hemenAl() {
+        const canliTeklif = document.getElementById('btnHemenAl');
+        if (canliTeklif && canliTeklif.getAttribute('data-canli-pey') === '1') {
+            serbestPeyVer();
+            return;
+        }
         playUserClickSound();
         if (!kullaniciGirisKontrol() || !dogrulamaKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(sonGorulenPey, aktifHemenAlStatik);

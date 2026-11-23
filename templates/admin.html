@@ -5147,7 +5147,9 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dukkan: seciliDukkan, sure: sure })
-        });
+        }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
+            if (seciliDukkan === 'diger' && veri && veri.success === false && veri.mesaj) alert(veri.mesaj);
+        }).catch(function () {});
     }
 
     function sonPeyiIptalEt() {
