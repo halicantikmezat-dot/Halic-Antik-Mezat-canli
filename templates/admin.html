@@ -2731,47 +2731,181 @@
         return '';
     }
 
+    let iriunBekleme = null;
+    let iriunDenemeSuruyor = false;
+    let iriunEtiketIzni = false;
+
+    function iriunCanliMi() {
+        const kayit = canliYayinKaydi || {};
+        return !!(kayit.aktif && kayit.aktif_dukkan === CANLI_YAYIN_DUKKANI);
+    }
+
+    function iriunVideoCanli(akis) {
+        if (!akis || !akis.getVideoTracks) return false;
+        return akis.getVideoTracks().some(function (iz) { return iz.readyState === 'live'; });
+    }
+
+    function iriunBeklemeyiDurdur() {
+        if (!iriunBekleme) return;
+        clearInterval(iriunBekleme);
+        iriunBekleme = null;
+    }
+
+    function iriunSecimiYaz(deviceId) {
+        const kutu = document.getElementById('cyRestreamKamera');
+        if (!kutu || !deviceId) return;
+        if (!restreamSecenekVar(kutu, deviceId)) {
+            const oge = document.createElement('option');
+            oge.value = deviceId;
+            oge.textContent = 'Iriun Webcam';
+            kutu.appendChild(oge);
+        }
+        if (document.activeElement !== kutu) kutu.value = deviceId;
+    }
+
+    function iriunCihazBul() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return Promise.resolve('');
+        return navigator.mediaDevices.enumerateDevices().then(function (liste) {
+            const video = (liste || []).filter(function (cihaz) { return cihaz.kind === 'videoinput'; });
+            const secili = String((restreamAlanlari().restream_video_id) || '');
+            if (secili && video.some(function (cihaz) { return cihaz.deviceId === secili; })) return secili;
+            const iriun = video.find(function (cihaz) { return /iriun/i.test(cihaz.label || ''); });
+            return iriun && iriun.deviceId ? String(iriun.deviceId) : '';
+        }).catch(function () { return ''; });
+    }
+
+    function iriunIzleriDinle(akis) {
+        if (!akis || !akis.getVideoTracks) return;
+        akis.getVideoTracks().forEach(function (iz) {
+            iz.onended = function () {
+                if (!restreamAcik || !iriunCanliMi()) return;
+                iriunAkisiDusur();
+            };
+        });
+    }
+
+    function iriunAkisiBagla(akis, deviceId) {
+        if (restreamAkis && restreamAkis !== akis) {
+            restreamAkis.getTracks().forEach(function (iz) { try { iz.stop(); } catch (e) {} });
+        }
+        if (restreamKayit && restreamKayit.state !== 'inactive') {
+            try { restreamKayit.stop(); } catch (e) {}
+        }
+        restreamKayit = null;
+        restreamAkis = akis;
+        iriunIzleriDinle(akis);
+        if (deviceId) iriunSecimiYaz(deviceId);
+        kameraYayininiAc();
+        const alan = restreamAlanlari();
+        if (alan.restream_rtmp_url && alan.restream_stream_key) restreamKaydiBaslat();
+        const sesVar = akis.getAudioTracks && akis.getAudioTracks().length > 0;
+        restreamDurumYaz(sesVar
+            ? 'Kamera açık. Vitrin, sahne izleme ve Restream aynı görüntüyü alıyor.'
+            : 'Mikrofon açılamadı, kamera açık. Vitrin ve Restream görüntüsü sürüyor.');
+    }
+
+    function iriunAkisiDusur() {
+        if (!restreamAcik) return;
+        if (restreamKayit && restreamKayit.state !== 'inactive') {
+            try { restreamKayit.stop(); } catch (e) {}
+        }
+        restreamKayit = null;
+        kameraYayininiKapat();
+        if (restreamAkis) {
+            const akis = restreamAkis;
+            restreamAkis = null;
+            akis.getTracks().forEach(function (iz) { try { iz.stop(); } catch (e) {} });
+        }
+        restreamDurumYaz('Iriun kamera bağlantısı bekleniyor...');
+        iriunBeklemeyiBaslat();
+    }
+
+    function iriunBeklemeyiBaslat() {
+        if (!iriunCanliMi()) return;
+        restreamAcik = true;
+        if (!iriunVideoCanli(restreamAkis)) restreamDurumYaz('Iriun kamera bağlantısı bekleniyor...');
+        if (iriunBekleme) return;
+        iriunBekleme = setInterval(iriunYenidenDene, 2000);
+        iriunYenidenDene();
+    }
+
+    function iriunYenidenDene() {
+        if (!restreamAcik || !iriunCanliMi()) {
+            iriunBeklemeyiDurdur();
+            return;
+        }
+        if (iriunVideoCanli(restreamAkis) || iriunDenemeSuruyor) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+        iriunDenemeSuruyor = true;
+        iriunCihazBul().then(function (deviceId) {
+            if (deviceId || iriunEtiketIzni) return deviceId || '';
+            iriunEtiketIzni = true;
+            return navigator.mediaDevices.getUserMedia({ video: true }).then(function (gecici) {
+                gecici.getTracks().forEach(function (iz) { try { iz.stop(); } catch (e) {} });
+                return iriunCihazBul();
+            }).catch(function () { return ''; });
+        }).then(function (deviceId) {
+            if (!deviceId || !restreamAcik || !iriunCanliMi() || iriunVideoCanli(restreamAkis)) return null;
+            const alan = restreamAlanlari();
+            return restreamKameraAkisiAl({
+                restream_video_id: deviceId,
+                restream_audio_id: alan.restream_audio_id
+            }).then(function (akis) {
+                return { akis: akis, deviceId: deviceId };
+            });
+        }).then(function (sonuc) {
+            iriunDenemeSuruyor = false;
+            if (!sonuc) return;
+            if (!restreamAcik || !iriunCanliMi()) {
+                sonuc.akis.getTracks().forEach(function (iz) { try { iz.stop(); } catch (e) {} });
+                return;
+            }
+            iriunBeklemeyiDurdur();
+            iriunAkisiBagla(sonuc.akis, sonuc.deviceId);
+        }).catch(function () {
+            iriunDenemeSuruyor = false;
+            if (restreamAcik && iriunCanliMi() && !iriunVideoCanli(restreamAkis)) {
+                restreamDurumYaz('Iriun kamera bağlantısı bekleniyor...');
+            }
+        });
+    }
+
     function restreamKopruSenkron() {
         const kayit = canliYayinKaydi || {};
         const ayar = kayit.ayarlar || {};
-        const acik = !!(kayit.aktif && kayit.aktif_dukkan === CANLI_YAYIN_DUKKANI);
+        const acik = iriunCanliMi();
         const alan = restreamAlanlari();
-        const hazir = acik && alan.restream_rtmp_url && alan.restream_stream_key;
+        const restreamHazir = !!(alan.restream_rtmp_url && alan.restream_stream_key);
         const imza = String(ayar.restream_imza || '');
-        if (!hazir) {
+        if (!acik) {
+            iriunBeklemeyiDurdur();
             restreamKopruKapat();
-            if (!acik) restreamDurumYaz('');
+            restreamDurumYaz('');
             return;
         }
-        if (restreamAcik && imza && imza !== restreamImza) {
-            restreamKopruKapat();
+        if (!restreamHazir && restreamKayit) {
+            if (restreamKayit.state !== 'inactive') {
+                try { restreamKayit.stop(); } catch (e) {}
+            }
+            restreamKayit = null;
         }
-        if (restreamAcik) return;
-        restreamImza = imza;
-        restreamKopruAc();
+        if (restreamAcik && restreamHazir && imza && imza !== restreamImza && iriunVideoCanli(restreamAkis)) {
+            restreamImza = imza;
+            restreamKaydiYenile();
+        }
+        if (!restreamAcik) {
+            restreamImza = imza;
+            restreamKopruAc();
+            return;
+        }
+        if (!iriunVideoCanli(restreamAkis)) iriunBeklemeyiBaslat();
     }
 
     function restreamKopruAc() {
-        if (restreamAcik || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-        const alan = restreamAlanlari();
+        if (iriunVideoCanli(restreamAkis)) return;
         restreamAcik = true;
         restreamYeniden = 0;
-        restreamKameraAkisiAl(alan).then(function (akis) {
-            if (!restreamAcik) {
-                akis.getTracks().forEach(function (iz) { iz.stop(); });
-                return;
-            }
-            restreamAkis = akis;
-            kameraYayininiAc();
-            restreamKaydiBaslat();
-            const sesVar = akis.getAudioTracks && akis.getAudioTracks().length > 0;
-            restreamDurumYaz(sesVar
-                ? 'Kamera açık. Vitrin, sahne izleme ve Restream aynı görüntüyü alıyor.'
-                : 'Mikrofon açılamadı, kamera açık. Vitrin ve Restream görüntüsü sürüyor.');
-        }).catch(function () {
-            restreamAcik = false;
-            restreamDurumYaz('Seçilen kamera açılamadı. Web yayını sürüyor.');
-        });
+        iriunBeklemeyiBaslat();
     }
 
     function restreamKaydiBaslat() {
@@ -2819,9 +2953,9 @@
                 }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
                     if (!restreamAcik || !veri) return null;
                     if (veri.restream) {
-                        restreamDurumYaz('Restream yayını sunucudan aktarılıyor.');
+                        if (iriunVideoCanli(restreamAkis)) restreamDurumYaz('Restream yayını sunucudan aktarılıyor.');
                         restreamYeniden = 0;
-                    } else if (veri.mesaj) {
+                    } else if (veri.mesaj && iriunVideoCanli(restreamAkis)) {
                         restreamDurumYaz(veri.mesaj);
                     }
                     if (veri.yeniden && restreamYeniden < 2) {
@@ -2928,6 +3062,7 @@
     function restreamKopruKapat() {
         restreamAcik = false;
         restreamImza = '';
+        iriunBeklemeyiDurdur();
         kameraYayininiKapat();
         if (restreamKayit && restreamKayit.state !== 'inactive') {
             try { restreamKayit.stop(); } catch (e) {}
