@@ -5563,7 +5563,7 @@
         const kazanan = document.getElementById('aktif_kazanan');
         if (kazanan) kazanan.innerText = 'Yok';
         const statusTitle = document.getElementById('timerStatusTitle');
-        if (statusTitle) statusTitle.innerText = 'SON 60 SANİYE';
+        if (statusTitle) statusTitle.innerText = digerCanliPey ? 'KARAR AŞAMASI' : 'SON 60 SANİYE';
         if (typeof showToast === 'function') showToast(data.mesaj || 'Pazarlık bitti, son karar süresi başladı');
     });
 
@@ -5599,7 +5599,7 @@
                     const oran = Math.max(0, Math.min(1, ham / 180));
                     if (dial) dial.style.strokeDashoffset = 125.6 - (125.6 * oran);
                     if (cockpit) cockpit.classList.toggle('urgent', ham > 0 && ham <= 15);
-                    if (statusTitle) statusTitle.innerText = ham <= 15 ? 'SON ' + ham + ' SN' : 'GERİ SAYIM';
+                    if (statusTitle) statusTitle.innerText = ham > 60 ? 'PAZARLIK AŞAMASI' : 'KARAR AŞAMASI';
                     if (ham > 0 && ham <= 15) mekanikTikTakSesiCal(true);
                     return;
                 }
@@ -5633,7 +5633,10 @@
             if (kalan > 0) {
                 let acilDurum = (kalan <= 15);
                 mekanikTikTakSesiCal(acilDurum);
-                if (acilDurum) {
+                if (digerCanliPey) {
+                    if (cockpit) cockpit.classList.toggle('urgent', acilDurum);
+                    if (statusTitle) statusTitle.innerText = "KARAR AŞAMASI";
+                } else if (acilDurum) {
                     if (cockpit) cockpit.classList.add('urgent');
                     if (statusTitle) statusTitle.innerText = "⚠ SON " + kalan + " SN!";
                 } else {
@@ -5789,9 +5792,11 @@
         }
         aktifHemenAlStatik = parseFloat(urunObj.hemen_al_fiyati || urunObj.hemen_al_fiyat || 0);
         aktifAcilisFiyati = parseFloat(urunObj.fiyat || urunObj.acilis_fiyati || 0);
+        digerCanliPey = digerCanliPeyMi(urunObj);
         document.getElementById('cornerAcilisFiyat').innerText = formatFiyat(urunObj.fiyat || 0);
         let aktifPey = parseFloat(peyTutar || urunObj.guncel_fiyat || urunObj.fiyat || 0);
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(aktifPey, aktifHemenAlStatik);
+        if (digerCanliPey && !(aktifHemenAlStatik > 0)) dinamikBedel = 0;
         document.getElementById('cornerHemenAlFiyat').innerText = formatFiyat(dinamikBedel);
 
         if (durum === "Satıldı" || urunObj.durum === "Satıldı") {
@@ -5818,13 +5823,12 @@
             if (btnSerbest) btnSerbest.classList.remove('btn-disabled-sold');
             if (btnHemenAl) {
                 btnHemenAl.classList.remove('btn-disabled-sold');
-                digerCanliPey = digerCanliPeyMi(urunObj);
-                if (digerCanliPey) {
-                    btnHemenAl.innerText = 'Teklif Ver';
-                    btnHemenAl.setAttribute('data-canli-pey', '1');
+                btnHemenAl.removeAttribute('data-canli-pey');
+                if (digerCanliPey && !(aktifHemenAlStatik > 0)) {
+                    btnHemenAl.classList.add('btn-disabled-sold');
+                    btnHemenAl.innerText = 'Hemen Al';
                 } else {
-                    btnHemenAl.removeAttribute('data-canli-pey');
-                    btnHemenAl.innerText = `Hemen Al (${dinamikBedel.toLocaleString('tr-TR')} TL)`;
+                    btnHemenAl.innerText = `Hemen Al (${Math.round(dinamikBedel).toLocaleString('tr-TR')} TL)`;
                 }
             }
         }
@@ -6179,6 +6183,11 @@
         if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         
         let current = sonGorulenPey || 0;
+        if (digerCanliPey) {
+            const taban = current > 0 ? current : (aktifAcilisFiyati || 0);
+            peyGonder(taban > 0 ? minimumPeyTabani(taban) : 10);
+            return;
+        }
         let yuzdeOnArtis = Math.round(current * 0.10);
         let minArtis = asgariArtisHesapla(current);
         let gercekArtis = Math.max(yuzdeOnArtis, minArtis);
@@ -6195,11 +6204,23 @@
         let minKabulFiyat = serbestArtis
             ? Math.max(current + 1, aktifAcilisFiyati || 0)
             : current + asgariArtisHesapla(current);
+        if (digerCanliPey) {
+            const taban = current > 0 ? current : (aktifAcilisFiyati || 0);
+            minKabulFiyat = taban > 0 ? minimumPeyTabani(taban) : 10;
+        }
         
         let miktar = prompt(`Mevcut Fiyat: ${current.toLocaleString('tr-TR')} TL\nMinimum Teklif: ${minKabulFiyat.toLocaleString('tr-TR')} TL\n\nTeklifinizi yazın (TL):`);
         if (!miktar) return;
         
         let tutar = parseFloat(miktar.replace(/\./g, '').replace(/,/g, '.'));
+        if (digerCanliPey) {
+            if (isNaN(tutar) || tutar < minKabulFiyat) {
+                alert(gecersizPeyUyarisi(minKabulFiyat));
+                return;
+            }
+            fahisPeyKontrol(tutar, function () { peyGonder(tutar); });
+            return;
+        }
         if (isNaN(tutar)) {
             alert(serbestArtis ? "Geçerli bir tutar yazın." : gecersizPeyUyarisi(minKabulFiyat));
             return;
@@ -6295,6 +6316,7 @@
             serbestPeyVer();
             return;
         }
+        if (digerCanliPey && !(aktifHemenAlStatik > 0)) return;
         playUserClickSound();
         if (!kullaniciGirisKontrol() || !dogrulamaKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
         let dinamikBedel = dinamikHemenAlFiyatiHesapla(sonGorulenPey, aktifHemenAlStatik);

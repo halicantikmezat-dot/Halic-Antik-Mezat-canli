@@ -717,6 +717,20 @@
                 <p style="margin-top: 4px;"><b>Durum:</b> <span id="aktifDurum">Bekliyor</span></p>
             </div>
 
+            <div id="cyManuelFiyatSatiri" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+                <span></span>
+                <span></span>
+                <div style="display: flex; gap: 4px; align-items: flex-end;">
+                    <label style="flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 10px; line-height: 1.15; color: #fef08a; font-weight: 700;">
+                        Açılış Fiyatı (TL)
+                        <input type="number" id="cyManuelAcilisFiyat" min="1" step="1" placeholder="Açılış TL" style="width: 100%; padding: 6px 4px; border-radius: 6px; border: 1px solid #d4af37; background: #0f141c; color: #fff; font-size: 12px;">
+                    </label>
+                    <label style="flex: 1; display: flex; flex-direction: column; gap: 2px; font-size: 10px; line-height: 1.15; color: #fef08a; font-weight: 700;">
+                        Hemen Aldım (TL)
+                        <input type="number" id="cyManuelHemenAlFiyat" min="1" step="1" placeholder="Hemen Aldım TL" style="width: 100%; padding: 6px 4px; border-radius: 6px; border: 1px solid #d4af37; background: #0f141c; color: #fff; font-size: 12px;">
+                    </label>
+                </div>
+            </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <button class="btn btn-yellow" onclick="mezatBaslat(180)">⏱️ 3 Dk Başlat</button>
                 <button class="btn btn-yellow" onclick="mezatBaslat(60)">⏱️ 60 Sn Karar</button>
@@ -1734,6 +1748,8 @@
 
         document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
+        const cyFiyatSatiri = document.getElementById('cyManuelFiyatSatiri');
+        if (cyFiyatSatiri) cyFiyatSatiri.style.display = kod === 'diger' ? 'grid' : 'none';
 
         if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
             otonomButonlariniCiz(!!otonomDurumlari[kod]);
@@ -5143,10 +5159,19 @@
 
     function mezatBaslat(sure) {
         playClickSound();
+        const paket = { dukkan: seciliDukkan, sure: sure };
+        if (seciliDukkan === 'diger' && Number(sure) >= 180) {
+            const acilisKutu = document.getElementById('cyManuelAcilisFiyat');
+            const hemenKutu = document.getElementById('cyManuelHemenAlFiyat');
+            const acilisHam = acilisKutu ? parseFloat(acilisKutu.value) : NaN;
+            const hemenHam = hemenKutu ? parseFloat(hemenKutu.value) : NaN;
+            paket.acilis_fiyat = (!acilisHam || acilisHam < 10) ? 10 : acilisHam;
+            if (hemenHam && hemenHam >= 1) paket.hemen_al_fiyat = hemenHam;
+        }
         fetch('/mezat-baslat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dukkan: seciliDukkan, sure: sure })
+            body: JSON.stringify(paket)
         }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
             if (seciliDukkan === 'diger' && veri && veri.success === false && veri.mesaj) alert(veri.mesaj);
         }).catch(function () {});

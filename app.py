@@ -2389,6 +2389,23 @@ def _pey_kabul_mu(oda, urun, tutar, mevcut):
     acilis = _acilis_tabani(oda, urun)
     if mevcut > 0 and tutar > mevcut * 5:
         return False, "Güvenlik kilidi: teklif mevcut fiyatın 5 katını aşıyor. Lütfen tutarı kontrol edin."
+    try:
+        from diger_canli_sahne import asgari_pey as _canli_asgari_pey
+        from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
+    except Exception:
+        _canli_kaynak_mi = None
+    if _canli_kaynak_mi is not None and _canli_kaynak_mi(urun):
+        if acilis > 0 and tutar < acilis:
+            return False, f"Teklif açılış fiyatının ({int(acilis)} TL) altına inemez."
+        if mevcut > 0:
+            gereken = _canli_asgari_pey(mevcut)
+            if tutar < gereken:
+                return False, (
+                    f"Geçersiz Teklif! En az %10 artışla minimum {gereken} TL verebilirsiniz."
+                )
+        if tutar <= mevcut:
+            return False, f"Teklif mevcut fiyattan ({int(mevcut)} TL) yüksek olmalıdır!"
+        return True, ""
     if _serbest_pey_modu(oda):
         if acilis > 0 and tutar < acilis:
             return False, f"Teklif açılış fiyatının ({int(acilis)} TL) altına inemez."
@@ -5801,6 +5818,19 @@ def pey_ver():
             islem = veri.get("islem", "pey")
 
             if islem == "hemen_al":
+                try:
+                    from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
+                except Exception:
+                    _canli_kaynak_mi = None
+                if (
+                    _canli_kaynak_mi is not None
+                    and _canli_kaynak_mi(urun)
+                    and float(urun.hemen_al_fiyati or 0) <= 0
+                ):
+                    return jsonify({
+                        "success": False,
+                        "mesaj": "Bu canlı üründe hemen al fiyatı tanımlı değil.",
+                    })
                 uygun, stok_mesaj = stok_satisa_uygun_mu(
                     urun, haric_musteri_id=kullanici.id
                 )
@@ -5910,7 +5940,18 @@ def pey_ver():
                 miktar = float(veri.get("miktar", 0))
 
                 if miktar <= 0:
-                    if _serbest_pey_modu(oda):
+                    try:
+                        from diger_canli_sahne import asgari_pey as _canli_asgari_pey
+                        from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
+                    except Exception:
+                        _canli_kaynak_mi = None
+                    if (
+                        _canli_kaynak_mi is not None
+                        and _canli_kaynak_mi(urun)
+                        and mevcut_fiyat > 0
+                    ):
+                        miktar = _canli_asgari_pey(mevcut_fiyat)
+                    elif _serbest_pey_modu(oda):
                         taban = _acilis_tabani(oda, urun)
                         miktar = round(max(mevcut_fiyat, taban) + 1)
                     else:
@@ -7095,9 +7136,14 @@ def mezat_baslat():
     canli_oturum = False
     if not urun_id and dukkan == "diger" and sure >= 180:
         try:
+            from diger_canli_sahne import coz_fiyatlar as _diger_fiyat_coz
             from diger_canli_sahne import hazirla as _diger_canli_hazirla
 
-            yer = _diger_canli_hazirla(db, Urun)
+            acilis_fiyat, hemen_al_fiyat = _diger_fiyat_coz(
+                veri.get("acilis_fiyat"),
+                veri.get("hemen_al_fiyat"),
+            )
+            yer = _diger_canli_hazirla(db, Urun, acilis_fiyat, hemen_al_fiyat)
         except Exception as hata:
             db.session.rollback()
             print(f"[CANLI SAHNE] urun acilamadi: {hata}", flush=True)
@@ -7169,7 +7215,7 @@ def mezat_baslat():
             canli_paket,
             {
                 "urun_id": canli_paket.get("id"),
-                "pey": 0,
+                "pey": float(canli_paket.get("guncel_fiyat") or canli_paket.get("fiyat") or 0),
                 "kazanan": "Yok",
                 "kazanan_id": None,
             },
