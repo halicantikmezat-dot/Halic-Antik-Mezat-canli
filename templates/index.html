@@ -621,6 +621,16 @@
         .zafer-kart h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; }
         .zafer-kart p { margin: 6px 0; font-weight: 800; font-size: 15px; line-height: 1.35; }
         .zafer-kart .zafer-fiyat { font-size: 18px; color: #7c2d12; }
+        .zafer-kart .zafer-kapat {
+            position: absolute; top: 8px; right: 8px; border: none; background: rgba(28, 25, 23, 0.12);
+            color: #1c1917; font-weight: 900; border-radius: 999px; width: 32px; height: 32px; cursor: pointer;
+        }
+        .zafer-kart .zafer-eylem { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+        .zafer-kart .zafer-eylem button {
+            border: none; border-radius: 10px; padding: 12px 10px; font-weight: 900; font-size: 14px; cursor: pointer;
+        }
+        .zafer-kart .zafer-wp { background: #128C7E; color: #fff; }
+        .zafer-kart .zafer-pos { background: #1c1917; color: #fef3c7; }
         .zafer-muhur {
             display: none; position: fixed; left: 50%; top: 36%; z-index: 13001;
             transform: translate(-50%, -50%) rotate(-8deg);
@@ -2220,10 +2230,15 @@
     <span id="pazarlikPopupDetay"></span>
 </div>
 <div id="zaferKonfeti"></div>
-<div id="zaferKart" class="zafer-kart">
-    <h1>🎯 TAM 12'DEN VURDUNUZ!</h1>
+<div id="zaferKart" class="zafer-kart" role="dialog" aria-labelledby="zaferBaslik">
+    <button type="button" class="zafer-kapat" onclick="kazananKartiKapat(false)" aria-label="Tebrik kartını kapat">✕</button>
+    <h1 id="zaferBaslik">Tebrikler, Ürünü Kazandınız!</h1>
     <p id="zaferAlt">Tebrikler!</p>
     <p class="zafer-fiyat" id="zaferFiyat"></p>
+    <div class="zafer-eylem">
+        <button type="button" class="zafer-wp" onclick="kazananWhatsappOnayla()">WhatsApp ile Siparişi Onayla</button>
+        <button type="button" class="zafer-pos" onclick="kazananOdemeyeGit()">Hemen Ödeme Yap (POS / Sepet)</button>
+    </div>
 </div>
 <div id="zaferMuhur" class="zafer-muhur">
     <b>SATILDI</b>
@@ -5699,11 +5714,9 @@
         sahnedekiUrunSatildiMi = false;
         const rozet = document.getElementById('sahneBeklemeRozeti');
         if (rozet) rozet.style.display = 'none';
-        const kart = document.getElementById('zaferKart');
+        kazananKartiOtomatikKapat();
         const muhur = document.getElementById('zaferMuhur');
-        if (kart) kart.classList.remove('acik');
         if (muhur) muhur.classList.remove('acik');
-        clearTimeout(window.zaferKartZaman);
         const digits = document.getElementById('timerDigits');
         const statusTitle = document.getElementById('timerStatusTitle');
         const cockpit = document.getElementById('mezatSayaci');
@@ -5847,10 +5860,6 @@
             const kazanan = document.getElementById('aktif_kazanan');
             if (kazanan) kazanan.innerText = kisaIsim(data.kazanan);
         }
-        const detay = document.getElementById('pazarlikPopupDetay');
-        if (detay) detay.innerText = data.mesaj || "Tebrikler! Ürün sahibini buldu.";
-        const pop = document.getElementById('pazarlikPopup');
-        if (pop) pop.classList.add('acik');
         const soldBanner = document.getElementById('soldBanner');
         if (soldBanner) {
             soldBanner.style.display = 'block';
@@ -5892,27 +5901,88 @@
         if (muhur) muhur.classList.remove("acik");
     }
 
+    function kazananMetniSadelestir(ham) {
+        return String(ham || "").replace(/\[[^\]]+\]/g, " ").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr-TR");
+    }
+
+    function izleyiciKazananMi(data) {
+        if (!data || data.satildi_mi === false) return false;
+        const kid = data.kazanan_id;
+        const kidVar = kid !== undefined && kid !== null && String(kid) !== "" && String(kid) !== "null" && String(kid) !== "None";
+        if (kullaniciId && kidVar) return String(kullaniciId) === String(kid);
+        const gelen = kazananMetniSadelestir(data.kazanan_adi || data.kazanan || "");
+        const benim = kazananMetniSadelestir(kullaniciAdi || "");
+        if (!gelen || gelen === "yok" || gelen === "kimse" || gelen === "-" || !benim) return false;
+        return gelen === benim;
+    }
+
+    function kazananSiparisiniYaz(data) {
+        const fiyatHam = data && data.son_fiyat != null ? data.son_fiyat : (data && data.fiyat);
+        const fiyat = Math.round(parseFloat(fiyatHam) || 0);
+        const lot = data && data.lot_no != null && data.lot_no !== "" ? data.lot_no : "";
+        window.kazananSiparis = {
+            lot: lot,
+            ad: (data && data.urun_adi) || "Eser",
+            fiyat: fiyat
+        };
+    }
+
+    function kazananKartiKapat(otomatik) {
+        if (otomatik && Date.now() - (window.kazananKartAcilis || 0) < 15000) return;
+        const kart = document.getElementById("zaferKart");
+        if (kart) kart.classList.remove("acik");
+        clearTimeout(window.zaferKartZaman);
+    }
+
+    function kazananKartiOtomatikKapat() {
+        kazananKartiKapat(true);
+    }
+
+    function kazananWhatsappOnayla() {
+        if (typeof playUserClickSound === "function") playUserClickSound();
+        const sip = window.kazananSiparis || {};
+        const lot = sip.lot === 0 || sip.lot ? sip.lot : "...";
+        const ad = sip.ad || "ürün";
+        const fiyat = Math.round(parseFloat(sip.fiyat) || 0).toLocaleString("tr-TR");
+        const metin = "Merhaba, canlı yayında Lot #" + lot + " " + ad + " ürününü " + fiyat + " TL'ye kazandım, siparişimi onaylıyorum.";
+        let rakam = String((typeof KURUMSAL_BILGILER !== "undefined" && KURUMSAL_BILGILER.telefon) || "").replace(/\D/g, "");
+        if (rakam.indexOf("90") !== 0 && rakam.length === 10) rakam = "90" + rakam;
+        if (rakam.indexOf("0") === 0) rakam = "9" + rakam;
+        const hedef = rakam.length >= 11 ? ("https://wa.me/" + rakam) : "https://wa.me/";
+        window.open(hedef + "?text=" + encodeURIComponent(metin), "_blank", "noopener");
+    }
+
+    function kazananOdemeyeGit() {
+        if (typeof openPosModalDirect === "function") openPosModalDirect();
+        else window.location.href = "/pos";
+    }
+
     function zaferKutlamasiniAc(data) {
-        const ad = (data && data.kazanan) ? String(data.kazanan) : "Misafir";
-        const fiyat = Math.round(parseFloat((data && data.fiyat) || 0) || 0).toLocaleString("tr-TR");
+        const gorunenAd = (data && (data.kazanan_adi || data.kazanan)) ? String(data.kazanan_adi || data.kazanan) : "";
+        if (!izleyiciKazananMi(data)) {
+            const kart = document.getElementById("zaferKart");
+            if (kart) kart.classList.remove("acik");
+            satildiDamgasiniGoster(gorunenAd);
+            return;
+        }
+        kazananSiparisiniYaz(data || {});
+        satildiDamgasiniGizle();
+        const ad = kazananMetniSadelestir(gorunenAd) ? String(gorunenAd).replace(/\[[^\]]+\]/g, " ").replace(/\s+/g, " ").trim() : (kullaniciAdi || "Misafir");
+        const sip = window.kazananSiparis || {};
+        const fiyat = Math.round(parseFloat(sip.fiyat) || 0).toLocaleString("tr-TR");
         const kart = document.getElementById("zaferKart");
         const alt = document.getElementById("zaferAlt");
         const fiyatYazi = document.getElementById("zaferFiyat");
-        const muhur = document.getElementById("zaferMuhur");
-        const muhurAd = document.getElementById("zaferMuhurAd");
-        if (alt) alt.textContent = "Tebrikler Sayın " + ad + ", Pazarlık Gizli Eşiğini Yakaladınız!";
-        if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL ile Eser Sizin Oldu!";
-        if (muhurAd) muhurAd.textContent = ad;
-        if (muhur) muhur.classList.add("acik");
+        const lotYazi = sip.lot === 0 || sip.lot ? ("Lot #" + sip.lot + " · ") : "";
+        if (alt) alt.textContent = "Sayın " + ad + ", " + lotYazi + (sip.ad || "eser") + " sizin oldu.";
+        if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL";
         if (kart) kart.classList.add("acik");
+        window.kazananKartAcilis = Date.now();
         window.zaferMuzikKilit = true;
         muzigiKis();
         zaferKonfetiBirak();
         clearTimeout(window.zaferKartZaman);
         clearTimeout(window.zaferMuzikZaman);
-        window.zaferKartZaman = setTimeout(function () {
-            if (kart) kart.classList.remove("acik");
-        }, 4500);
         window.zaferMuzikZaman = setTimeout(function () {
             window.zaferMuzikKilit = false;
             if (!(currentAudio && !currentAudio.paused)) muzigiNormaleDondur();
@@ -6057,7 +6127,7 @@
                     soldBanner.style.background = 'linear-gradient(90deg, #1b4d3e, #059669, #1b4d3e)';
                     soldBanner.innerHTML = `🎉 SATILDI: <span>${escapeHtml(data.kazanan)}</span> (${formatFiyat(data.fiyat || 0)})<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
                     if (statusTitle) statusTitle.innerText = "🔨 SATILDI!";
-                    satildiDamgasiniGoster(data.kazanan);
+                    satildiDamgasiniGoster(data.kazanan_adi || data.kazanan);
                 } else {
                     soldBanner.style.background = 'linear-gradient(90deg, #334155, #475569, #334155)';
                     soldBanner.innerHTML = `⚠️ BU ÜRÜN PAS GEÇİLDİ (Teklif Gelmedi)<div style="font-size: 8px; font-weight: bold; color: #fef08a; margin-top: 1px;">⏳ Sıradaki parça hazırlanıyor...</div>`;
@@ -6076,6 +6146,7 @@
             }
             if (!satildi) sahneyiBosalt("Yeni ürün sahneye bekleniyor...");
             canliLotAlaniniTemizle();
+            if (satildi) zaferKutlamasiniAc(data);
         }
     });
 

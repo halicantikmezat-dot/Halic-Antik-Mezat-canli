@@ -330,3 +330,40 @@ def odunc_birak():
     kaynak = next(iter(_ODUNC))
     _ODUNC.pop(kaynak, None)
     return kaynak
+
+
+def satis_kimligi(urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lot_no=None):
+    """Satış kapanış yayını için kazanan özeti. Sahne, AI, havuz ve mini pencereye dokunmaz."""
+    try:
+        tutar = float(fiyat or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    ad = str(kazanan_adi or "").strip() or "Yok"
+    if kazanan_id in (None, "", "None"):
+        kimlik = None
+    else:
+        try:
+            kimlik = int(kazanan_id)
+        except (TypeError, ValueError):
+            kimlik = kazanan_id
+    ad_urun = str(urun_adi or "").strip()
+    if not ad_urun:
+        ad_urun = str(getattr(urun, "urun_adi", "") or "").strip() or AD
+    if lot_no in (None, ""):
+        lot = getattr(urun, "lot_no", "")
+    else:
+        lot = lot_no
+    if lot in (None,):
+        lot = ""
+    else:
+        try:
+            lot = int(lot)
+        except (TypeError, ValueError):
+            lot = str(lot)
+    return {
+        "kazanan_id": kimlik,
+        "kazanan_adi": ad,
+        "urun_adi": ad_urun[:200],
+        "lot_no": lot,
+        "son_fiyat": tutar,
+    }

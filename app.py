@@ -2549,6 +2549,32 @@ def _satisi_kesinlestir(urun, kazanan_adi, kazanan_id, fiyat):
         )
 
 
+def _satis_olay_alanlari(urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lot_no=None):
+    """sayac_bitti ve urun_satildi_erken paketlerine kazanan kimliğini ekler."""
+    try:
+        from diger_canli_sahne import satis_kimligi
+        return satis_kimligi(
+            urun, kazanan_adi, kazanan_id, fiyat, urun_adi=urun_adi, lot_no=lot_no,
+        )
+    except Exception:
+        try:
+            tutar = float(fiyat or 0)
+        except (TypeError, ValueError):
+            tutar = 0.0
+        ad = str(kazanan_adi or "").strip() or "Yok"
+        ad_urun = str(urun_adi or getattr(urun, "urun_adi", "") or "Eser").strip() or "Eser"
+        lot = lot_no if lot_no not in (None, "") else getattr(urun, "lot_no", "")
+        if lot is None:
+            lot = ""
+        return {
+            "kazanan_id": kazanan_id,
+            "kazanan_adi": ad,
+            "urun_adi": ad_urun[:200],
+            "lot_no": lot,
+            "son_fiyat": tutar,
+        }
+
+
 def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konusma_adi):
     """Kilidi çağıran tutar. Gizli eşik hiçbir yayına konmaz."""
     oda["sayac_aktif"] = False
@@ -2582,17 +2608,15 @@ def _pazarlik_erken_sat(dukkan, oda, urun, etiket_ad, kullanici_id, tutar, konus
             "kazanan_id": kullanici_id,
         },
     )
-    _iki_odayi(
-        "urun_satildi_erken",
-        {
-            "dukkan": dukkan,
-            "urun_id": biten_id,
-            "kazanan": etiket_ad,
-            "fiyat": float(tutar),
-            "mesaj": "Tebrikler! Gizli pazarlık tabanı aşıldı, ürün sahibini buldu!",
-        },
-        dukkan,
-    )
+    _erken_paket = {
+        "dukkan": dukkan,
+        "urun_id": biten_id,
+        "kazanan": etiket_ad,
+        "fiyat": float(tutar),
+        "mesaj": "Tebrikler! Gizli pazarlık tabanı aşıldı, ürün sahibini buldu!",
+    }
+    _erken_paket.update(_satis_olay_alanlari(urun, etiket_ad, kullanici_id, tutar))
+    _iki_odayi("urun_satildi_erken", _erken_paket, dukkan)
     bota_haber_ver(
         "satis_bitti",
         {"dukkan": dukkan, "kazanan": etiket_ad, "fiyat": float(tutar)},
@@ -2847,19 +2871,24 @@ def _gorunur_karar_sayaci(dukkan, gorev_id, giris="tanitim", yalniz_kapat=False)
                     if dukkan == "diger":
                         _havuz_odunc_pas(biten_urun_id)
 
-    _iki_odayi(
-        "sayac_bitti",
-        {
-            "dukkan": dukkan,
-            "urun_id": biten_urun_id,
-            "mesaj": "Süre doldu!",
-            "satildi_mi": pey_var_mi,
-            "kazanan": kapanis["kazanan"] if pey_var_mi else "Yok",
-            "kazanan_id": kapanis["kazanan_id"] if pey_var_mi else None,
-            "fiyat": kapanis["pey"] if pey_var_mi else 0,
-        },
-        dukkan,
-    )
+    _kapanis_paket = {
+        "dukkan": dukkan,
+        "urun_id": biten_urun_id,
+        "mesaj": "Süre doldu!",
+        "satildi_mi": pey_var_mi,
+        "kazanan": kapanis["kazanan"] if pey_var_mi else "Yok",
+        "kazanan_id": kapanis["kazanan_id"] if pey_var_mi else None,
+        "fiyat": kapanis["pey"] if pey_var_mi else 0,
+    }
+    _kapanis_paket.update(_satis_olay_alanlari(
+        None,
+        _kapanis_paket["kazanan"],
+        _kapanis_paket["kazanan_id"],
+        _kapanis_paket["fiyat"],
+        urun_adi=satis_ad,
+        lot_no=satis_lot,
+    ))
+    _iki_odayi("sayac_bitti", _kapanis_paket, dukkan)
 
     bota_haber_ver(
         "satis_bitti",
@@ -5177,18 +5206,16 @@ def api_hemen_al_tetikle():
         db.session.add(urun)
         db.session.commit()
         urunu_kazanana_sepete_ekle(urun.id, etiket_ad, None)
-    _iki_odayi(
-        "sayac_bitti",
-        {
-            "dukkan": dukkan,
-            "urun_id": biten_id,
-            "satildi_mi": True,
-            "kazanan": etiket_ad,
-            "fiyat": fiyat,
-            "mesaj": "Hemen al tamamlandı.",
-        },
-        dukkan,
-    )
+    _kopru_paket = {
+        "dukkan": dukkan,
+        "urun_id": biten_id,
+        "satildi_mi": True,
+        "kazanan": etiket_ad,
+        "fiyat": fiyat,
+        "mesaj": "Hemen al tamamlandı.",
+    }
+    _kopru_paket.update(_satis_olay_alanlari(urun, etiket_ad, None, fiyat))
+    _iki_odayi("sayac_bitti", _kopru_paket, dukkan)
     socketio.emit(
         "yeni_canli_yorum",
         {
@@ -5995,18 +6022,18 @@ def pey_ver():
                         "kazanan_id": kullanici.id,
                     },
                 )
-                _iki_odayi(
-                    "sayac_bitti",
-                    {
-                        "dukkan": dukkan,
-                        "urun_id": biten_id,
-                        "satildi_mi": True,
-                        "kazanan": etiket_ad,
-                        "kazanan_id": kullanici.id,
-                        "fiyat": hemen_al_fiyat,
-                    },
-                    dukkan,
-                )
+                _hemen_paket = {
+                    "dukkan": dukkan,
+                    "urun_id": biten_id,
+                    "satildi_mi": True,
+                    "kazanan": etiket_ad,
+                    "kazanan_id": kullanici.id,
+                    "fiyat": hemen_al_fiyat,
+                }
+                _hemen_paket.update(_satis_olay_alanlari(
+                    urun, etiket_ad, kullanici.id, hemen_al_fiyat,
+                ))
+                _iki_odayi("sayac_bitti", _hemen_paket, dukkan)
                 bota_haber_ver(
                     "satis_bitti",
                     {
@@ -7778,8 +7805,13 @@ def satis_bitir():
         oda["aktif_urun_id"] = None
         _son_satisi_yaz(oda, oda["durum"].get("kazanan"), oda["durum"].get("pey"), biten_urun_id)
 
+        urun = None
         satis_lot = ""
         satis_ad = "Eser"
+        try:
+            satis_fiyat = float(oda["durum"].get("pey") or 0)
+        except (TypeError, ValueError):
+            satis_fiyat = 0.0
         if biten_urun_id:
             urun = db.session.get(Urun, biten_urun_id)
             if urun:
@@ -7790,6 +7822,7 @@ def satis_bitir():
                     if float(oda["durum"]["pey"] or 0) > 0
                     else float(urun.acilis_fiyati or 0)
                 )
+                satis_fiyat = fiyat
                 _satisi_kesinlestir(
                     urun,
                     oda["durum"]["kazanan"],
@@ -7806,18 +7839,23 @@ def satis_bitir():
                     oda["durum"].get("kazanan_id"),
                 )
 
-        _iki_odayi(
-            "sayac_bitti",
-            {
-                "dukkan": dukkan,
-                "urun_id": biten_urun_id,
-                "satildi_mi": True,
-                "kazanan": oda["durum"]["kazanan"],
-                "kazanan_id": oda["durum"].get("kazanan_id"),
-                "fiyat": oda["durum"]["pey"],
-            },
-            dukkan,
-        )
+        _bitir_paket = {
+            "dukkan": dukkan,
+            "urun_id": biten_urun_id,
+            "satildi_mi": True,
+            "kazanan": oda["durum"]["kazanan"],
+            "kazanan_id": oda["durum"].get("kazanan_id"),
+            "fiyat": oda["durum"]["pey"],
+        }
+        _bitir_paket.update(_satis_olay_alanlari(
+            urun,
+            oda["durum"]["kazanan"],
+            oda["durum"].get("kazanan_id"),
+            satis_fiyat,
+            urun_adi=satis_ad,
+            lot_no=satis_lot,
+        ))
+        _iki_odayi("sayac_bitti", _bitir_paket, dukkan)
         bota_haber_ver(
             "satis_bitti",
             {
