@@ -5116,6 +5116,22 @@ def _aktif_yayin_dukkani(istenen=None):
 def api_tiktok_web_chat():
     if not _kopru_kabul():
         return jsonify({"success": False, "mesaj": "Köprü anahtarı geçersiz."}), 401
+    veri = request.get_json(silent=True) or {}
+    platform = veri.get("platform") or "TikTok"
+    kullanici = veri.get("username") or veri.get("user") or veri.get("kullanici") or ""
+    mesaj = veri.get("message") or veri.get("mesaj") or veri.get("comment") or ""
+    try:
+        import canli_yayin_havuzu as _havuz_kopru
+
+        if _havuz_kopru.mukerrer_kapisi(platform, kullanici, mesaj):
+            return jsonify({
+                "success": True,
+                "tip": "mukerrer",
+                "pey": False,
+                "mesaj": "Mükerrer yorum yutuldu.",
+            })
+    except Exception as hata:
+        print(f"[KOPRU] mukerrer kontrol atlandi: {hata}", flush=True)
     return chat_mesaj_gonder()
 
 

@@ -6,6 +6,7 @@ Eksik sohbet kütüphaneleri uygulamayı düşürmez; pasif kalır.
 
 import base64
 import hashlib
+import hmac
 import html
 import json
 import os
@@ -118,7 +119,7 @@ _PUSH_TABLO = "canli_yayin_push"
 _SOSYAL_DB_ANAHTAR = "sosyal_havuz"
 _SOSYAL_REDIS = "halic:canli_yayin:sosyal_havuz"
 _DINLEYICI_KILIT = threading.RLock()
-_DINLEYICI_ADLAR = ("youtube", "tiktok", "twitch", "kick", "meta")
+_DINLEYICI_ADLAR = ("youtube", "tiktok", "twitch", "kick", "meta", "instagram", "facebook")
 _DINLEYICI_DURUM = {ad: "kapali" for ad in _DINLEYICI_ADLAR}
 _DINLEYICI_MESAJ = {ad: "" for ad in _DINLEYICI_ADLAR}
 _DINLEYICI_HEDEF = {ad: "" for ad in _DINLEYICI_ADLAR}
@@ -252,6 +253,8 @@ def kontrol_yaniti():
         "sosyal_havuz_dahil",
     ):
         return jsonify(_sosyal_havuz_islem(islem, veri))
+    if islem in ("kopru", "kopru_baslat", "kopru_durdur"):
+        return jsonify(_kopru_yonet(veri, islem))
     return jsonify({"success": False, "mesaj": "Geçersiz canlı yayın işlemi."}), 400
 
 
@@ -259,12 +262,18 @@ def meta_webhook_yaniti():
     """Facebook ve Instagram canlı yorumlarını ortak kuyruğa alır."""
     if request.method == "GET":
         return _meta_dogrulama_yaniti()
-    if _kopru_kabul is not None and not _kopru_kabul():
+    if not _meta_post_kabul():
         return jsonify({"success": False, "mesaj": "Köprü anahtarı geçersiz."}), 401
     veri = request.get_json(silent=True) or {}
     satirlar = _meta_satirlari(veri)
     if not satirlar:
+        challenge = _meta_ping_challenge(veri)
+        if challenge is not None:
+            from flask import Response
+
+            return Response(challenge, mimetype="text/plain")
         return jsonify({"success": False, "mesaj": "Yorum bulunamadı."}), 400
+    yerel = _yerel_istek_mi() or not _hedef_dukkan("")
     sonuclar = []
     for satir in satirlar[:20]:
         sonuclar.append(
@@ -273,6 +282,7 @@ def meta_webhook_yaniti():
                 satir.get("platform") or satir.get("kaynak") or "",
                 satir.get("kullanici") or satir.get("username") or satir.get("user") or "",
                 satir.get("mesaj") or satir.get("message") or satir.get("comment") or "",
+                yerel_kopru=yerel and (_yerel_istek_mi() or _meta_kanal_aktif()),
             )
         )
     kabul = [oge for oge in sonuclar if oge.get("success")]
@@ -343,7 +353,7 @@ def _otonom_pas_uygula(pas):
         print(f"[CANLI YAYIN] otonom pas atlandi: {hata}", flush=True)
 
 
-def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj):
+def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
     """Dış yorumu sohbete düşürür, kalp yollar ve uygunsa mevcut pey kapısını çağırır."""
     platform_adi = _platform_coz(platform)
     if not platform_adi:
@@ -353,8 +363,18 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj):
     if not metin:
         return {"success": False, "kod": 400, "mesaj": "Boş yorum işlenmez."}
     kod = _hedef_dukkan(dukkan)
+    if not kod and yerel_kopru:
+        kod = _SABIT_CANLI_DUKKAN
     if not kod:
         return {"success": False, "kod": 409, "mesaj": "Aktif canlı yayın yok."}
+    if mukerrer_kapisi(platform_adi, ad, metin):
+        return {
+            "success": True,
+            "tip": "mukerrer",
+            "pey": False,
+            "dukkan": kod,
+            "mesaj": "Mükerrer yorum yutuldu.",
+        }
     if not _yorum_hizi_uygun(platform_adi, ad):
         return {"success": False, "kod": 429, "mesaj": "Yorumlar çok hızlı geliyor."}
 
@@ -1025,6 +1045,8 @@ def _kanallari_temizle(ham):
             temiz[anahtar] = _twitch_kaynak(deger)
         elif anahtar == "kick":
             temiz[anahtar] = _kick_kaynak(deger)
+        elif anahtar in ("instagram", "facebook"):
+            temiz[anahtar] = _profil_kaynak(deger)
         else:
             temiz[anahtar] = _guvenli_url(deger or "")
     return temiz
@@ -1060,6 +1082,52 @@ def _sayiya(deger):
 
 
 _yorum_zamanlari = {}
+_MUKERRER_YORUM = {}
+
+
+def mukerrer_kapisi(platform, kullanici, mesaj):
+    """Son 10 saniyede aynı platform + kullanıcı + mesajı ikinci kez içeri almaz."""
+    import time
+
+    platform_adi = _platform_coz(platform) or str(platform or "").strip()
+    ad = str(kullanici or "").strip().lstrip("@")[:80].casefold()
+    metin = " ".join(str(mesaj or "").split())[:500].casefold()
+    if not platform_adi or not metin:
+        return False
+    anahtar = platform_adi.casefold() + "\n" + ad + "\n" + metin
+    simdi = time.time()
+    with _KILIT:
+        eski = [k for k, an in _MUKERRER_YORUM.items() if simdi - an >= 10]
+        for k in eski:
+            _MUKERRER_YORUM.pop(k, None)
+        son = _MUKERRER_YORUM.get(anahtar)
+        if son is not None and simdi - son < 10:
+            return True
+        _MUKERRER_YORUM[anahtar] = simdi
+        if len(_MUKERRER_YORUM) > 400:
+            sirali = sorted(_MUKERRER_YORUM.items(), key=lambda cift: cift[1])
+            for k, _an in sirali[: len(_MUKERRER_YORUM) - 300]:
+                _MUKERRER_YORUM.pop(k, None)
+    return False
+
+
+def yerel_kopru_yorumu(platform, kullanici, mesaj, dukkan=""):
+    """Aynı süreçteki köprü yorumunu 401/409 üretmeden havuz kapısına bırakır."""
+
+    def _calistir():
+        return havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=True)
+
+    if _app is None:
+        return _calistir()
+    with _app.app_context():
+        try:
+            return _calistir()
+        finally:
+            try:
+                if _db is not None:
+                    _db.session.remove()
+            except Exception:
+                pass
 
 
 def _yorum_hizi_uygun(platform, kullanici):
@@ -1092,6 +1160,10 @@ def bellek_kovalarini_temizle(ttl_sn=600):
                 silinecek.append(anahtar)
         for anahtar in silinecek:
             _yorum_zamanlari.pop(anahtar, None)
+        simdi = time.time()
+        for anahtar, an in list(_MUKERRER_YORUM.items()):
+            if simdi - an >= 10:
+                _MUKERRER_YORUM.pop(anahtar, None)
 
 
 def _yonetici_mi():
@@ -1620,6 +1692,94 @@ def _tiktok_dongu(kullanici, dukkan, dur):
                 _DINLEYICI_ISTEMCI["tiktok"] = None
 
 
+def _tarayici_kopru_dongu(ad, modul_adi, hedef, _dukkan, dur):
+    """Instagram veya Facebook tarayıcı köprüsünü havuz kapısına bağlar."""
+    try:
+        modul = __import__(modul_adi)
+    except Exception as hata:
+        _dinleyici_mesaj_yaz(ad, "Köprü yüklenemedi: " + _hata_ozeti(hata), hedef)
+        return
+
+    def _hazir():
+        _dinleyici_durum_yaz(ad, "bagli")
+
+    try:
+        baglandi = modul.start_listening(
+            modul.konsol_ve_sunucu_test,
+            hedef=hedef,
+            dur=dur,
+            hazir=_hazir,
+        )
+    except Exception as hata:
+        _dinleyici_mesaj_yaz(ad, _hata_ozeti(hata), hedef)
+        return
+    if baglandi is False and not (dur is not None and dur.is_set()):
+        _dinleyici_mesaj_yaz(ad, "Chrome 9222 açık değil", hedef)
+
+
+def _instagram_kopru_dongu(hedef, dukkan, dur):
+    _tarayici_kopru_dongu("instagram", "instagram_bridge", hedef, dukkan, dur)
+
+
+def _facebook_kopru_dongu(hedef, dukkan, dur):
+    _tarayici_kopru_dongu("facebook", "facebook_bridge", hedef, dukkan, dur)
+
+
+def _kanal_yaz(anahtar, deger):
+    with _KILIT:
+        kayit = _kopya()
+        kanallar = dict(kayit.get("kanallar") or {})
+        kanallar[anahtar] = deger
+        kayit["kanallar"] = _kanallari_temizle(kanallar)
+        _BELLEK.update(kayit)
+        anlik = _kopya()
+    _kalici_yaz(anlik)
+    return anlik
+
+
+def _kopru_paketi(mesaj):
+    paket = herkese_acik_durum()
+    paket["success"] = True
+    paket["ayarlar"] = _ayarlar_paketi()
+    paket["mesaj"] = mesaj
+    return paket
+
+
+def _kopru_yonet(veri, islem):
+    """TikTok, Instagram ve Facebook yorum köprülerini tek kapıdan açar veya kapatır."""
+    platform = str((veri or {}).get("platform") or "").strip().lower()
+    if platform not in ("tiktok", "instagram", "facebook"):
+        return {"success": False, "mesaj": "Köprü platformu tanınmadı."}
+    komut = str((veri or {}).get("komut") or "").strip().lower()
+    if islem == "kopru_durdur" or komut in ("durdur", "stop", "kapat"):
+        _dinleyici_yenile(platform, "", "", None)
+        return _kopru_paketi(_KANAL_ETIKET[platform] + " köprüsü durduruldu.")
+    hedef = str((veri or {}).get("hedef") or "").strip()
+    if not hedef:
+        hedef = str((_kanallar(_kopya()).get(platform)) or "").strip()
+    kod = str(_kopya().get("aktif_dukkan") or "") or _SABIT_CANLI_DUKKAN
+    if platform == "tiktok":
+        kullanici = _tiktok_kullanici(hedef)
+        if not kullanici:
+            return {"success": False, "mesaj": "TikTok kullanıcı adı veya linki gerekli."}
+        _kanal_yaz("tiktok", _tiktok_kaynak(hedef))
+        _dinleyici_yenile("tiktok", kullanici, kod, _tiktok_dongu)
+        return _kopru_paketi("@" + kullanici + " TikTok köprüsü başlatıldı.")
+    if platform == "instagram":
+        kayit = _profil_kaynak(hedef)
+        if not kayit:
+            return {"success": False, "mesaj": "Instagram kullanıcı adı veya yayın adresi gerekli."}
+        _kanal_yaz("instagram", kayit)
+        _dinleyici_yenile("instagram", kayit, kod, _instagram_kopru_dongu)
+        return _kopru_paketi("Instagram köprüsü başlatıldı.")
+    kayit = _profil_kaynak(hedef)
+    if not kayit:
+        return {"success": False, "mesaj": "Facebook kullanıcı adı veya yayın adresi gerekli."}
+    _kanal_yaz("facebook", kayit)
+    _dinleyici_yenile("facebook", kayit, kod, _facebook_kopru_dongu)
+    return _kopru_paketi("Facebook köprüsü başlatıldı.")
+
+
 _PASIF_UYARI = set()
 
 
@@ -1728,11 +1888,15 @@ def _dinleyici_anlik():
             "twitch": _DINLEYICI_DURUM.get("twitch") or "kapali",
             "kick": _DINLEYICI_DURUM.get("kick") or "kapali",
             "meta": _DINLEYICI_DURUM.get("meta") or "kapali",
+            "instagram": _DINLEYICI_DURUM.get("instagram") or "kapali",
+            "facebook": _DINLEYICI_DURUM.get("facebook") or "kapali",
             "youtube_mesaj": _DINLEYICI_MESAJ.get("youtube") or "",
             "tiktok_mesaj": _DINLEYICI_MESAJ.get("tiktok") or "",
             "twitch_mesaj": _DINLEYICI_MESAJ.get("twitch") or "",
             "kick_mesaj": _DINLEYICI_MESAJ.get("kick") or "",
             "meta_mesaj": _DINLEYICI_MESAJ.get("meta") or "",
+            "instagram_mesaj": _DINLEYICI_MESAJ.get("instagram") or "",
+            "facebook_mesaj": _DINLEYICI_MESAJ.get("facebook") or "",
             "toplam_yorum": int(_OLCUM.get("toplam_yorum") or 0),
             "otomatik_pey": int(_OLCUM.get("otomatik_pey") or 0),
         }
@@ -1755,11 +1919,15 @@ def _dinleyici_ozet(kayit=None):
         "twitch": _durum("twitch"),
         "kick": _durum("kick"),
         "meta": _durum("meta"),
+        "instagram": _durum("instagram"),
+        "facebook": _durum("facebook"),
         "youtube_mesaj": anlik.get("youtube_mesaj") or "",
         "tiktok_mesaj": anlik.get("tiktok_mesaj") or "",
         "twitch_mesaj": anlik.get("twitch_mesaj") or "",
         "kick_mesaj": anlik.get("kick_mesaj") or "",
         "meta_mesaj": anlik.get("meta_mesaj") or "",
+        "instagram_mesaj": anlik.get("instagram_mesaj") or "",
+        "facebook_mesaj": anlik.get("facebook_mesaj") or "",
         "webhook": _webhook_rozet(kayit),
         "push_abone": _push_sayisi(),
         "toplam_yorum": anlik["toplam_yorum"],
@@ -1923,6 +2091,16 @@ def _tiktok_kaynak(deger):
     return _tiktok_kullanici(metin)
 
 
+def _profil_kaynak(deger):
+    """Instagram ve Facebook alanına kullanıcı adı ya da yayın adresini bırakır."""
+    metin = str(deger or "").strip()
+    if not metin:
+        return ""
+    if metin.lower().startswith("http://") or metin.lower().startswith("https://"):
+        return _guvenli_url(metin)
+    return metin.lstrip("@")[:120]
+
+
 def _twitch_kanal(ham):
     metin = unquote(str(ham or "").strip())
     if not metin:
@@ -1974,6 +2152,121 @@ def _meta_not(metin, bagli):
         _DINLEYICI_DURUM["meta"] = "bagli" if bagli else "kapali"
         _DINLEYICI_MESAJ["meta"] = _kisa_durum(metin) if bagli else ""
     _olcum_yayinla(True)
+
+
+def _yerel_istek_mi():
+    try:
+        deger = str(request.remote_addr or "").strip().lower()
+    except Exception:
+        return False
+    if deger.startswith("::ffff:"):
+        deger = deger[7:]
+    return deger in ("127.0.0.1", "::1", "localhost")
+
+
+def _sabit_esit_metin(gelen, beklenen):
+    a = str(gelen or "").strip().encode("utf-8")
+    b = str(beklenen or "").strip().encode("utf-8")
+    if not a or not b or len(a) != len(b):
+        return False
+    return hmac.compare_digest(a, b)
+
+
+def _webhook_anahtarlari():
+    bulunan = []
+    for ad in (
+        "META_WEBHOOK_VERIFY_TOKEN",
+        "ENTEGRASYON_TOKEN",
+        "MAKE_N8N_TOKEN",
+        "WEBHOOK_VERIFY_TOKEN",
+    ):
+        deger = (os.environ.get(ad) or "").strip()
+        if deger and deger not in bulunan:
+            bulunan.append(deger)
+    return bulunan
+
+
+def _meta_imza_gecerli():
+    secret = (
+        os.environ.get("META_APP_SECRET") or os.environ.get("FACEBOOK_APP_SECRET") or ""
+    ).strip()
+    imza = str(request.headers.get("X-Hub-Signature-256") or "").strip()
+    if not secret or not imza.startswith("sha256="):
+        return False
+    beklenen = "sha256=" + hmac.new(
+        secret.encode("utf-8"),
+        request.get_data(cache=True) or b"",
+        hashlib.sha256,
+    ).hexdigest()
+    if len(beklenen) != len(imza):
+        return False
+    return hmac.compare_digest(beklenen, imza)
+
+
+def _webhook_anahtari_gecerli(veri=None):
+    if _meta_imza_gecerli():
+        return True
+    anahtarlar = _webhook_anahtarlari()
+    if not anahtarlar:
+        return False
+    govde = veri if isinstance(veri, dict) else {}
+    adaylar = [
+        request.headers.get("X-Entegrasyon-Token"),
+        request.headers.get("X-Mezat-Key"),
+        request.headers.get("X-Webhook-Token"),
+        request.headers.get("X-Make-Apikey"),
+        request.args.get("hub.verify_token"),
+        request.args.get("token"),
+        govde.get("token"),
+        govde.get("verify_token"),
+        govde.get("hub.verify_token"),
+    ]
+    for aday in adaylar:
+        for beklenen in anahtarlar:
+            if _sabit_esit_metin(aday, beklenen):
+                return True
+    return False
+
+
+def _meta_kanal_aktif():
+    with _DINLEYICI_KILIT:
+        if _DINLEYICI_DURUM.get("instagram") == "bagli":
+            return True
+        if _DINLEYICI_DURUM.get("facebook") == "bagli":
+            return True
+        if _DINLEYICI_DURUM.get("meta") == "bagli":
+            mesaj = _DINLEYICI_MESAJ.get("meta") or ""
+            if mesaj and mesaj != "Son yorum alındı":
+                return True
+    kayit = _kopya()
+    if not str(kayit.get("aktif_dukkan") or ""):
+        return False
+    kanallar = _kanallar(kayit)
+    return bool(str(kanallar.get("instagram") or "").strip() or str(kanallar.get("facebook") or "").strip())
+
+
+def _meta_post_kabul():
+    """Yönetici oturumu şart değil: yerel köprü, doğrulama anahtarı veya açık kanal yeter."""
+    if _kopru_kabul is None or _kopru_kabul():
+        return True
+    veri = request.get_json(silent=True) or {}
+    if _webhook_anahtari_gecerli(veri):
+        return True
+    return _meta_kanal_aktif()
+
+
+def _meta_ping_challenge(veri):
+    if not isinstance(veri, dict):
+        return None
+    challenge = veri.get("challenge")
+    if challenge is None:
+        challenge = veri.get("hub.challenge")
+    if challenge is None and isinstance(veri.get("hub"), dict):
+        challenge = veri.get("hub").get("challenge")
+    if challenge is None:
+        return None
+    metin = str(challenge).strip()
+    return metin or None
 
 
 def _meta_dogrulama_yaniti():

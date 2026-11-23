@@ -25,8 +25,34 @@ def _arka_plan_post(url, payload):
     threading.Thread(target=_gonder, daemon=True).start()
 
 
+def _havuza_birak(platform, user, text):
+    """Yorumu doğrudan havuz kapısına bırakır. Ayrı süreçte yerel webhook'a düşer."""
+    try:
+        import canli_yayin_havuzu as havuz
+
+        if getattr(havuz, "_HAZIR", False):
+            sonuc = havuz.yerel_kopru_yorumu(platform, user, text)
+            return bool(isinstance(sonuc, dict) and sonuc.get("success"))
+    except Exception:
+        pass
+    _arka_plan_post(
+        "http://127.0.0.1:5000/api/canli-havuz/meta-webhook",
+        {"platform": platform, "kullanici": user, "mesaj": text},
+    )
+    return True
+
+
+def _facebook_adres(hedef):
+    metin = str(hedef or "").strip()
+    if not metin:
+        return ""
+    if metin.lower().startswith("http://") or metin.lower().startswith("https://"):
+        return metin
+    return "https://www.facebook.com/" + metin.lstrip("@").strip("/")
+
+
 def konsol_ve_sunucu_test(platform, user, text):
-    """Yorumları ekrana basar, Flask paneline ve mezat sunucusuna iletir."""
+    """Yorumları ekrana basar, havuz kapısına ve mezat sunucusuna iletir."""
     print(f"💬 [{platform}] {user}: {text}")
     temiz_kucuk = text.lower()
 
@@ -38,11 +64,12 @@ def konsol_ve_sunucu_test(platform, user, text):
         )
         return
 
-    # 2. Normal Web Panel İletimi (Flask Web Paneli: 5000)
-    _arka_plan_post(
-        "http://127.0.0.1:5000/api/tiktok-web-chat",
-        {"platform": platform, "username": user, "message": text},
-    )
+    # 2. Canlı havuz (yerel köprü, 401/409 yok)
+    if not _havuza_birak(platform, user, text):
+        _arka_plan_post(
+            "http://127.0.0.1:5000/api/tiktok-web-chat",
+            {"platform": platform, "username": user, "message": text},
+        )
 
     # 3. Mezat sunucusu ve pey motoru (Bot Port: 5005)
     _arka_plan_post(
@@ -61,13 +88,13 @@ def chrome_baglan():
         return None
 
 
-def start_listening(callback_func, video_id=None, token=None):
+def start_listening(callback_func, video_id=None, token=None, hedef="", dur=None, hazir=None):
     driver = chrome_baglan()
     if not driver:
         print(
             "⚠️ Chrome 9222 debug portu bulunamadı. Lütfen Chrome'u debug modunda açtığınızdan emin olun."
         )
-        return
+        return False
 
     # Canlı yayın sekmesine odaklan (Dashboard, Producer veya aktif Facebook sekmesi)
     for handle in driver.window_handles:
@@ -80,6 +107,18 @@ def start_listening(callback_func, video_id=None, token=None):
             or "facebook.com" in url_lower
         ):
             break
+
+    adres = _facebook_adres(hedef or video_id or "")
+    if adres:
+        try:
+            driver.get(adres)
+        except Exception as hata:
+            print(f"⚠️ Facebook adresi açılmadı: {hata}")
+    if hazir:
+        try:
+            hazir()
+        except Exception:
+            pass
 
     print("=" * 60)
     print("🚀 [Facebook Scraper] Chrome'a bağlandı!")
@@ -113,7 +152,7 @@ def start_listening(callback_func, video_id=None, token=None):
         "kurallar",
     }
 
-    while True:
+    while dur is None or not dur.is_set():
         try:
             satirlar = driver.find_elements(
                 By.XPATH, "//div[@role='article'] | //div[@role='feed']//div"
@@ -192,13 +231,21 @@ def start_listening(callback_func, video_id=None, token=None):
                     if callback_func:
                         callback_func("Facebook", kullanici, mesaj)
 
-            time.sleep(0.5)
+            if dur is not None:
+                if dur.wait(0.5):
+                    break
+            else:
+                time.sleep(0.5)
 
         except KeyboardInterrupt:
             print("\n🛑 Facebook dinleyici durduruldu.")
             break
         except Exception:
-            time.sleep(1.0)
+            if dur is not None and dur.wait(1.0):
+                break
+            if dur is None:
+                time.sleep(1.0)
+    return True
 
 
 if __name__ == "__main__":

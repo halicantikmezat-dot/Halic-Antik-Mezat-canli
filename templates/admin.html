@@ -506,8 +506,8 @@
             <button type="button" id="cyAnahtar" class="btn btn-red" onclick="canliYayinAnahtar()">Diğer - Her Şey Canlı Yayın Başlat</button>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                 <input type="text" id="cyYoutube" placeholder="YouTube linki veya video ID">
-                <input type="url" id="cyInstagram" placeholder="Instagram">
-                <input type="url" id="cyFacebook" placeholder="Facebook">
+                <input type="text" id="cyInstagram" placeholder="Instagram kullanıcı adı veya yayın URL">
+                <input type="text" id="cyFacebook" placeholder="Facebook kullanıcı adı veya yayın URL">
                 <input type="text" id="cyTiktok" placeholder="TikTok kullanıcı adı veya link">
                 <input type="text" id="cyKick" placeholder="Kick kullanıcı adı veya link">
                 <input type="text" id="cyTwitch" placeholder="Twitch kullanıcı adı veya link">
@@ -515,7 +515,26 @@
                 <input type="url" id="cyTelegram" placeholder="Telegram">
             </div>
             <input type="url" id="cyWebhook" placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
-            <div style="font-size:11px; color:#94a3b8;">Facebook ve Instagram yorumları POST /api/canli-havuz/meta-webhook adresine gelir. Alanlar: platform, kullanici, mesaj.</div>
+            <div style="font-size:11px; color:#94a3b8;">Facebook ve Instagram yorumları POST /api/canli-havuz/meta-webhook adresine gelir. Alanlar: platform, kullanici, mesaj. Webhook doğrulama anahtarı veya ilgili kanal açıkken yönetici oturumu aranmaz.</div>
+            <div id="sosyalKopruKutu" style="display:flex; flex-direction:column; gap:6px; padding:8px; border:1px dashed var(--card-border); border-radius:6px;">
+                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Yorum köprüleri</div>
+                <div style="font-size:11px; color:#94a3b8;">TikTok, Instagram ve Facebook başlat/durdur aynı durumdan okunur. Aynı yorum son 10 saniyede bir kez sohbete düşer.</div>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <span id="kopruTiktokDurum" style="min-width:150px; font-size:12px; color:#cbd5e1;">TikTok: kapalı</span>
+                    <button type="button" class="btn btn-green btn-sm" onclick="sosyalKopru('tiktok','baslat')">Başlat</button>
+                    <button type="button" class="btn btn-red btn-sm" onclick="sosyalKopru('tiktok','durdur')">Durdur</button>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <span id="kopruInstagramDurum" style="min-width:150px; font-size:12px; color:#cbd5e1;">Instagram: kapalı</span>
+                    <button type="button" class="btn btn-green btn-sm" onclick="sosyalKopru('instagram','baslat')">Başlat</button>
+                    <button type="button" class="btn btn-red btn-sm" onclick="sosyalKopru('instagram','durdur')">Durdur</button>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                    <span id="kopruFacebookDurum" style="min-width:150px; font-size:12px; color:#cbd5e1;">Facebook: kapalı</span>
+                    <button type="button" class="btn btn-green btn-sm" onclick="sosyalKopru('facebook','baslat')">Başlat</button>
+                    <button type="button" class="btn btn-red btn-sm" onclick="sosyalKopru('facebook','durdur')">Durdur</button>
+                </div>
+            </div>
             <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
@@ -1865,6 +1884,11 @@
             const alan = document.getElementById(cift[1]);
             if (alan && document.activeElement !== alan) alan.value = kanallar[cift[0]] || '';
         });
+        const ttAlan = document.getElementById('cyTiktok');
+        const ttEski = document.getElementById('tiktokUser');
+        if (ttAlan && ttEski && document.activeElement !== ttAlan && document.activeElement !== ttEski && ttAlan.value.trim()) {
+            ttEski.value = ttAlan.value.trim().replace(/^@/, '');
+        }
         const webhook = document.getElementById('cyWebhook');
         const duyuru = document.getElementById('cyDuyuru');
         if (webhook && document.activeElement !== webhook) webhook.value = ayar.webhook_url || '';
@@ -2076,6 +2100,85 @@
             sayac.textContent = 'Toplam Yorum: ' + (Number(din.toplam_yorum) || 0)
                 + ' · Otomatik Pey: ' + (Number(din.otomatik_pey) || 0);
         }
+        sosyalKopruDurumunuCiz(din);
+    }
+
+    function sosyalKopruDurumunuCiz(din) {
+        const kaynak = din || {};
+        const satirlar = [
+            ['tiktok', 'kopruTiktokDurum', 'TikTok', 'tiktokDurum'],
+            ['instagram', 'kopruInstagramDurum', 'Instagram', ''],
+            ['facebook', 'kopruFacebookDurum', 'Facebook', '']
+        ];
+        satirlar.forEach(function (satir) {
+            const acik = kaynak[satir[0]] === 'bagli';
+            const notu = String(kaynak[satir[0] + '_mesaj'] || '').trim();
+            const yazi = satir[2] + ': ' + (acik ? 'bağlı' : 'kapalı') + (notu && !acik ? ' · ' + notu : '');
+            const kutu = document.getElementById(satir[1]);
+            if (kutu) {
+                kutu.textContent = yazi;
+                kutu.style.color = acik ? '#86efac' : '#cbd5e1';
+                kutu.title = notu;
+            }
+            if (satir[3]) {
+                const eski = document.getElementById(satir[3]);
+                if (eski) {
+                    eski.textContent = 'Durum: ' + (acik ? 'Bağlı' : (notu || 'Bağlantı Yok'));
+                    eski.style.color = acik ? '#34d399' : '#aaa';
+                }
+            }
+        });
+    }
+
+    function sosyalKopruHedefi(platform) {
+        if (platform === 'tiktok') {
+            const alan = document.getElementById('cyTiktok');
+            const eski = document.getElementById('tiktokUser');
+            const deger = (alan && alan.value.trim()) || (eski && eski.value.trim()) || '';
+            if (alan && deger && document.activeElement !== alan) alan.value = deger;
+            if (eski && deger && document.activeElement !== eski) eski.value = deger.replace(/^@/, '');
+            return deger;
+        }
+        const kimlik = platform === 'instagram' ? 'cyInstagram' : 'cyFacebook';
+        const alan = document.getElementById(kimlik);
+        return alan ? alan.value.trim() : '';
+    }
+
+    function sosyalKopru(platform, komut) {
+        const hedef = sosyalKopruHedefi(platform);
+        if (komut === 'baslat' && !hedef) {
+            canliYayinNotu(platform + ' için kullanıcı adı veya yayın adresi gerekli.');
+            return;
+        }
+        const paket = canliYayinFormu('kopru');
+        paket.platform = platform;
+        paket.komut = komut;
+        paket.hedef = hedef;
+        fetch('/api/canli-yayin/kontrol', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(paket)
+        })
+            .then(function (yanit) { return yanit.json().then(function (veri) { return { kod: yanit.status, veri: veri }; }); })
+            .then(function (paketYanit) {
+                const veri = paketYanit.veri || {};
+                if (veri.success === false) {
+                    canliYayinNotu(veri.mesaj || 'Köprü işlemi tamamlanamadı.');
+                    return;
+                }
+                canliYayinKaydi = veri;
+                canliYayinPaneliCiz();
+                canliYayinNotu(veri.mesaj || 'Köprü güncellendi.');
+                if (platform !== 'tiktok') return;
+                fetch(komut === 'durdur' ? '/api/social/tiktok/stop' : '/api/social/tiktok/start', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: hedef.replace(/^@/, '') })
+                }).catch(function () {});
+            })
+            .catch(function () { canliYayinNotu('Köprü bağlantısı kurulamadı.'); });
     }
 
     function canliYayinDurumunuAl() {
@@ -3714,35 +3817,37 @@
         toplamYorumSayisi++;
         document.getElementById("yorumSayaci").innerText = toplamYorumSayisi + " Mesaj";
 
-        let platformRenk = "#38bdf8";
-        let platformAd = data.platform || "Web";
-        let logoSvg = "💬";
-
-        if (platformAd === "Mezat Sunucusu" || platformAd === "Canlı Sunucu") {
-            platformRenk = "var(--accent-gold)";
-            logoSvg = "🤖";
-        } else if (platformAd.includes("TikTok")) {
-            platformRenk = "#ef4444";
-            logoSvg = "🔴";
-        }
-
+        const platformAd = data.platform || "Web";
+        const rozet = platformSohbetRozeti(platformAd);
         const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
         const yeniSatir = document.createElement("div");
         yeniSatir.setAttribute("data-dukkan", String((data && data.dukkan) || "").trim().toLowerCase());
-        yeniSatir.style.cssText = `background: #18202c; border-left: 3px solid ${platformRenk}; padding: 6px 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); font-size: 11px;`;
+        yeniSatir.style.cssText = "background:#18202c; border-left:3px solid " + rozet.kenar + "; padding:6px 10px; border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,0.3); font-size:11px;";
 
-        const dukkanOnEk = data.dukkan ? dukkanEtiketi(data.dukkan) + " " : "";
-        yeniSatir.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <span style="font-weight: bold; color: ${platformRenk};">
-                    ${logoSvg} ${dukkanOnEk}[${platformAd}] ${data.kullanici}
-                </span>
-                <span style="font-size: 10px; color: #94a3b8;">${data.zaman || ''}</span>
-            </div>
-            <div style="color: #f8fafc; font-size: 12px; word-break: break-word;">
-                ${data.mesaj}
-            </div>
-        `;
+        const ust = document.createElement("div");
+        ust.style.cssText = "display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:2px;";
+        const sol = document.createElement("span");
+        sol.style.cssText = "font-weight:bold; color:#f8fafc; display:flex; align-items:center; gap:4px; flex-wrap:wrap;";
+        sol.appendChild(rozet.rozet);
+        if (data.dukkan) {
+            const dukkan = document.createElement("span");
+            dukkan.textContent = dukkanEtiketi(data.dukkan);
+            dukkan.style.color = "#fde68a";
+            sol.appendChild(dukkan);
+        }
+        const ad = document.createElement("span");
+        ad.textContent = data.kullanici || "İzleyici";
+        sol.appendChild(ad);
+        const zaman = document.createElement("span");
+        zaman.style.cssText = "font-size:10px; color:#94a3b8; white-space:nowrap;";
+        zaman.textContent = data.zaman || "";
+        ust.appendChild(sol);
+        ust.appendChild(zaman);
+        const govde = document.createElement("div");
+        govde.style.cssText = "color:#f8fafc; font-size:12px; word-break:break-word;";
+        govde.textContent = data.mesaj || "";
+        yeniSatir.appendChild(ust);
+        yeniSatir.appendChild(govde);
 
         sohbetKutusu.appendChild(yeniSatir);
         rejiSatiriniFiltrele(yeniSatir);
@@ -4068,35 +4173,55 @@
         fetch('/admin-cikis-yap').then(() => { window.location.href = '/'; });
     }
 
+    function platformSohbetRozeti(platformAd) {
+        const ham = String(platformAd || "Web");
+        const k = ham.toLocaleLowerCase("tr-TR");
+        let etiket = ham;
+        let bg = "#334155";
+        let kenar = "#38bdf8";
+        if (ham === "Mezat Sunucusu" || ham === "Canlı Sunucu") {
+            etiket = ham;
+            bg = "#d4af37";
+            kenar = "#d4af37";
+        } else if (k.indexOf("tiktok") >= 0) {
+            etiket = "TikTok";
+            bg = "linear-gradient(90deg,#06b6d4,#ef4444)";
+            kenar = "#ef4444";
+        } else if (k.indexOf("instagram") >= 0) {
+            etiket = "Instagram";
+            bg = "linear-gradient(90deg,#ec4899,#7c3aed)";
+            kenar = "#ec4899";
+        } else if (k.indexOf("facebook") >= 0) {
+            etiket = "Facebook";
+            bg = "#1877F2";
+            kenar = "#1877F2";
+        } else if (k.indexOf("youtube") >= 0) {
+            etiket = "YouTube";
+            bg = "#ef4444";
+            kenar = "#ef4444";
+        } else if (k.indexOf("web") >= 0) {
+            etiket = "Web";
+            bg = "#16a34a";
+            kenar = "#16a34a";
+        }
+        const rozet = document.createElement("span");
+        rozet.textContent = "[" + etiket + "]";
+        rozet.style.cssText = "display:inline-block; padding:1px 6px; border-radius:999px; background:" + bg + "; color:#fff; font-weight:800; letter-spacing:0.2px;";
+        return { rozet: rozet, kenar: kenar };
+    }
+
     function tiktokBaglan() {
         playClickSound();
         const user = document.getElementById('tiktokUser').value.trim();
-        if(!user) return alert('Lütfen TikTok kullanıcı adı girin!');
-        document.getElementById('tiktokDurum').innerText = "Bağlanıyor...";
-        fetch('/api/social/tiktok/start', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: user})
-        })
-        .then(r => r.json())
-        .then(d => {
-            document.getElementById('tiktokDurum').innerText = d.mesaj || "Bağlandı.";
-            document.getElementById('tiktokDurum').style.color = "#34d399";
-        })
-        .catch(() => {
-            document.getElementById('tiktokDurum').innerText = "Hata oluştu!";
-            document.getElementById('tiktokDurum').style.color = "#ef4444";
-        });
+        if (!user) return alert('Lütfen TikTok kullanıcı adı girin!');
+        const cy = document.getElementById('cyTiktok');
+        if (cy) cy.value = user;
+        sosyalKopru('tiktok', 'baslat');
     }
 
     function tiktokDurdur() {
         playClickSound();
-        fetch('/api/social/tiktok/stop', {method: 'POST'})
-        .then(r => r.json())
-        .then(() => {
-            document.getElementById('tiktokDurum').innerText = "Bağlantı kesildi.";
-            document.getElementById('tiktokDurum').style.color = "#aaa";
-        });
+        sosyalKopru('tiktok', 'durdur');
     }
 
     function otonomButonlariniCiz(aktif) {
