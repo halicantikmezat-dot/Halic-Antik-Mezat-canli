@@ -636,6 +636,18 @@
 
         .pey-butonlari-konteyner { width: 100%; padding: 2px 0; margin-top: 1px; }
         .bid-btn-row { display: flex; gap: 4px; width: 100%; margin-bottom: 3px; }
+        .btn-diger-hizli, .btn-urun-dinle { display: none; }
+        .bid-btn-row.diger-hizli .btn-bid { width: auto; flex: 1; font-size: 10px; padding: 8px 2px; }
+        .btn-diger-hizli.acik { display: block; background: #14532d; color: #fff; border: 1px solid #22c55e; }
+        .btn-urun-dinle.acik {
+            display: inline-flex; align-items: center; gap: 4px; margin-left: 6px;
+            background: #14532d; color: #fff; border: 1px solid #22c55e; border-radius: 999px;
+            padding: 4px 8px; font-size: 11px; font-weight: 800; cursor: pointer;
+        }
+        #digerDinleKart {
+            margin: 4px 8px 0; background: rgba(15, 23, 18, 0.92); color: #f8fafc;
+            border: 1px solid #d4af37; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.35;
+        }
         .btn-bid { border: none; padding: 9px 4px; border-radius: 4px; font-weight: 800; font-size: 10.5px; cursor: pointer; text-align: center; transition: all 0.2s; width: 50%; }
         .btn-action-green { background: var(--btn-green); color: #ffffff !important; border: 1px solid #226350; }
         .btn-action-blue { background: #1e3a8a; color: #ffffff !important; border: 1px solid #2563eb; }
@@ -2197,12 +2209,17 @@
             <span id="cornerHemenAlFiyat" hidden>0</span>
             <div class="lot-galeri-satiri">
                 <div class="lot-rozet" id="cornerLotNo">{% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}LOT #{{ ilk_sahne.aktif_urun.lot }}{% else %}LOT #000{% endif %}</div>
+                <button type="button" id="btnUrunuDinle" class="btn-urun-dinle" hidden onclick="digerSecereyiDinle()">🔊 Ürünü Dinle</button>
                 <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
             </div>
             <div id="bilgiKarti" class="bilgi-karti" hidden>
                 <b id="aktif_baslik">Sahnede aktif ürün yok</b>
                 <p id="tanitimMetni" style="margin-top:6px;">Şu an sahnede ürün bulunmamaktadır.</p>
                 <p id="lotAnonsMetni" style="margin-top:6px; color:#fde68a;"></p>
+            </div>
+            <div id="digerDinleKart" hidden>
+                <b>Ürün şeceresi</b>
+                <p id="digerDinleMetin" style="margin:4px 0 0;"></p>
             </div>
             <div id="sahneKanallar" class="sahne-kanallar" {% if not _cy_burada %}hidden{% endif %} aria-label="Canlı yayın kanalları">
                 {% if _cy_burada %}
@@ -2366,7 +2383,9 @@
         <div id="izleyiciKayanMetin" hidden></div>
 
         <div class="pey-butonlari-konteyner sabit-pey-bar">
-            <div class="bid-btn-row">
+            <div class="bid-btn-row" id="peyButonSatiri">
+                <button type="button" id="btnDigerAdim1" class="btn-bid btn-diger-hizli" hidden onclick="digerHizliPey(1)">+1 TL</button>
+                <button type="button" id="btnDigerAdim2" class="btn-bid btn-diger-hizli" hidden onclick="digerHizliPey(2)">+1 TL</button>
                 <button id="btnYuzdeOn" class="btn-bid btn-action-green" onclick="yuzdeOnPeyVer()">+%10 Artır</button>
                 <button id="btnSerbestPey" class="btn-bid btn-action-blue" onclick="serbestPeyVer()">Serbest Pey</button>
                 <button id="btnHemenAl" class="btn-bid btn-buy-now" onclick="hemenAl()">Hemen Al</button>
@@ -2788,6 +2807,7 @@
     let sahnedekiUrunSatildiMi = false;
     let sahneKapali = false;
     let digerCanliPey = false;
+    let digerSecere = "";
 
     function digerCanliPeyMi(urun) {
         if (aktifDukkan !== 'diger' || !urun) return false;
@@ -5269,6 +5289,8 @@
         const sid = (socket && socket.id) ? ("&sid=" + encodeURIComponent(socket.id)) : "";
         fetch(`/canli-durum?dukkan=${encodeURIComponent(aktifDukkan)}${sid}`).then(res => res.json()).then(data => {
             if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
+            if (aktifDukkan === 'diger') digerSecere = data.secere || '';
+            else digerSecere = '';
             canliAsamayiCiz(data);
             let gelenPey = parseFloat(data.pey || (data.aktif_urun ? data.aktif_urun.guncel_fiyat : 0));
             sonGorulenPey = gelenPey;
@@ -5775,6 +5797,8 @@
                 btnHemenAl.removeAttribute('data-canli-pey');
             }
             digerCanliPey = false;
+            digerSecere = "";
+            digerVitrinKontrolleriniCiz();
             
             if (hlsInstance) {
                 hlsInstance.detachMedia();
@@ -6072,6 +6096,7 @@
         canliKameraVideosunuYerlestir(canliVideo);
         if (medyaDiv.classList.contains('kamera-bekliyor')) canliKameraBeklemesiGoster();
         sahneMedyaSonrakiniPlanla(medya);
+        digerVitrinKontrolleriniCiz();
     }
 
     function oturumVarMi() {
@@ -6192,6 +6217,103 @@
         return "Geçersiz Teklif! En az %10 artışla minimum " + Math.round(gereken).toLocaleString('tr-TR') + " TL verebilirsiniz.";
     }
 
+    function digerHizliAdimlar() {
+        const hemen = Number(aktifHemenAlStatik) || 0;
+        const acilis = Number(aktifAcilisFiyati) || 0;
+        const baz = hemen > 0 ? hemen : acilis;
+        const adim2 = Math.max(1, Math.round(baz * 0.10));
+        const adim1 = Math.max(1, Math.round(adim2 / 2));
+        return { adim1: adim1, adim2: adim2 };
+    }
+
+    function digerVitrinKontrolleriniCiz() {
+        const satir = document.getElementById('peyButonSatiri');
+        const b1 = document.getElementById('btnDigerAdim1');
+        const b2 = document.getElementById('btnDigerAdim2');
+        const dinle = document.getElementById('btnUrunuDinle');
+        const kart = document.getElementById('digerDinleKart');
+        const canli = aktifDukkan === 'diger' && digerCanliPey && !!aktifSahneUrunId && !sahnedekiUrunSatildiMi && !sahneKapali;
+        const adim = canli ? digerHizliAdimlar() : null;
+        [b1, b2].forEach(function (btn, index) {
+            if (!btn) return;
+            btn.hidden = !adim;
+            btn.classList.toggle('acik', !!adim);
+            if (adim) btn.textContent = '+' + (index === 0 ? adim.adim1 : adim.adim2) + ' TL';
+        });
+        if (satir) satir.classList.toggle('diger-hizli', !!adim);
+        const dinlet = canli && String(digerSecere || '').trim().length > 0;
+        if (dinle) {
+            dinle.hidden = !dinlet;
+            dinle.classList.toggle('acik', dinlet);
+        }
+        if (!dinlet && kart) kart.hidden = true;
+    }
+
+    function digerHizliPey(hangisi) {
+        playUserClickSound();
+        if (aktifDukkan !== 'diger' || !digerCanliPey || !kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
+        const adim = digerHizliAdimlar();
+        const artis = hangisi === 2 ? adim.adim2 : adim.adim1;
+        peyGonder((Number(sonGorulenPey) || 0) + artis);
+    }
+
+    function digerYerelOku(yazi) {
+        if (!yazi || !window.speechSynthesis || typeof SpeechSynthesisUtterance !== 'function') return;
+        const soyle = function () {
+            const u = new SpeechSynthesisUtterance(yazi);
+            u.lang = 'tr-TR';
+            const sesler = window.speechSynthesis.getVoices() || [];
+            for (let i = 0; i < sesler.length; i++) {
+                const dil = String(sesler[i].lang || '').toLowerCase();
+                if (dil.indexOf('tr') === 0) { u.voice = sesler[i]; break; }
+            }
+            window.speechSynthesis.speak(u);
+        };
+        if ((window.speechSynthesis.getVoices() || []).length) soyle();
+        else {
+            window.speechSynthesis.onvoiceschanged = soyle;
+            window.speechSynthesis.getVoices();
+        }
+    }
+
+    function digerSecereyiDinle() {
+        playUserClickSound();
+        const yazi = String(digerSecere || '').trim();
+        if (aktifDukkan !== 'diger' || !digerCanliPey || !yazi) return;
+        const kart = document.getElementById('digerDinleKart');
+        const metin = document.getElementById('digerDinleMetin');
+        if (metin) metin.textContent = yazi;
+        if (kart) kart.hidden = false;
+        fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: yazi })
+        }).then(function (r) {
+            if (!r.ok) throw new Error('tts');
+            return r.blob();
+        }).then(function (blob) {
+            if (!blob || !blob.size) throw new Error('bos');
+            const ses = new Audio(URL.createObjectURL(blob));
+            ses.setAttribute('playsinline', '');
+            ses.play().catch(function () { digerYerelOku(yazi); });
+        }).catch(function () { digerYerelOku(yazi); });
+    }
+
+    socket.on('diger_canli_sahne', function (data) {
+        if (!data || aktifDukkan !== 'diger') return;
+        if (data.canli_yayin === false) digerSecere = '';
+        else if (typeof data.secere === 'string') digerSecere = data.secere;
+        if (data.ad || data.urun_adi) {
+            const baslik = document.getElementById('aktif_baslik');
+            if (baslik && aktifSahneUrunId) baslik.innerText = 'LOT #' + (data.lot || '') + ' - ' + (data.ad || data.urun_adi);
+        }
+        if (!digerSecere) {
+            const kart = document.getElementById('digerDinleKart');
+            if (kart) kart.hidden = true;
+        }
+        digerVitrinKontrolleriniCiz();
+    });
+
     function yuzdeOnPeyVer() {
         playUserClickSound();
         if (!kullaniciGirisKontrol() || sahnedekiUrunSatildiMi || !aktifSahneUrunId) return;
@@ -6220,7 +6342,7 @@
             : current + asgariArtisHesapla(current);
         if (digerCanliPey) {
             const taban = current > 0 ? current : (aktifAcilisFiyati || 0);
-            minKabulFiyat = taban > 0 ? minimumPeyTabani(taban) : 10;
+            minKabulFiyat = taban + digerHizliAdimlar().adim1;
         }
         
         let miktar = prompt(`Mevcut Fiyat: ${current.toLocaleString('tr-TR')} TL\nMinimum Teklif: ${minKabulFiyat.toLocaleString('tr-TR')} TL\n\nTeklifinizi yazın (TL):`);

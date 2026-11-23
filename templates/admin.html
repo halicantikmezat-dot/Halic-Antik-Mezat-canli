@@ -743,6 +743,11 @@
                     </label>
                 </div>
             </div>
+            <div id="cyTaraSatiri" style="display:none; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+                <button type="button" id="btnKameradanTara" class="btn btn-blue btn-sm" onclick="digerKameradanTara()">📷 Kameradan Tara</button>
+                <button type="button" id="btnUrunuTanit" class="btn btn-yellow btn-sm" onclick="digerUrunuTanit()" disabled>Ürünü Tanıt (Sesli + Yazılı)</button>
+                <span id="digerTaraDurum" style="font-size:11px; color:#fde68a;"></span>
+            </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                 <button class="btn btn-yellow" onclick="mezatBaslat(180)">⏱️ 3 Dk Başlat</button>
                 <button class="btn btn-yellow" onclick="mezatBaslat(60)">⏱️ 60 Sn Karar</button>
@@ -1762,6 +1767,8 @@
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
         const cyFiyatSatiri = document.getElementById('cyManuelFiyatSatiri');
         if (cyFiyatSatiri) cyFiyatSatiri.style.display = kod === 'diger' ? 'grid' : 'none';
+        const cyTaraSatiri = document.getElementById('cyTaraSatiri');
+        if (cyTaraSatiri) cyTaraSatiri.style.display = kod === 'diger' ? 'flex' : 'none';
 
         if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
             otonomButonlariniCiz(!!otonomDurumlari[kod]);
@@ -5472,10 +5479,114 @@
         });
     }
 
-    function mezatBaslat(sure) {
+    let digerUrunTarandi = false;
+    let digerSecereMetni = '';
+
+    function digerCanliDurumunuUygula(data) {
+        data = data || {};
+        digerSecereMetni = String(data.secere || '');
+        digerUrunTarandi = !!(data.tarandi || data.ai) && !!digerSecereMetni;
+        const btn = document.getElementById('btnUrunuTanit');
+        if (btn) btn.disabled = !digerSecereMetni;
+        const durum = document.getElementById('digerTaraDurum');
+        if (durum) durum.textContent = digerSecereMetni ? ((data.urun_adi || data.ad || 'Ürün') + ' — tanıtım hazır') : '';
+        if (data.ad || data.urun_adi) {
+            const baslik = document.getElementById('aktifUrunAdi');
+            if (baslik && data.lot && seciliDukkan === 'diger') {
+                baslik.innerText = dukkanEtiketi('diger') + ' LOT #' + data.lot + ' - ' + (data.ad || data.urun_adi);
+            }
+        }
+    }
+
+    function iriunKareAl() {
+        return new Promise(function (resolve) {
+            let bitti = false;
+            function bitir(sonuc) {
+                if (bitti) return;
+                bitti = true;
+                resolve(sonuc || '');
+            }
+            const akis = (typeof restreamAkis !== 'undefined') ? restreamAkis : null;
+            if (!akis || !akis.getVideoTracks || !akis.getVideoTracks().length) {
+                bitir('');
+                return;
+            }
+            const video = document.createElement('video');
+            video.muted = true;
+            video.playsInline = true;
+            video.srcObject = akis;
+            function ciz() {
+                if (!video.videoWidth) return false;
+                const olcek = Math.min(1, 1024 / video.videoWidth);
+                const tuval = document.createElement('canvas');
+                tuval.width = Math.max(1, Math.round(video.videoWidth * olcek));
+                tuval.height = Math.max(1, Math.round(video.videoHeight * olcek));
+                const ctx = tuval.getContext('2d');
+                if (!ctx) return false;
+                ctx.drawImage(video, 0, 0, tuval.width, tuval.height);
+                try { bitir(tuval.toDataURL('image/jpeg', 0.72)); } catch (e) { bitir(''); }
+                try { video.pause(); } catch (e2) {}
+                video.srcObject = null;
+                return true;
+            }
+            video.onloadeddata = function () { ciz(); };
+            const oynat = video.play();
+            if (oynat && oynat.then) oynat.then(function () { ciz(); }).catch(function () {});
+            setTimeout(function () { if (!ciz()) bitir(''); }, 700);
+        });
+    }
+
+    function digerKameradanTara(bitti) {
+        if (seciliDukkan !== 'diger') {
+            if (typeof bitti === 'function') bitti();
+            return;
+        }
+        let bittiMi = false;
+        function bitir() {
+            if (bittiMi) return;
+            bittiMi = true;
+            if (typeof bitti === 'function') bitti();
+        }
+        const zaman = setTimeout(bitir, 14000);
+        const durum = document.getElementById('digerTaraDurum');
+        if (durum) durum.textContent = 'Kamera taranıyor...';
+        iriunKareAl().then(function (kare) {
+            return fetch('/api/diger/kameradan-tara', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dukkan: 'diger', kare: kare })
+            }).then(function (r) { return r.json(); });
+        }).then(function (data) {
+            digerCanliDurumunuUygula(data || {});
+        }).catch(function () {
+            if (durum) durum.textContent = 'Tarama tamamlanamadı. Canlı Yayın Ürünü ile devam edilir.';
+        }).finally(function () {
+            clearTimeout(zaman);
+            bitir();
+        });
+    }
+
+    function digerUrunuTanit() {
+        if (seciliDukkan !== 'diger') return;
         playClickSound();
-        const paket = { dukkan: seciliDukkan, sure: sure };
-        if (seciliDukkan === 'diger' && Number(sure) >= 180) {
+        if (!digerSecereMetni) return alert('Önce Kameradan Tara ile ürünü okutun.');
+        fetch('/api/diger/urun-tanit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dukkan: 'diger', secere: digerSecereMetni })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || !data.success) alert((data && data.mesaj) || 'Tanıtım gönderilemedi.');
+        }).catch(function () { alert('Tanıtım gönderilemedi.'); });
+    }
+
+    socket.on('diger_canli_sahne', function (data) {
+        if (!data || seciliDukkan !== 'diger') return;
+        digerCanliDurumunuUygula(data);
+    });
+
+    function mezatIstegiGonder(sure, dukkan) {
+        const paket = { dukkan: dukkan, sure: sure };
+        if (dukkan === 'diger' && Number(sure) >= 180) {
             const acilisKutu = document.getElementById('cyManuelAcilisFiyat');
             const hemenKutu = document.getElementById('cyManuelHemenAlFiyat');
             const acilisHam = acilisKutu ? parseFloat(acilisKutu.value) : NaN;
@@ -5488,8 +5599,18 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(paket)
         }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
-            if (seciliDukkan === 'diger' && veri && veri.success === false && veri.mesaj) alert(veri.mesaj);
+            if (dukkan === 'diger' && veri && veri.success === false && veri.mesaj) alert(veri.mesaj);
         }).catch(function () {});
+    }
+
+    function mezatBaslat(sure) {
+        playClickSound();
+        const dukkan = seciliDukkan;
+        if (dukkan === 'diger' && Number(sure) === 180 && !digerUrunTarandi) {
+            digerKameradanTara(function () { mezatIstegiGonder(sure, dukkan); });
+            return;
+        }
+        mezatIstegiGonder(sure, dukkan);
     }
 
     function sonPeyiIptalEt() {

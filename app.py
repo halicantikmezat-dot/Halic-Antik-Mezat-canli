@@ -631,6 +631,28 @@ def _sahneyi_bosa_al(dukkan, neden, sesi_kes=True):
     """Ürün satılınca veya geri çekilince sahneyi boşalt. Satış tebriği kuyruktayken ses kesilmez."""
     _canli_otorite.add(dukkan)
     oda = odalar.get(dukkan)
+    if dukkan == "diger" and oda is not None and oda.get("aktif_urun_id"):
+        try:
+            from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
+            from diger_canli_sahne import taramayi_sil as _canli_taramayi_sil
+
+            biten = db.session.get(Urun, oda.get("aktif_urun_id"))
+            if _canli_kaynak_mi(biten):
+                _canli_taramayi_sil()
+                oda["canli_secere"] = ""
+                _iki_odayi(
+                    "diger_canli_sahne",
+                    {
+                        "canli_yayin": False,
+                        "secere": "",
+                        "tarandi": False,
+                        "urun_adi": "",
+                        "ai": False,
+                    },
+                    dukkan,
+                )
+        except Exception:
+            db.session.rollback()
     if oda is not None:
         oda["aktif_urun_id"] = None
         oda["durum"]["durum"] = "bosta"
@@ -1843,6 +1865,7 @@ class Urun(db.Model):
                 "durum": self.durum or "Aktif",
                 "tedarikci_id": getattr(self, "tedarikci_id", None),
                 "stok_adedi": int(self.stok_adedi if self.stok_adedi is not None else 1),
+                "kaynak_tipi": self.kaynak_tipi or "manuel",
             }
 
         return {
@@ -1865,6 +1888,7 @@ class Urun(db.Model):
             "tedarikci_id": getattr(self, "tedarikci_id", None),
             "silindi_mi": bool(self.silindi_mi),
             "stok_adedi": int(self.stok_adedi if self.stok_adedi is not None else 1),
+            "kaynak_tipi": self.kaynak_tipi or "manuel",
         }
 
 
@@ -2387,21 +2411,32 @@ def _pey_kabul_mu(oda, urun, tutar, mevcut):
     except (TypeError, ValueError):
         return False, "Geçersiz teklif."
     acilis = _acilis_tabani(oda, urun)
-    if mevcut > 0 and tutar > mevcut * 5:
-        return False, "Güvenlik kilidi: teklif mevcut fiyatın 5 katını aşıyor. Lütfen tutarı kontrol edin."
     try:
         from diger_canli_sahne import asgari_pey as _canli_asgari_pey
+        from diger_canli_sahne import hizli_adimlar as _canli_adimlar
         from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
     except Exception:
         _canli_kaynak_mi = None
-    if _canli_kaynak_mi is not None and _canli_kaynak_mi(urun):
+        _canli_adimlar = None
+    canli_urun = _canli_kaynak_mi is not None and _canli_kaynak_mi(urun)
+    if mevcut > 0 and tutar > mevcut * 5:
+        adim_payi = 0
+        if canli_urun and _canli_adimlar is not None:
+            _a1, _a2 = _canli_adimlar(
+                getattr(urun, "hemen_al_fiyati", 0),
+                getattr(urun, "acilis_fiyati", 0),
+            )
+            adim_payi = _a2
+        if not (canli_urun and (tutar - mevcut) <= adim_payi + 0.5):
+            return False, "Güvenlik kilidi: teklif mevcut fiyatın 5 katını aşıyor. Lütfen tutarı kontrol edin."
+    if canli_urun:
         if acilis > 0 and tutar < acilis:
             return False, f"Teklif açılış fiyatının ({int(acilis)} TL) altına inemez."
         if mevcut > 0:
-            gereken = _canli_asgari_pey(mevcut)
+            gereken = _canli_asgari_pey(mevcut, urun)
             if tutar < gereken:
                 return False, (
-                    f"Geçersiz Teklif! En az %10 artışla minimum {gereken} TL verebilirsiniz."
+                    f"Geçersiz Teklif! Bu canlı üründe minimum {gereken} TL verebilirsiniz."
                 )
         if tutar <= mevcut:
             return False, f"Teklif mevcut fiyattan ({int(mevcut)} TL) yüksek olmalıdır!"
@@ -4309,6 +4344,22 @@ def canli_durum():
             "gorsel": paket.get("gorsel"),
             "aktif_urun": aktif_urun_obj,
             "son_satis": None if (odalar.get(dukkan) or {}).get("aktif_urun_id") else (odalar.get(dukkan) or {}).get("son_satis"),
+            "canli_yayin": bool(
+                dukkan == "diger"
+                and aktif_urun_obj
+                and aktif_urun_obj.get("kaynak_tipi") == "canli_yayin"
+            ),
+            "secere": (
+                (aktif_urun_obj.get("tanitim_yazisi") or "")
+                if (
+                    dukkan == "diger"
+                    and aktif_urun_obj
+                    and aktif_urun_obj.get("kaynak_tipi") == "canli_yayin"
+                    and (aktif_urun_obj.get("tanitim_yazisi") or "").strip()
+                    not in ("", "Canlı yayın sahnesindeki eser.")
+                )
+                else ""
+            ),
         })
     finally:
         _oturumu_birak()
@@ -5950,7 +6001,7 @@ def pey_ver():
                         and _canli_kaynak_mi(urun)
                         and mevcut_fiyat > 0
                     ):
-                        miktar = _canli_asgari_pey(mevcut_fiyat)
+                        miktar = _canli_asgari_pey(mevcut_fiyat, urun)
                     elif _serbest_pey_modu(oda):
                         taban = _acilis_tabani(oda, urun)
                         miktar = round(max(mevcut_fiyat, taban) + 1)
@@ -7223,7 +7274,141 @@ def mezat_baslat():
         )
     socketio.start_background_task(dukkan_geri_sayim_gorevi, dukkan, gorev, akis)
     socketio.emit("mezat_basladi_muzik", room=dukkan)
+    if canli_oturum:
+        try:
+            from diger_canli_sahne import secere_gosterilir as _secere_goster
+            from diger_canli_sahne import tarama_ozeti as _tarama_ozeti
+
+            ozet = _tarama_ozeti()
+            if oda is not None and _secere_goster(ozet.get("secere")):
+                oda["canli_secere"] = ozet.get("secere") or ""
+            _iki_odayi("diger_canli_sahne", {
+                "canli_yayin": True,
+                "secere": ozet.get("secere") if _secere_goster(ozet.get("secere")) else "",
+                "tarandi": bool(ozet.get("tarandi")),
+                "ai": bool(ozet.get("ai")),
+                "urun_adi": (canli_paket or {}).get("ad") or ozet.get("urun_adi") or "",
+                "lot": (canli_paket or {}).get("lot") or "",
+            }, dukkan)
+        except Exception:
+            pass
     return jsonify({"success": True, "dukkan": dukkan})
+
+
+def _diger_taramayi_uygula(ad, secere, ai):
+    from diger_canli_sahne import AD as _YEDEK_AD
+    from diger_canli_sahne import kaynak_mi as _canli_kaynak_mi
+    from diger_canli_sahne import taramayi_yaz as _taramayi_yaz
+
+    _taramayi_yaz(ad, secere, ai)
+    oda = odalar.get("diger")
+    if oda is None:
+        return None
+    if ai and secere:
+        oda["canli_secere"] = secere
+    urun = None
+    urun_id = oda.get("aktif_urun_id")
+    if not urun_id:
+        return None
+    urun = db.session.get(Urun, int(urun_id))
+    if not _canli_kaynak_mi(urun):
+        return None
+    if ai or not (urun.urun_adi or "").strip() or urun.urun_adi == _YEDEK_AD:
+        urun.urun_adi = (ad or _YEDEK_AD)[:200]
+        if secere:
+            urun.tanitim_yazisi = secere[:1500]
+        db.session.add(urun)
+        db.session.commit()
+    return urun
+
+
+@app.route("/api/diger/kameradan-tara", methods=["POST"])
+@admin_required
+def diger_kameradan_tara():
+    veri = request.json or {}
+    if dukkan_dogrula(veri.get("dukkan") or "diger") != "diger":
+        return jsonify({"success": False, "mesaj": "Bu işlem yalnız Diğer dükkanındadır."})
+    try:
+        from diger_canli_sahne import AD as _YEDEK_AD
+        from diger_canli_sahne import urunu_analiz_et as _analiz
+
+        sonuc = _analiz(veri.get("kare") or "")
+    except Exception:
+        from diger_canli_sahne import AD as _YEDEK_AD
+        sonuc = {"urun_adi": _YEDEK_AD, "secere": "", "ai": False}
+    ad = sonuc.get("urun_adi") or "Canlı Yayın Ürünü"
+    secere = sonuc.get("secere") or ""
+    ai = bool(sonuc.get("ai"))
+    paket = None
+    try:
+        with oda_kilitleri["diger"]:
+            urun = _diger_taramayi_uygula(ad, secere, ai)
+            if urun is not None:
+                paket = urun.to_dict()
+                ad = urun.urun_adi or ad
+    except Exception:
+        db.session.rollback()
+        ai = False
+        secere = ""
+        ad = "Canlı Yayın Ürünü"
+    finally:
+        db.session.remove()
+    if paket:
+        _iki_odayi("yeni_sahne_urunu", paket, "diger")
+    _iki_odayi("diger_canli_sahne", {
+        "canli_yayin": bool(paket),
+        "secere": secere if ai else "",
+        "tarandi": bool(ai and secere),
+        "ai": ai,
+        "urun_adi": ad,
+        "lot": (paket or {}).get("lot") or "",
+    }, "diger")
+    return jsonify({
+        "success": True,
+        "urun_adi": ad,
+        "secere": secere if ai else "",
+        "ai": ai,
+        "tarandi": bool(ai and secere),
+    })
+
+
+@app.route("/api/diger/urun-tanit", methods=["POST"])
+@admin_required
+def diger_urun_tanit():
+    veri = request.json or {}
+    if dukkan_dogrula(veri.get("dukkan") or "diger") != "diger":
+        return jsonify({"success": False, "mesaj": "Bu işlem yalnız Diğer dükkanındadır."})
+    oda = odalar["diger"]
+    metin = (oda.get("canli_secere") or "").strip()
+    if not metin:
+        try:
+            from diger_canli_sahne import secere_gosterilir as _secere_goster
+            from diger_canli_sahne import tarama_ozeti as _tarama_ozeti
+
+            ozet = _tarama_ozeti()
+            if _secere_goster(ozet.get("secere")):
+                metin = ozet.get("secere") or ""
+        except Exception:
+            metin = ""
+    if not metin:
+        metin = str(veri.get("secere") or "").strip()[:1500]
+    if not metin:
+        return jsonify({"success": False, "mesaj": "Önce kameradan tarayın."})
+    oda["canli_secere"] = metin
+    _iki_odayi(
+        "yeni_canli_yorum",
+        {
+            "platform": "Mezat Sunucusu",
+            "kullanici": "Canlı Tanıtım",
+            "mesaj": metin,
+            "yorum": metin,
+            "zaman": time.strftime("%H:%M:%S"),
+            "tur": "secere",
+        },
+        "diger",
+    )
+    ahmet_ses_akisi("diger", metin, tur="tanitim", kesinti=False)
+    return jsonify({"success": True})
 
 
 @app.route("/satis-bitir", methods=["POST"])
