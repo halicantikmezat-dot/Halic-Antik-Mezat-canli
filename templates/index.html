@@ -1725,6 +1725,21 @@
             min-height: 250px;
             aspect-ratio: 16 / 9;
         }
+        #medyaKapsayici { position: relative; }
+        #canliKameraVideo {
+            display: none;
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            background: #000;
+            z-index: 5;
+        }
+        #medyaKapsayici.canli-kamera-acik > :not(#canliKameraVideo) { display: none !important; }
+        #medyaKapsayici.canli-kamera-acik > #canliKameraVideo { display: block; }
         @media (max-width: 900px) and (orientation: portrait) {
             .stage-media-box,
             #medyaKapsayici {
@@ -2139,6 +2154,7 @@
     <div id="mezatAlani">
         <div class="stage-wrapper" id="stageWrapper">
             <div class="stage-media-box" id="medyaKapsayici">
+                <video id="canliKameraVideo" autoplay playsinline muted></video>
                 {% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun and ilk_sahne.aktif_urun.fotograflar %}
                 <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;margin:0 auto;">
                 {% elif ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}
@@ -2948,6 +2964,7 @@
     function odayaKatil() {
         const kayitli = (localStorage.getItem('halic_antik_ad') || kullaniciAdi || 'Misafir').replace(/^\[.*?\]\s*/, '').trim();
         socket.emit('join_dukkan', { dukkan: aktifDukkan, isim: kayitli || 'Misafir', kullanici_id: kullaniciId || '' });
+        canliKameraIzle();
     }
 
     let izleyiciIsimleri = [];
@@ -3224,12 +3241,130 @@
         kayanBantaEkle(`${rozet.ikon} [${rozet.etiket}] ${escapeHtml(kisaIsim(ad))}: ${formatFiyat(tutar)}`);
     }
 
+    let canliKameraPc = null;
+    let canliKameraYayinci = '';
+    let canliKameraBuzKuyrugu = [];
+
+    function canliKameraVideosunuAyir() {
+        const video = document.getElementById('canliKameraVideo');
+        if (video && video.parentNode) video.parentNode.removeChild(video);
+        return video;
+    }
+
+    function canliKameraVideosunuYerlestir(video) {
+        const kutu = document.getElementById('medyaKapsayici');
+        const el = video || document.getElementById('canliKameraVideo');
+        if (!kutu || !el) return;
+        if (el.parentNode !== kutu) kutu.appendChild(el);
+        kutu.classList.toggle('canli-kamera-acik', !!(el.srcObject && el.srcObject.getVideoTracks && el.srcObject.getVideoTracks().length));
+    }
+
+    function sahneKutusunuYaz(kutu, html) {
+        const video = canliKameraVideosunuAyir();
+        kutu.innerHTML = html;
+        canliKameraVideosunuYerlestir(video);
+    }
+
+    function canliKameraSesiniAc() {
+        const video = document.getElementById('canliKameraVideo');
+        if (!video || !video.srcObject) return;
+        video.muted = false;
+        try { video.volume = 1; } catch (e) {}
+        const deneme = video.play();
+        if (deneme && deneme.catch) deneme.catch(function () {});
+    }
+
+    function canliKameraBuzEkle(pc, aday) {
+        if (!pc || !aday) return;
+        if (!pc.remoteDescription) {
+            canliKameraBuzKuyrugu.push(aday);
+            return;
+        }
+        pc.addIceCandidate(aday).catch(function () {});
+    }
+
+    function canliKameraKapat() {
+        canliKameraYayinci = '';
+        canliKameraBuzKuyrugu = [];
+        if (canliKameraPc) {
+            try { canliKameraPc.close(); } catch (e) {}
+            canliKameraPc = null;
+        }
+        const video = document.getElementById('canliKameraVideo');
+        if (video) {
+            video.srcObject = null;
+            video.muted = true;
+        }
+        const kutu = document.getElementById('medyaKapsayici');
+        if (kutu) kutu.classList.remove('canli-kamera-acik');
+    }
+
+    function canliKameraIzle() {
+        if (aktifDukkan !== 'diger') {
+            canliKameraKapat();
+            return;
+        }
+        if (socket && socket.connected) socket.emit('kamera_izle', { dukkan: 'diger' });
+    }
+
+    function canliKameraTeklif(veri) {
+        if (aktifDukkan !== 'diger' || !veri || !veri.sdp || !window.RTCPeerConnection) return;
+        canliKameraKapat();
+        canliKameraYayinci = String(veri.yayinci || '');
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        canliKameraPc = pc;
+        pc.ontrack = function (olay) {
+            const video = document.getElementById('canliKameraVideo');
+            const akis = (olay.streams && olay.streams[0]) || new MediaStream([olay.track]);
+            if (!video) return;
+            video.srcObject = akis;
+            video.muted = true;
+            canliKameraVideosunuYerlestir(video);
+            const deneme = video.play();
+            if (deneme && deneme.catch) deneme.catch(function () {});
+        };
+        pc.onicecandidate = function (olay) {
+            if (!olay.candidate || !canliKameraYayinci) return;
+            socket.emit('kamera_buz', {
+                hedef: canliKameraYayinci,
+                candidate: olay.candidate.toJSON ? olay.candidate.toJSON() : olay.candidate
+            });
+        };
+        pc.setRemoteDescription(veri.sdp).then(function () {
+            const bekleyen = canliKameraBuzKuyrugu.splice(0);
+            bekleyen.forEach(function (aday) { pc.addIceCandidate(aday).catch(function () {}); });
+            return pc.createAnswer();
+        }).then(function (yanit) {
+            return pc.setLocalDescription(yanit);
+        }).then(function () {
+            if (!canliKameraYayinci || !pc.localDescription) return;
+            socket.emit('kamera_yanit', {
+                hedef: canliKameraYayinci,
+                sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }
+            });
+        }).catch(function () {
+            canliKameraKapat();
+        });
+    }
+
     function baglantiyiTazele() {
         odayaKatil();
         canliDurumuGetirHafif();
         if (typeof canliYayinDurumunuAl === 'function') canliYayinDurumunuAl();
     }
     socket.on('connect', baglantiyiTazele);
+    socket.on('kamera_yayin_var', function (veri) {
+        if (!veri || veri.dukkan === 'diger') canliKameraIzle();
+    });
+    socket.on('kamera_yayin_bitti', function (veri) {
+        if (!veri || veri.dukkan === 'diger') canliKameraKapat();
+    });
+    socket.on('kamera_teklif', canliKameraTeklif);
+    socket.on('kamera_buz', function (veri) {
+        if (!veri || !canliKameraPc) return;
+        if (veri.sid && canliKameraYayinci && veri.sid !== canliKameraYayinci) return;
+        canliKameraBuzEkle(canliKameraPc, veri.candidate);
+    });
     if (socket.io) {
         socket.io.on('reconnect', baglantiyiTazele);
     }
@@ -4737,6 +4872,7 @@
         }
         const v = document.getElementById('stageVideo');
         if (v && v.paused) v.play().catch(e => {});
+        canliKameraSesiniAc();
         const prompt = document.getElementById('audioUnlockPrompt');
         if (prompt) prompt.style.display = 'none';
         if (typeof izleyiciMuzikKilittenSonra === "function") izleyiciMuzikKilittenSonra();
@@ -5127,7 +5263,7 @@
         if (fiyat) fiyat.innerText = "0";
         if (kazanan) kazanan.innerText = "Yok";
         if (lot) lot.innerText = "LOT #000";
-        if (medya) medya.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
+        if (medya) sahneKutusunuYaz(medya, '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>');
         sonGorulenPey = 0;
     }
 
@@ -5509,7 +5645,7 @@
                 hlsInstance = null;
             }
             let medyaDiv = document.getElementById('medyaKapsayici');
-            medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>';
+            sahneKutusunuYaz(medyaDiv, '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📺 Canlı Sahne Bekleniyor...</p>');
             sonYuklenenSahneMedyaUrl = null;
             sahneMedyaDongusunuDurdur();
             aktifSahneMedyaIndex = 0;
@@ -5626,7 +5762,7 @@
                 hlsInstance = null;
             }
             let medyaDiv = document.getElementById('medyaKapsayici');
-            medyaDiv.innerHTML = '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📷 Görsel Eklenmemiş</p>';
+            sahneKutusunuYaz(medyaDiv, '<p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">📷 Görsel Eklenmemiş</p>');
             sonYuklenenSahneMedyaUrl = null;
         }
     }
@@ -5728,6 +5864,7 @@
         sonYuklenenSahneMedyaUrl = medya.url;
 
         let medyaDiv = document.getElementById('medyaKapsayici');
+        const canliVideo = canliKameraVideosunuAyir();
 
         if (hlsInstance) {
             hlsInstance.detachMedia();
@@ -5771,7 +5908,7 @@
             const tekMedya = aktifUrunMedyalari.length <= 1;
             const sahneKutu = medyaDiv;
             sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls ${tekMedya ? "loop" : ""} playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
-            const v = sahneKutu.querySelector('video');
+            const v = sahneKutu.querySelector('#stageVideo');
             if (v) { v.load(); sahneVideosunuOynat(v, tekMedya); }
         } else {
             let img = document.createElement('img');
@@ -5787,6 +5924,7 @@
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
         }
+        canliKameraVideosunuYerlestir(canliVideo);
         sahneMedyaSonrakiniPlanla(medya);
     }
 

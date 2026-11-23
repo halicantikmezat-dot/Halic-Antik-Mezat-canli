@@ -12031,6 +12031,15 @@ try:
 except Exception as hata:
     print(f"[BOOT] canli yayin havuzu atlandi: {hata}", flush=True)
 
+print("[BOOT] kamera sinyal", flush=True)
+try:
+    from kamera_sinyal import bagla as _kamera_sinyal_bagla
+
+    _kamera_sinyal_bagla(socketio, lambda: bool(session.get("is_admin")))
+    print("[BOOT] kamera sinyal hazir", flush=True)
+except Exception as hata:
+    print(f"[BOOT] kamera sinyal atlandi: {hata}", flush=True)
+
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 
