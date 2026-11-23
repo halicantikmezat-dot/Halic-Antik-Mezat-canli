@@ -149,6 +149,10 @@
         .havuz-satir { display:flex; gap:8px; align-items:center; background:#0d121a; border:1px solid #233044; border-radius:6px; padding:6px; }
         .havuz-satir img { width:42px; height:42px; object-fit:cover; border-radius:4px; background:#111; flex:none; }
         .havuz-etiket { font-size:10px; font-weight:800; color:#fde68a; letter-spacing:.02em; }
+        .sahne-kuyruk-serit { background:#111827; border:1px solid #d4af37; border-radius:8px; padding:8px; margin-bottom:10px; }
+        .sahne-kuyruk-liste { display:flex; gap:6px; overflow-x:auto; }
+        .sahne-kuyruk-kart { display:flex; align-items:center; gap:6px; min-width:210px; max-width:260px; background:#0d121a; border:1px solid #334155; border-radius:6px; padding:4px 6px; }
+        .sahne-kuyruk-kart img { width:36px; height:36px; object-fit:cover; border-radius:4px; background:#111; flex:none; }
 
         input, select, textarea {
             width: 100%;
@@ -877,6 +881,15 @@
     </div>
 
     <div class="card" id="digerHavuzPanel" hidden style="margin-top:15px;">
+        <div class="sahne-kuyruk-serit" id="sahneKuyrukSerit">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                <b style="color:#fde68a; font-size:13px;">Az Sonra Sahnede Kuyruğu</b>
+                <button type="button" id="btnSiradakiniSahneyeAl" class="btn btn-green btn-sm" onclick="siradakiniSahneyeAl()">Sıradakini Sahneye Al</button>
+            </div>
+            <div class="sahne-kuyruk-liste" id="sahneKuyrukListe">
+                <div style="color:#94a3b8; font-size:12px;">Sırada ürün yok.</div>
+            </div>
+        </div>
         <div class="card-title">
             <span>Gelen Ön Teklifler &amp; Tüm Dükkanlar Havuzu</span>
             <span id="digerHavuzDurum" style="font-size:11px; color:#94a3b8; font-weight:600;"></span>
@@ -4768,6 +4781,7 @@
                             <span><b>Lot #${ot.lot}</b> (${ot.urun_adi}) - <b>${ot.musteri_adi}</b>: <span style="color:#34d399; font-weight:bold;">${ot.teklif} TL</span></span>
                             <div class="actions">
                                 <button class="btn btn-blue btn-sm" onclick="sahneyeAl(${ot.urun_id})">🎬 Sahneye Al</button>
+                                ${seciliDukkan === "diger" ? `<button class="btn btn-sm" style="background:#b45309; color:#fff;" onclick="sahneKuyrugunaEkle(${ot.urun_id}, 'diger')">Sıraya Ekle</button>` : ""}
                                 <button class="btn btn-yellow btn-sm" onclick="onTeklifDuzenleModalAc(${ot.id || index})">✏️ Düzenle</button>
                                 <button class="btn btn-red btn-sm" onclick="onTeklifSil(${ot.id || index})">Sil</button>
                             </div>
@@ -5664,6 +5678,7 @@
             return;
         }
         digerHavuzYukle();
+        sahneKuyrugunuYukle();
         if (!digerHavuzZamanlayici) digerHavuzZamanlayici = setInterval(digerHavuzYukle, 8000);
     }
 
@@ -5700,9 +5715,13 @@
             + digerHavuzKacis(satir.baslik || "Ürün") + '</div>'
             + '<div style="font-size:11px; color:#86efac;">' + digerHavuzKacis(etiket) + '</div>'
             + '</div>'
+            + '<div style="display:flex; gap:4px; flex:none;">'
             + '<button type="button" class="btn btn-green btn-sm" data-havuz-sahne="1" data-urun="'
             + digerHavuzKacis(satir.urun_id) + '" data-dukkan="' + digerHavuzKacis(satir.dukkan)
-            + '">Sahneye Al</button></div>';
+            + '">Sahneye Al</button>'
+            + '<button type="button" class="btn btn-sm" style="background:#b45309; color:#fff;" data-havuz-sira="1" data-urun="'
+            + digerHavuzKacis(satir.urun_id) + '" data-dukkan="' + digerHavuzKacis(satir.dukkan)
+            + '">Sıraya Ekle</button></div></div>';
     }
 
     function digerHavuzYukle() {
@@ -5771,6 +5790,11 @@
     if (digerHavuzListe && !digerHavuzListe.dataset.baglandi) {
         digerHavuzListe.dataset.baglandi = "1";
         digerHavuzListe.addEventListener("click", function (olay) {
+            const sira = olay.target.closest("[data-havuz-sira]");
+            if (sira) {
+                sahneKuyrugunaEkle(sira.getAttribute("data-urun"), sira.getAttribute("data-dukkan"));
+                return;
+            }
             const btn = olay.target.closest("[data-havuz-sahne]");
             if (!btn) return;
             havuzdanSahneyeAl(btn.getAttribute("data-urun"), btn.getAttribute("data-dukkan"));
@@ -5877,6 +5901,109 @@
     socket.on('diger_canli_sahne', function (data) {
         if (!data || seciliDukkan !== 'diger') return;
         digerCanliDurumunuUygula(data);
+    });
+
+    function sahneKuyrugunuCiz(liste) {
+        const kutu = document.getElementById("sahneKuyrukListe");
+        const btn = document.getElementById("btnSiradakiniSahneyeAl");
+        const satirlar = Array.isArray(liste) ? liste : [];
+        if (btn) btn.disabled = satirlar.length === 0;
+        if (!kutu) return;
+        if (!satirlar.length) {
+            kutu.innerHTML = '<div style="color:#94a3b8; font-size:12px;">Sırada ürün yok.</div>';
+            return;
+        }
+        kutu.innerHTML = satirlar.map(function (satir) {
+            const fiyat = digerHavuzTl(satir.baslangic_fiyati);
+            return '<div class="sahne-kuyruk-kart">'
+                + '<img src="' + digerHavuzKacis(satir.gorsel || "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7") + '" alt="">'
+                + '<div style="flex:1; min-width:0;">'
+                + '<div style="font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Lot #'
+                + digerHavuzKacis(satir.lot_no) + ' ' + digerHavuzKacis(satir.baslik || "Ürün") + '</div>'
+                + '<div style="font-size:11px; color:#86efac;">' + digerHavuzKacis(fiyat) + '</div>'
+                + '</div>'
+                + '<button type="button" class="btn btn-red btn-sm" data-kuyruk-cikar="'
+                + digerHavuzKacis(satir.urun_id) + '">Çıkar</button></div>';
+        }).join("");
+    }
+
+    function sahneKuyrugunuYukle() {
+        if (seciliDukkan !== "diger") return;
+        fetch("/api/diger/sahne-kuyrugu?t=" + Date.now(), { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (seciliDukkan !== "diger") return;
+                sahneKuyrugunuCiz((data && data.siradaki_urunler) || []);
+            })
+            .catch(function () {});
+    }
+
+    function sahneKuyrugunaEkle(urunId, dukkan) {
+        playClickSound();
+        fetch("/api/diger/sahne-kuyrugu/ekle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urun_id: Number(urunId), kaynak_dukkan: dukkan || "" })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || !data.success) {
+                alert((data && data.mesaj) || "Sıraya eklenemedi.");
+                if (data && data.siradaki_urunler) sahneKuyrugunuCiz(data.siradaki_urunler);
+                return;
+            }
+            sahneKuyrugunuCiz(data.siradaki_urunler || []);
+        }).catch(function () { alert("Sıraya eklenemedi."); });
+    }
+
+    function sahneKuyrugundanCikar(urunId) {
+        playClickSound();
+        fetch("/api/diger/sahne-kuyrugu/cikar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urun_id: Number(urunId) })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || !data.success) {
+                alert((data && data.mesaj) || "Sıradan çıkarılamadı.");
+            }
+            if (data && data.siradaki_urunler) sahneKuyrugunuCiz(data.siradaki_urunler);
+        }).catch(function () { alert("Sıradan çıkarılamadı."); });
+    }
+
+    function siradakiniSahneyeAl() {
+        playClickSound();
+        const btn = document.getElementById("btnSiradakiniSahneyeAl");
+        if (btn) btn.disabled = true;
+        fetch("/api/diger/sahne-kuyrugu/sahneye-al", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (data && data.siradaki_urunler) sahneKuyrugunuCiz(data.siradaki_urunler);
+            else if (btn) btn.disabled = false;
+            if (!data || !data.success) {
+                alert((data && data.mesaj) || "Sıradaki ürün sahneye alınamadı.");
+                return;
+            }
+            if (typeof veriCekAdmin === "function") veriCekAdmin();
+            digerHavuzYukle();
+        }).catch(function () {
+            if (btn) btn.disabled = false;
+            alert("Sıradaki ürün sahneye alınamadı.");
+        });
+    }
+
+    const sahneKuyrukListe = document.getElementById("sahneKuyrukListe");
+    if (sahneKuyrukListe && !sahneKuyrukListe.dataset.baglandi) {
+        sahneKuyrukListe.dataset.baglandi = "1";
+        sahneKuyrukListe.addEventListener("click", function (olay) {
+            const btn = olay.target.closest("[data-kuyruk-cikar]");
+            if (!btn) return;
+            sahneKuyrugundanCikar(btn.getAttribute("data-kuyruk-cikar"));
+        });
+    }
+
+    socket.on("sahne_kuyrugu_guncellendi", function (data) {
+        if (!data || data.dukkan && data.dukkan !== "diger" || seciliDukkan !== "diger") return;
+        sahneKuyrugunuCiz(data.siradaki_urunler || []);
     });
 
     function mezatIstegiGonder(sure, dukkan) {

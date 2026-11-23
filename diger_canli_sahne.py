@@ -1,6 +1,7 @@
 """Yalnızca Diğer - Her Şey dükkanı için geçici canlı sahne ürünü."""
 
 import math
+import threading
 
 DUKKAN = "diger"
 AD = "Canlı Yayın Ürünü"
@@ -367,3 +368,91 @@ def satis_kimligi(urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lot_no=No
         "lot_no": lot,
         "son_fiyat": tutar,
     }
+
+
+# Yalnızca Diğer canlı odasının "Az Sonra Sahnede" sırası. Diğer dükkanlara yazılmaz.
+KUYRUK_TAVAN = 5
+_KUYRUK = []
+_KUYRUK_KILIT = threading.Lock()
+
+
+def _kuyruk_karti(kart):
+    if not isinstance(kart, dict):
+        return None
+    try:
+        urun_id = int(kart.get("urun_id") or 0)
+    except (TypeError, ValueError):
+        return None
+    if urun_id <= 0:
+        return None
+    try:
+        lot_no = int(kart.get("lot_no") or 0)
+    except (TypeError, ValueError):
+        lot_no = 0
+    try:
+        baslangic = float(kart.get("baslangic_fiyati") or 0)
+    except (TypeError, ValueError):
+        baslangic = 0.0
+    try:
+        hemen_al = float(kart.get("hemen_al") or 0)
+    except (TypeError, ValueError):
+        hemen_al = 0.0
+    return {
+        "urun_id": urun_id,
+        "lot_no": lot_no,
+        "baslik": str(kart.get("baslik") or "")[:200],
+        "gorsel": str(kart.get("gorsel") or "")[:2000],
+        "kaynak_dukkan": str(kart.get("kaynak_dukkan") or "")[:30],
+        "baslangic_fiyati": baslangic,
+        "hemen_al": hemen_al,
+    }
+
+
+def kuyruk_listesi():
+    with _KUYRUK_KILIT:
+        return [dict(kart) for kart in _KUYRUK]
+
+
+def kuyruk_ekle(kart):
+    """Sıraya en fazla 5 ürün. Aynı ürün ikinci kez girmez."""
+    temiz = _kuyruk_karti(kart)
+    if temiz is None:
+        return False, "Geçersiz ürün.", kuyruk_listesi()
+    with _KUYRUK_KILIT:
+        for kayit in _KUYRUK:
+            if kayit.get("urun_id") == temiz["urun_id"]:
+                return False, "Bu ürün zaten sırada.", [dict(x) for x in _KUYRUK]
+        if len(_KUYRUK) >= KUYRUK_TAVAN:
+            return False, "Sırada en fazla 5 ürün olabilir.", [dict(x) for x in _KUYRUK]
+        _KUYRUK.append(temiz)
+        return True, "Sıraya eklendi.", [dict(x) for x in _KUYRUK]
+
+
+def kuyruktan_dus(urun_id):
+    try:
+        hedef = int(urun_id or 0)
+    except (TypeError, ValueError):
+        return False
+    if hedef <= 0:
+        return False
+    with _KUYRUK_KILIT:
+        once = len(_KUYRUK)
+        _KUYRUK[:] = [kart for kart in _KUYRUK if kart.get("urun_id") != hedef]
+        return len(_KUYRUK) != once
+
+
+def kuyruk_ilkini_cikar():
+    with _KUYRUK_KILIT:
+        if not _KUYRUK:
+            return None
+        return dict(_KUYRUK.pop(0))
+
+
+def kuyruk_basa_koy(kart):
+    temiz = _kuyruk_karti(kart)
+    if temiz is None:
+        return kuyruk_listesi()
+    with _KUYRUK_KILIT:
+        _KUYRUK[:] = [kayit for kayit in _KUYRUK if kayit.get("urun_id") != temiz["urun_id"]]
+        _KUYRUK.insert(0, temiz)
+        return [dict(x) for x in _KUYRUK]

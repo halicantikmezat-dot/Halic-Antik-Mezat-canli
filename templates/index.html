@@ -658,6 +658,22 @@
             margin: 4px 8px 0; background: rgba(15, 23, 18, 0.92); color: #f8fafc;
             border: 1px solid #d4af37; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.35;
         }
+        #azSonraSahne[hidden] { display: none !important; }
+        .az-sonra-sahne {
+            position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 12;
+            display: flex; align-items: center; gap: 6px;
+            background: rgba(8, 12, 19, 0.92); border: 1px solid #d4af37; border-radius: 8px;
+            padding: 4px 6px; pointer-events: none;
+        }
+        .az-sonra-baslik {
+            flex: none; color: #111; background: #d4af37; border-radius: 4px;
+            font-size: 9px; font-weight: 900; line-height: 1.15; padding: 4px 5px; max-width: 54px;
+        }
+        .az-sonra-liste { display: flex; gap: 6px; overflow: hidden; min-width: 0; }
+        .az-sonra-kart { display: flex; align-items: center; gap: 5px; min-width: 0; max-width: 180px; }
+        .az-sonra-kart img { width: 28px; height: 28px; object-fit: cover; border-radius: 4px; background: #111; flex: none; }
+        .az-sonra-ad { color: #f8fafc; font-size: 10px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .az-sonra-fiyat { color: #86efac; font-size: 10px; font-weight: 800; }
         .btn-bid { border: none; padding: 9px 4px; border-radius: 4px; font-weight: 800; font-size: 10.5px; cursor: pointer; text-align: center; transition: all 0.2s; width: 50%; }
         .btn-action-green { background: var(--btn-green); color: #ffffff !important; border: 1px solid #226350; }
         .btn-action-blue { background: #1e3a8a; color: #ffffff !important; border: 1px solid #2563eb; }
@@ -2352,6 +2368,10 @@
                 {% endif %}
             </div>
             <div id="sahneBeklemeRozeti" class="sahne-bekleme" style="display:none;">Yeni ürün sahneye bekleniyor...</div>
+            <div id="azSonraSahne" class="az-sonra-sahne" hidden>
+                <div class="az-sonra-baslik">Az Sonra Sahnede</div>
+                <div id="azSonraSahneListe" class="az-sonra-liste"></div>
+            </div>
             
             <span id="cornerAcilisFiyat" hidden>0</span>
             <span id="cornerIzleyici" hidden>0</span>
@@ -3168,6 +3188,7 @@
         const kayitli = (localStorage.getItem('halic_antik_ad') || kullaniciAdi || 'Misafir').replace(/^\[.*?\]\s*/, '').trim();
         socket.emit('join_dukkan', { dukkan: aktifDukkan, isim: kayitli || 'Misafir', kullanici_id: kullaniciId || '' });
         canliKameraIzle();
+        azSonraSahneyiGetir();
     }
 
     let izleyiciIsimleri = [];
@@ -6714,6 +6735,60 @@
             if (kart) kart.hidden = true;
         }
         digerVitrinKontrolleriniCiz();
+    });
+
+    function azSonraKacis(deger) {
+        return String(deger == null ? "" : deger)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function azSonraSahneyiCiz(liste) {
+        const kutu = document.getElementById("azSonraSahne");
+        const satirlarKutusu = document.getElementById("azSonraSahneListe");
+        if (!kutu || !satirlarKutusu) return;
+        const satirlar = (aktifDukkan === "diger" && Array.isArray(liste)) ? liste.slice(0, 5) : [];
+        if (!satirlar.length) {
+            kutu.hidden = true;
+            satirlarKutusu.innerHTML = "";
+            return;
+        }
+        satirlarKutusu.innerHTML = satirlar.map(function (satir) {
+            const fiyat = Math.round(Number(satir.baslangic_fiyati) || 0).toLocaleString("tr-TR") + " TL";
+            const gorsel = satir.gorsel
+                ? '<img src="' + azSonraKacis(satir.gorsel) + '" alt="">'
+                : "";
+            return '<div class="az-sonra-kart">' + gorsel
+                + '<div style="min-width:0;">'
+                + '<div class="az-sonra-ad">' + azSonraKacis(satir.baslik || "Ürün") + '</div>'
+                + '<div class="az-sonra-fiyat">' + azSonraKacis(fiyat) + '</div>'
+                + '</div></div>';
+        }).join("");
+        kutu.hidden = false;
+    }
+
+    function azSonraSahneyiGetir() {
+        if (aktifDukkan !== "diger") {
+            azSonraSahneyiCiz([]);
+            return;
+        }
+        fetch("/api/diger/sahne-kuyrugu?t=" + Date.now(), { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (aktifDukkan !== "diger") return;
+                azSonraSahneyiCiz((data && data.siradaki_urunler) || []);
+            })
+            .catch(function () {});
+    }
+
+    socket.on("sahne_kuyrugu_guncellendi", function (data) {
+        if (!data || (data.dukkan && data.dukkan !== "diger") || aktifDukkan !== "diger") {
+            if (aktifDukkan !== "diger") azSonraSahneyiCiz([]);
+            return;
+        }
+        azSonraSahneyiCiz(data.siradaki_urunler || []);
     });
 
     function yuzdeOnPeyVer() {
