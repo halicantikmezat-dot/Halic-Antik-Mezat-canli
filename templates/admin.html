@@ -2050,6 +2050,9 @@
             .then(function (yanit) { return yanit.json(); })
             .then(function (veri) {
                 canliYayinKaydi = veri || {};
+                if (veri && Array.isArray(veri.ice_servers) && veri.ice_servers.length) {
+                    window.halicBuzSunuculari = veri.ice_servers;
+                }
                 canliYayinPaneliCiz();
             })
             .catch(function () {});
@@ -3268,6 +3271,17 @@
         restreamKaydiBaslat();
     }
 
+    function buzSunuculari() {
+        if (window.halicBuzSunuculari && window.halicBuzSunuculari.length) return window.halicBuzSunuculari;
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        ];
+    }
+
     const kameraBaglantilari = {};
 
     function kameraAdayi(aday) {
@@ -3295,7 +3309,7 @@
     function kameraTeklifGonder(sid) {
         if (!sid || !restreamAkis || !window.RTCPeerConnection) return;
         kameraBaglantiKapat(sid);
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        const pc = new RTCPeerConnection({ iceServers: buzSunuculari() });
         kameraBaglantilari[sid] = pc;
         restreamAkis.getTracks().forEach(function (iz) {
             pc.addTrack(iz, restreamAkis);
@@ -4225,12 +4239,30 @@
         }
     });
 
+    function adminDigerSayacYazisi(asama, ham) {
+        const sn = Math.max(0, parseInt(ham, 10) || 0);
+        if (asama === "pazarlik") {
+            const yazi = Math.floor(sn / 60) + ":" + String(sn % 60).padStart(2, "0");
+            return (sn > 60 ? "Pazarlık: " : "Karar: ") + yazi;
+        }
+        if (asama === "karar") return "Karar: " + String(sn).padStart(2, "0");
+        return "";
+    }
+
     socket.on('sayac_guncelle', function(data) {
         if (!adminOlayBirKez("sayac_guncelle", data)) return;
         if(data && data.dukkan === seciliDukkan && data.kalan !== undefined) {
             const durum = document.getElementById('aktifDurum');
             durum.classList.remove('satildi-yazi');
             const ham = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 0;
+            if (seciliDukkan === "diger" && (data.asama === "pazarlik" || data.asama === "karar")) {
+                if (adminKararZamanlayici) {
+                    clearInterval(adminKararZamanlayici);
+                    adminKararZamanlayici = null;
+                }
+                durum.innerText = adminDigerSayacYazisi(data.asama, ham);
+                return;
+            }
             if (data.asama === "karar") {
                 adminKararSayaciniKur(ham, "karar");
                 return;
@@ -4274,7 +4306,14 @@
         if (kazanan) kazanan.innerText = data.kazanan || urun.kazanan || "Yok";
         adminGorseliYaz(urun);
         const ham = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10) || 0;
-        if (data.asama === "karar") {
+        if (seciliDukkan === "diger" && (data.asama === "pazarlik" || data.asama === "karar")) {
+            if (adminKararZamanlayici) {
+                clearInterval(adminKararZamanlayici);
+                adminKararZamanlayici = null;
+            }
+            const durum = document.getElementById("aktifDurum");
+            if (durum) durum.innerText = adminDigerSayacYazisi(data.asama, ham);
+        } else if (data.asama === "karar") {
             adminKararSayaciniKur(ham, "karar");
         } else {
             const durum = document.getElementById("aktifDurum");

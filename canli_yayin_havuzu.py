@@ -115,6 +115,8 @@ _VAPID_ANAHTAR = "halic:canli_yayin:vapid"
 _PUSH_ANAHTAR = "halic:canli_yayin:push"
 _TABLO = "canli_yayin_havuz"
 _PUSH_TABLO = "canli_yayin_push"
+_SOSYAL_DB_ANAHTAR = "sosyal_havuz"
+_SOSYAL_REDIS = "halic:canli_yayin:sosyal_havuz"
 _DINLEYICI_KILIT = threading.RLock()
 _DINLEYICI_ADLAR = ("youtube", "tiktok", "twitch", "kick", "meta")
 _DINLEYICI_DURUM = {ad: "kapali" for ad in _DINLEYICI_ADLAR}
@@ -204,6 +206,12 @@ def bagla(
         _restream_istek_guncelle()
     except Exception as hata:
         print(f"[RESTREAM] acilis atlandi: {hata}", flush=True)
+    try:
+        import sosyal_yayin_havuzu as _sosyal_kalici
+
+        _sosyal_kalici.kalici_bagla(_sosyal_depo_oku, _sosyal_depo_yaz)
+    except Exception as hata:
+        print(f"[SOSYAL HAVUZ] kalici baglanti atlandi: {hata}", flush=True)
     print(
         "[CANLI YAYIN] pytchat="
         + ("acik" if _PYTCHAT_VAR else "pasif")
@@ -305,6 +313,7 @@ def herkese_acik_durum():
         "baslangic_zamani": kayit.get("baslangic_zamani") or "",
         "dinleyiciler": _dinleyici_ozet(kayit),
         "push_public_key": _vapid_public() or "",
+        "ice_servers": buz_sunuculari(),
     }
 
 
@@ -1251,6 +1260,103 @@ def _db_oku(anahtar="durum"):
 
 def _db_yaz(kayit):
     _db_satir_yaz("durum", kayit)
+
+
+def _sosyal_depo_var_mi():
+    return _REDIS is not None or (_app is not None and _db is not None)
+
+
+def _sosyal_depo_oku():
+    """Depo yoksa None. Kayıt varsa kayitli=True, depo boşsa kayitli=False."""
+    if not _sosyal_depo_var_mi():
+        return None
+    if _REDIS is not None:
+        try:
+            ham = _REDIS.get(_SOSYAL_REDIS)
+        except Exception as hata:
+            print(f"[SOSYAL HAVUZ] Redis okunamadi: {hata}", flush=True)
+            ham = None
+        if ham:
+            try:
+                veri = json.loads(ham)
+            except ValueError:
+                veri = None
+            if isinstance(veri, dict) and isinstance(veri.get("hesaplar"), list):
+                return {"kayitli": True, "hesaplar": veri["hesaplar"]}
+    if _app is not None and _db is not None:
+        try:
+            with _app.app_context():
+                uzak = _db_oku(_SOSYAL_DB_ANAHTAR)
+        except Exception as hata:
+            print(f"[SOSYAL HAVUZ] veritabani okunamadi: {hata}", flush=True)
+            try:
+                _db.session.rollback()
+            except Exception:
+                pass
+            uzak = None
+        if isinstance(uzak, dict) and isinstance(uzak.get("hesaplar"), list):
+            if _REDIS is not None:
+                try:
+                    _REDIS.set(_SOSYAL_REDIS, json.dumps(uzak, ensure_ascii=False))
+                except Exception as hata:
+                    print(f"[SOSYAL HAVUZ] Redis yazilamadi: {hata}", flush=True)
+            return {"kayitli": True, "hesaplar": uzak["hesaplar"]}
+    return {"kayitli": False, "hesaplar": []}
+
+
+def _sosyal_depo_yaz(hesaplar):
+    if not _sosyal_depo_var_mi():
+        return False
+    paket = {"hesaplar": list(hesaplar or [])}
+    yazildi = False
+    if _REDIS is not None:
+        try:
+            _REDIS.set(_SOSYAL_REDIS, json.dumps(paket, ensure_ascii=False))
+            yazildi = True
+        except Exception as hata:
+            print(f"[SOSYAL HAVUZ] Redis yazilamadi: {hata}", flush=True)
+    if _app is not None and _db is not None:
+        try:
+            with _app.app_context():
+                _db_satir_yaz(_SOSYAL_DB_ANAHTAR, paket)
+            yazildi = True
+        except Exception as hata:
+            print(f"[SOSYAL HAVUZ] veritabani yazilamadi: {hata}", flush=True)
+            try:
+                _db.session.rollback()
+            except Exception:
+                pass
+    return yazildi
+
+
+def buz_sunuculari():
+    """STUN durur. TURN_URLS tanımlıysa onu, değilse genel TURN girdilerini ekler."""
+    sunucular = [{"urls": "stun:stun.l.google.com:19302"}]
+    ham = (os.environ.get("TURN_URLS") or os.environ.get("TURN_URL") or "").strip()
+    adresler = [parca.strip() for parca in ham.split(",") if parca.strip()]
+    kullanici = (os.environ.get("TURN_USERNAME") or "").strip()
+    sifre = (os.environ.get("TURN_CREDENTIAL") or "").strip()
+    if adresler:
+        giris = {"urls": adresler if len(adresler) > 1 else adresler[0]}
+        if kullanici and sifre:
+            giris["username"] = kullanici
+            giris["credential"] = sifre
+        sunucular.append(giris)
+        return sunucular
+    sunucular.append({"urls": "stun:stun1.l.google.com:19302"})
+    for adres in (
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+    ):
+        sunucular.append(
+            {
+                "urls": adres,
+                "username": "openrelayproject",
+                "credential": "openrelayproject",
+            }
+        )
+    return sunucular
 
 
 def _db_satir_yaz(anahtar, kayit):

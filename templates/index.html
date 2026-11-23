@@ -3404,11 +3404,22 @@
         if (socket && socket.connected) socket.emit('kamera_izle', { dukkan: 'diger' });
     }
 
+    function buzSunuculari() {
+        if (window.halicBuzSunuculari && window.halicBuzSunuculari.length) return window.halicBuzSunuculari;
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+            { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        ];
+    }
+
     function canliKameraTeklif(veri) {
         if (aktifDukkan !== 'diger' || !veri || !veri.sdp || !window.RTCPeerConnection) return;
         canliKameraKapat();
         canliKameraYayinci = String(veri.yayinci || '');
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        const pc = new RTCPeerConnection({ iceServers: buzSunuculari() });
         canliKameraPc = pc;
         pc.ontrack = function (olay) {
             const video = document.getElementById('canliKameraVideo');
@@ -4075,6 +4086,9 @@
         window.ozelDigerCanliOdasi = burada;
         if (typeof window.bildirimZiliniUygula === 'function') window.bildirimZiliniUygula();
         if (kayit && kayit.push_public_key) window.canliPushPublicKey = kayit.push_public_key;
+        if (kayit && Array.isArray(kayit.ice_servers) && kayit.ice_servers.length) {
+            window.halicBuzSunuculari = kayit.ice_servers;
+        }
     }
 
     function canliYayinDurumunuAl() {
