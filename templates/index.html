@@ -2382,7 +2382,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
         <button type="button" class="menu-oge" onclick="menuIslem(ozelSohbetAc)">💬 Sohbet (İzleyici Odası)</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
-        <button type="button" class="menu-oge" id="menuKargoKurallar" {% if secili_dukkan is defined and secili_dukkan != 'diger' %}hidden{% endif %} onclick="menuIslem(kargoKurallarAc)">Kargo &amp; Kurallar</button>
+        <button type="button" class="menu-oge" id="menuKargoKurallar" onclick="menuIslem(kargoKurallarAc)">Kargo &amp; Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
         <select id="currencySelector" aria-label="Para birimi seçimi" onchange="paraBirimiDegistir()" style="margin-top:8px;">
             <option value="TRY">₺ TL</option>
@@ -2607,7 +2607,7 @@
             <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
         </div>
         <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
-        <button type="button" id="kargoFanus" class="kargo-fanus" {% if secili_dukkan is defined and secili_dukkan != 'diger' %}hidden{% endif %} onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
+        <button type="button" id="kargoFanus" class="kargo-fanus" onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
             <span class="kargo-fanus-sivi" id="kargoFanusSivi" aria-hidden="true"><span class="kargo-fanus-dalga"></span></span>
             <span class="kargo-fanus-ikon" aria-hidden="true">📦</span>
             <span class="kargo-fanus-tutar" id="kargoFanusTutar"></span>
@@ -6210,17 +6210,14 @@
     function kargoKumbarasiniCiz() {
         const serit = document.getElementById("kargoFanus");
         const menu = document.getElementById("menuKargoKurallar");
-        const diger = aktifDukkan === "diger";
-        if (serit) serit.hidden = !diger;
-        if (menu) menu.hidden = !diger;
-        if (!diger) return;
+        if (serit) serit.hidden = false;
+        if (menu) menu.hidden = false;
         const ad = String(kullaniciAdi || "").trim();
         if (!ad) {
             kargoCubugunuYaz(kumbaraYerel(0, 0));
             return;
         }
         kargoSepetiniGetir(ad).then(function (paket) {
-            if (aktifDukkan !== "diger") return;
             kargoCubugunuYaz((paket && paket.sepet) || kumbaraYerel(0, 0));
         });
     }
@@ -6306,28 +6303,24 @@
         if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL";
         const digerKazanan = aktifDukkan === "diger";
         zaferSepetiniYaz(kumbaraYerel(sip.fiyat, sip.fiyat ? 1 : 0), digerKazanan);
-        if (digerKazanan) {
-            kargoSepetiniGetir(gorunenAd || kullaniciAdi).then(function (paket) {
-                const kartAcik = document.getElementById("zaferKart");
-                if (!kartAcik || !kartAcik.classList.contains("acik") || aktifDukkan !== "diger") return;
-                const gelen = paket && paket.sepet;
-                if (!gelen) return;
-                const kayitlar = paket.kayitlar || [];
-                const varMi = kayitlar.some(function (satir) {
-                    const ayniLot = String(satir.lot_no) === String(sip.lot);
-                    const ayniFiyat = Math.round(Number(satir.son_fiyat) || 0) === Math.round(Number(sip.fiyat) || 0);
-                    return ayniLot && ayniFiyat;
-                });
-                if (varMi || !(Number(sip.fiyat) > 0)) {
-                    zaferSepetiniYaz(gelen, true);
-                    kargoCubugunuYaz(gelen);
-                    return;
-                }
-                const birlesik = kumbaraYerel((Number(gelen.toplam_tutar) || 0) + (Number(sip.fiyat) || 0), (Number(gelen.urun_sayisi) || 0) + 1);
-                zaferSepetiniYaz(birlesik, true);
-                kargoCubugunuYaz(birlesik);
+        kargoSepetiniGetir(gorunenAd || kullaniciAdi).then(function (paket) {
+            const gelen = paket && paket.sepet;
+            if (!gelen) return;
+            const kayitlar = paket.kayitlar || [];
+            const varMi = kayitlar.some(function (satir) {
+                const ayniLot = String(satir.lot_no) === String(sip.lot);
+                const ayniFiyat = Math.round(Number(satir.son_fiyat) || 0) === Math.round(Number(sip.fiyat) || 0);
+                return ayniLot && ayniFiyat;
             });
-        }
+            const ozet = (varMi || !(Number(sip.fiyat) > 0))
+                ? gelen
+                : kumbaraYerel((Number(gelen.toplam_tutar) || 0) + (Number(sip.fiyat) || 0), (Number(gelen.urun_sayisi) || 0) + 1);
+            if (digerKazanan && aktifDukkan === "diger") {
+                const kartAcik = document.getElementById("zaferKart");
+                if (kartAcik && kartAcik.classList.contains("acik")) zaferSepetiniYaz(ozet, true);
+            }
+            kargoCubugunuYaz(ozet);
+        });
         if (kart) kart.classList.add("acik");
         window.kazananKartAcilis = Date.now();
         window.zaferMuzikKilit = true;

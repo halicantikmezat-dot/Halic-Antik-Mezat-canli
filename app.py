@@ -2575,11 +2575,81 @@ def _satis_olay_alanlari(urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lo
         }
 
 
+_KUMBARA_CAPRAZ = []
+_KUMBARA_CAPRAZ_KILIT = BoundedSemaphore(1)
+_KUMBARA_CAPRAZ_SIRA = 9000000
+_KUMBARA_CAPRAZ_TAVAN = 500
+
+
+def _kumbara_capraz_kaydet(urun, kazanan_adi, fiyat, urun_adi=None, lot_no=None, platform=None):
+    """Diğer dışındaki gece satışını kumbaraya ekler. %10 baraj formülüne dokunmaz."""
+    global _KUMBARA_CAPRAZ_SIRA
+    try:
+        from diger_canli_sahne import _donem_tarihi, kazanan_ayir
+    except Exception:
+        return
+    try:
+        kimlik = int(getattr(urun, "id", 0) or 0)
+    except (TypeError, ValueError):
+        kimlik = 0
+    if lot_no in (None, ""):
+        lot = getattr(urun, "lot_no", "") if urun is not None else ""
+    else:
+        lot = lot_no
+    if lot is None:
+        lot = ""
+    else:
+        try:
+            lot = int(lot)
+        except (TypeError, ValueError):
+            lot = str(lot)[:40]
+    try:
+        tutar = float(fiyat or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    ad, rozet = kazanan_ayir(kazanan_adi, platform)
+    if not ad or ad == "Yok":
+        return
+    simdi = time.time()
+    ad_urun = urun_adi if urun_adi not in (None, "") else getattr(urun, "urun_adi", "")
+    with _KUMBARA_CAPRAZ_KILIT:
+        for eski in reversed(_KUMBARA_CAPRAZ):
+            if simdi - eski["an"] > 25:
+                break
+            if kimlik > 0 and eski["urun_id"] == kimlik:
+                return
+        _KUMBARA_CAPRAZ_SIRA += 1
+        _KUMBARA_CAPRAZ.append({
+            "id": _KUMBARA_CAPRAZ_SIRA,
+            "urun_id": kimlik,
+            "lot_no": lot,
+            "urun_adi": str(ad_urun or "Eser").strip()[:200] or "Eser",
+            "son_fiyat": tutar,
+            "kazanan_adi": ad,
+            "kazanan_platform": rozet,
+            "telefon": "",
+            "saat": time.strftime("%H:%M:%S"),
+            "durum": "Ödeme Bekliyor",
+            "donem": _donem_tarihi(simdi),
+            "an": simdi,
+        })
+        if len(_KUMBARA_CAPRAZ) > _KUMBARA_CAPRAZ_TAVAN:
+            del _KUMBARA_CAPRAZ[: len(_KUMBARA_CAPRAZ) - _KUMBARA_CAPRAZ_TAVAN]
+
+
+def _kumbara_capraz_kayitlari():
+    with _KUMBARA_CAPRAZ_KILIT:
+        return [dict(kayit) for kayit in _KUMBARA_CAPRAZ]
+
+
 def _diger_canli_satis_kaydet(
     dukkan, urun, kazanan_adi, kazanan_id, fiyat, urun_adi=None, lot_no=None, platform=None,
 ):
-    """Yalnızca Diğer canlı sahnesinin satış listesine yazar. Sahne akışını değiştirmez."""
+    """Diğer sahnesinin satış listesi ayrı kalır. Diğer dükkanlar yalnızca kumbaraya yazılır."""
     if str(dukkan or "") != "diger":
+        _kumbara_capraz_kaydet(
+            urun, kazanan_adi, fiyat, urun_adi=urun_adi, lot_no=lot_no, platform=platform,
+        )
         return
     try:
         from diger_canli_sahne import satis_kaydi_ekle
@@ -8080,8 +8150,10 @@ def diger_satis_kayitlari():
 def diger_musteri_sepeti():
     from diger_canli_sahne import musteri_sepeti_bul, satis_kayitlari
 
+    kaynak = list(satis_kayitlari())
+    kaynak.extend(_kumbara_capraz_kayitlari())
     tekil, sepet, sepetler = musteri_sepeti_bul(
-        satis_kayitlari(),
+        kaynak,
         request.args.get("isim") or "",
         request.args.get("platform") or None,
     )
