@@ -295,6 +295,12 @@
             white-space: nowrap;
         }
         .btn-chip-kargo:hover { background: #166534; color: #fff; }
+        .loj-rozet { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; line-height: 1.35; }
+        .loj-yesil { background: #14532d; color: #bbf7d0; }
+        .loj-sari { background: #854d0e; color: #fef3c7; }
+        .loj-kirmizi { background: #7f1d1d; color: #fecaca; }
+        .loj-hazir { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 11px; color: #e2e8f0; }
+        .loj-desi { width: 100%; margin-top: 4px; padding: 4px 6px; font-size: 11px; }
 
         .modal {
             display: none;
@@ -474,6 +480,7 @@
             <button type="button" onclick="studyoAc()" class="btn btn-sm" style="background:#6d28d9; color:#fff;">🎙️ AI Ürün Stüdyosu</button>
             <a id="linkCanliEkran" href="/" target="_blank" class="btn btn-blue btn-sm" style="text-decoration: none;">📺 Canlı Ekran</a>
             <a id="linkVitrin" href="/vitrin" target="_blank" class="btn btn-purple btn-sm" style="text-decoration: none;">🛍️ Vitrin</a>
+            <button type="button" onclick="kuryeIcmaliYazdir()" class="btn btn-yellow btn-sm">Günlük Kurye İcmali Yazdır</button>
             <a href="/excel-indir" class="btn btn-green btn-sm" style="text-decoration: none;" onclick="playClickSound()">📊 Excel Raporu</a>
             <button type="button" onclick="excelRaporSil()" class="btn btn-red btn-sm">Raporu Sil</button>
             <button type="button" onclick="excelRaporSifirla()" class="btn btn-sm" style="background:#475569; color:#fff;">Raporu Sıfırla</button>
@@ -940,7 +947,10 @@
     <div class="card">
         <div class="card-title">
             📦 Müşteri Dosyaları (Gün Sonu Ekstre & Ciro)
-            <span style="color: #34d399; font-size: 14px;">Toplam Ciro: <b id="toplamCiro">0 TL</b></span>
+            <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <button type="button" onclick="kuryeIcmaliYazdir()" class="btn btn-yellow btn-sm">Günlük Kurye İcmali Yazdır</button>
+                <span style="color: #34d399; font-size: 14px;">Toplam Ciro: <b id="toplamCiro">0 TL</b></span>
+            </span>
         </div>
         <div style="overflow-x: auto;">
             <table>
@@ -4999,12 +5009,16 @@
                 tablo.innerHTML = "";
                 let genelCiro = 0;
                 kargoUrunleri = {};
+                lojistikDosyalar = {};
 
                 if(data.gruplanmis_dosyalar.length === 0) {
                     tablo.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Bu dükkanda henüz satılan ürün yok.</td></tr>';
                 } else {
                     data.gruplanmis_dosyalar.forEach(dosya => {
                         genelCiro += parseFloat(dosya.toplam_tutar || 0);
+                        const loj = dosya.lojistik || {};
+                        const koliKodu = String(loj.koli_kodu || "");
+                        if (koliKodu) lojistikDosyalar[koliKodu] = dosya;
                         let urunlerHtml = '<div class="urun-chip-container">';
                         dosya.urunler.forEach(u => {
                             kargoUrunleri[String(u.urun_id)] = {
@@ -5036,9 +5050,17 @@
 
                         let waMesaj = encodeURIComponent(`Sayın ${dosya.musteri_adi}, Haliç Antik Mezat'tan kazandığınız ürünler:\n${dosya.urunler.map(u => `• Lot #${u.lot} - ${u.urun_adi} (${u.fiyat} TL)`).join('\n')}\n\nToplam Borcunuz: ${dosya.toplam_tutar} TL'dir.`);
                         
+                        const rozet = lojistikRozet(loj.ilk_kazanma);
+                        const sevkiyatKaydi = sevkiyatDeposuOku()[koliKodu] || {};
+                        const bugunSecili = sevkiyatKaydi.gun === lojistikBugun() && sevkiyatKaydi.secili;
                         let tr = document.createElement('tr');
                         tr.innerHTML = `
-                            <td><b>${dosya.musteri_adi}</b><br><small style="color:#94a3b8;">${dosya.telefon || '-'}</small></td>
+                            <td>
+                                <b>${dosya.musteri_adi}</b><br><small style="color:#94a3b8;">${dosya.telefon || '-'}</small>
+                                <div class="loj-rozet loj-${rozet.sinif}" data-ilk="${lojistikKacis(loj.ilk_kazanma || "")}">${lojistikKacis(rozet.metin)}</div>
+                                <label class="loj-hazir"><input type="checkbox" class="sevkiyat-hazir" data-kod="${lojistikKacis(koliKodu)}" ${bugunSecili ? "checked" : ""} onchange="sevkiyatKutusuDegisti(this)"> Sevkiyata hazır</label>
+                                <input class="loj-desi" data-kod="${lojistikKacis(koliKodu)}" placeholder="Desi/Not" value="${lojistikKacis(sevkiyatKaydi.desi_not || "")}" onchange="sevkiyatNotuDegisti(this)">
+                            </td>
                             <td>${urunlerHtml}</td>
                             <td style="color:#34d399; font-weight:bold; font-size:14px;">${Number(dosya.toplam_tutar).toLocaleString('tr-TR')} TL</td>
                             <td>
@@ -5047,10 +5069,12 @@
                                     <a href="https://wa.me/${telTemiz}?text=${waMesaj}" target="_blank" class="btn btn-green btn-sm" style="text-decoration:none; flex:1;" onclick="playClickSound()">💬 WP</a>
                                     <button class="btn btn-blue btn-sm" style="flex:1;" onclick="smsGonderDetayli('${dosya.musteri_adi}', '${dosya.toplam_tutar}', '${encodeURIComponent(urunlerMetniDuz)}')">📱 SMS</button>
                                 </div>
+                                <button type="button" class="btn btn-yellow btn-sm" style="width:100%; margin-top:4px;" data-kod="${lojistikKacis(koliKodu)}" onclick="kargoBarkoduYazdir(this)">Kargo Barkodu Yazdır</button>
                             </td>
                         `;
                         tablo.appendChild(tr);
                     });
+                    lojistikRozetleriniTazele();
                 }
                 document.getElementById('toplamCiro').innerText = `${Number(genelCiro).toLocaleString('tr-TR')} TL`;
             }
@@ -5060,6 +5084,174 @@
     }
 
     let kargoUrunleri = {};
+    let lojistikDosyalar = {};
+    const LOJISTIK_UCRETSIZ_MS = 168 * 60 * 60 * 1000;
+    const LOJISTIK_YESIL_MS = 120 * 60 * 60 * 1000;
+
+    function lojistikKacis(metin) {
+        return String(metin ?? "").replace(/[&<>"']/g, function (karakter) {
+            return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[karakter];
+        });
+    }
+
+    function lojistikBugun() {
+        return new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    }
+
+    function lojistikRozet(ilkIso) {
+        if (!ilkIso) return { sinif: "yesil", metin: "Açık Kutu - Kalan: —" };
+        const baslangic = new Date(ilkIso).getTime();
+        if (!baslangic) return { sinif: "yesil", metin: "Açık Kutu - Kalan: —" };
+        let gecen = Date.now() - baslangic;
+        if (gecen < 0) gecen = 0;
+        if (gecen < LOJISTIK_YESIL_MS) {
+            const kalan = LOJISTIK_UCRETSIZ_MS - gecen;
+            const gun = Math.floor(kalan / 86400000);
+            const saat = Math.floor((kalan % 86400000) / 3600000);
+            return { sinif: "yesil", metin: "Açık Kutu - Kalan: " + gun + " Gün " + saat + " Saat" };
+        }
+        if (gecen < LOJISTIK_UCRETSIZ_MS) {
+            return { sinif: "sari", metin: "Sevk Zamanı - Son Günler" };
+        }
+        const ekstra = Math.floor((gecen - LOJISTIK_UCRETSIZ_MS) / 86400000) + 1;
+        return { sinif: "kirmizi", metin: "Süre Doldu - Günlük Ardiye Başladı (+" + ekstra + " Gün)" };
+    }
+
+    function lojistikRozetleriniTazele() {
+        document.querySelectorAll(".loj-rozet").forEach(function (rozet) {
+            const durum = lojistikRozet(rozet.getAttribute("data-ilk"));
+            rozet.className = "loj-rozet loj-" + durum.sinif;
+            rozet.textContent = durum.metin;
+        });
+    }
+
+    function sevkiyatDeposuOku() {
+        try {
+            const ham = JSON.parse(localStorage.getItem("halicSevkiyatHazir") || "{}");
+            return ham && typeof ham === "object" ? ham : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function sevkiyatDeposuYaz(depo) {
+        localStorage.setItem("halicSevkiyatHazir", JSON.stringify(depo));
+    }
+
+    function sevkiyatSatiri(kod) {
+        const dosya = lojistikDosyalar[kod] || {};
+        const loj = dosya.lojistik || {};
+        const notKutusu = document.querySelector('.loj-desi[data-kod="' + kod + '"]');
+        return {
+            koli_kodu: loj.koli_kodu || kod,
+            alici: dosya.musteri_adi || "",
+            telefon: loj.telefon || "",
+            adres: loj.adres || "",
+            ilce_il: loj.ilce_il || "",
+            adet: loj.adet || 0,
+            desi_not: notKutusu ? notKutusu.value : "",
+            gun: lojistikBugun(),
+            secili: true
+        };
+    }
+
+    function sevkiyatKutusuDegisti(kutu) {
+        const kod = kutu.getAttribute("data-kod");
+        if (!kod) return;
+        const depo = sevkiyatDeposuOku();
+        if (kutu.checked) depo[kod] = sevkiyatSatiri(kod);
+        else delete depo[kod];
+        sevkiyatDeposuYaz(depo);
+    }
+
+    function sevkiyatNotuDegisti(girdi) {
+        const kod = girdi.getAttribute("data-kod");
+        const kutu = document.querySelector('.sevkiyat-hazir[data-kod="' + kod + '"]');
+        if (!kutu || !kutu.checked) return;
+        const depo = sevkiyatDeposuOku();
+        depo[kod] = sevkiyatSatiri(kod);
+        sevkiyatDeposuYaz(depo);
+    }
+
+    function lojistikPencereAc() {
+        const pencere = window.open("", "_blank", "width=760,height=920");
+        if (!pencere) {
+            alert("Yazdırma penceresi açılamadı. Tarayıcının açılır pencerelere izin verdiğinden emin olun.");
+            return null;
+        }
+        pencere.document.open();
+        pencere.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Hazırlanıyor</title></head><body>Hazırlanıyor...</body></html>");
+        pencere.document.close();
+        return pencere;
+    }
+
+    function lojistikSayfaYaz(pencere, html) {
+        if (!pencere) return;
+        pencere.document.open();
+        pencere.document.write(html);
+        pencere.document.close();
+    }
+
+    function kargoBarkoduYazdir(buton) {
+        playClickSound();
+        const kod = buton.getAttribute("data-kod");
+        const dosya = lojistikDosyalar[kod];
+        if (!dosya || !dosya.lojistik) {
+            alert("Bu sepet için koli kodu henüz oluşmadı.");
+            return;
+        }
+        const loj = dosya.lojistik;
+        const pencere = lojistikPencereAc();
+        if (!pencere) return;
+        fetch("/admin/lojistik/etiket", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                koli_kodu: loj.koli_kodu,
+                alici: dosya.musteri_adi || "",
+                telefon: loj.telefon || "",
+                adres: loj.adres || "",
+                adet: loj.adet || 0
+            })
+        }).then(function (cevap) {
+            return cevap.text();
+        }).then(function (sayfa) {
+            lojistikSayfaYaz(pencere, sayfa);
+        }).catch(function () {
+            lojistikSayfaYaz(pencere, "<p>Etiket hazırlanamadı.</p>");
+        });
+    }
+
+    function kuryeIcmaliYazdir() {
+        playClickSound();
+        const depo = sevkiyatDeposuOku();
+        const bugun = lojistikBugun();
+        const harita = {};
+        Object.keys(depo).forEach(function (kod) {
+            const kayit = depo[kod];
+            if (kayit && kayit.gun === bugun && kayit.secili && kayit.koli_kodu) harita[kod] = kayit;
+        });
+        document.querySelectorAll(".sevkiyat-hazir:checked").forEach(function (kutu) {
+            const kod = kutu.getAttribute("data-kod");
+            if (kod) harita[kod] = sevkiyatSatiri(kod);
+        });
+        const koliler = Object.keys(harita).map(function (kod) { return harita[kod]; });
+        const pencere = lojistikPencereAc();
+        if (!pencere) return;
+        fetch("/admin/lojistik/icmal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ koliler: koliler })
+        }).then(function (cevap) {
+            return cevap.text();
+        }).then(function (sayfa) {
+            lojistikSayfaYaz(pencere, sayfa);
+        }).catch(function () {
+            lojistikSayfaYaz(pencere, "<p>İcmal hazırlanamadı.</p>");
+        });
+    }
+
+    setInterval(lojistikRozetleriniTazele, 60000);
 
     function kargoModalAc(urunId) {
         playClickSound();

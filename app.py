@@ -4634,6 +4634,7 @@ def durum_getir():
             .all()
         )
         kullanici_tel_map = {k.id: (k.telefon or "-") for k in tum_kullanicilar}
+        kullanici_adres_map = {k.id: (k.adres or "") for k in tum_kullanicilar}
 
         musteriler = [
             {
@@ -4660,6 +4661,30 @@ def durum_getir():
             .limit(200)
             .all()
         )
+
+        satis_anlari = {}
+        try:
+            if satilan_urunler and "satis_tarihi" in _urun_kolon_adlari():
+                from sqlalchemy import bindparam
+                idler = [int(u.id) for u in satilan_urunler]
+                with db.session.begin_nested():
+                    sorgu = text(
+                        "SELECT id, satis_tarihi FROM urun WHERE id IN :idler"
+                    ).bindparams(bindparam("idler", expanding=True))
+                    for satir in db.session.execute(sorgu, {"idler": idler}):
+                        satis_anlari[int(satir[0])] = satir[1]
+        except Exception:
+            satis_anlari = {}
+
+        eksik_kazananlar = sorted({
+            int(u.kazanan_id)
+            for u in satilan_urunler
+            if u.kazanan_id and int(u.kazanan_id) not in kullanici_tel_map
+        })
+        if eksik_kazananlar:
+            for kisi in Kullanici.query.filter(Kullanici.id.in_(eksik_kazananlar)).all():
+                kullanici_tel_map[kisi.id] = kisi.telefon or "-"
+                kullanici_adres_map[kisi.id] = kisi.adres or ""
 
         gruplanmis_dosyalar = {}
         for u in satilan_urunler:
@@ -4693,6 +4718,10 @@ def durum_getir():
                 "kargo_takip_no": u.kargo_takip_no or "",
                 "kargo_barkod_url": getattr(u, "kargo_barkod_url", None) or "",
             })
+            if u.id in satis_anlari and satis_anlari[u.id] is not None:
+                gruplanmis_dosyalar[grup_anahtari].setdefault("_anlar", []).append(
+                    satis_anlari[u.id]
+                )
             gruplanmis_dosyalar[grup_anahtari]["toplam_tutar"] += satiss_fiyati
 
         on_teklif_listesi = (
@@ -4728,6 +4757,20 @@ def durum_getir():
 
         muzikler = [m.url for m in Muzik.query.limit(20).all()]
 
+        from lojistik_sevkiyat import lojistik_dosya_ozeti
+        dosya_listesi = []
+        for grup in gruplanmis_dosyalar.values():
+            anlar = grup.pop("_anlar", [])
+            grup["lojistik"] = lojistik_dosya_ozeti(
+                grup.get("musteri_id"),
+                grup.get("musteri_adi"),
+                anlar,
+                [satir.get("urun_id") for satir in grup.get("urunler") or []],
+                grup.get("telefon") or "",
+                kullanici_adres_map.get(grup.get("musteri_id")) or "",
+            )
+            dosya_listesi.append(grup)
+
         return jsonify({
             "dukkan": dukkan,
             "durum": oda["durum"]["durum"],
@@ -4739,7 +4782,7 @@ def durum_getir():
             "urunler": urunler,
             "musteriler": musteriler,
             "satilan_urunler": [u.to_dict(hafif=True) for u in satilan_urunler],
-            "gruplanmis_dosyalar": list(gruplanmis_dosyalar.values()),
+            "gruplanmis_dosyalar": dosya_listesi,
             "on_teklifler": on_teklifler,
             "muzik_listesi": muzikler,
             "otonom_aktif": dukkan_otonom_mu(dukkan),
@@ -8631,6 +8674,33 @@ def admin_kargo_olustur():
         "takip_no": urun.kargo_takip_no or "",
         "kargo_barkod_url": getattr(urun, "kargo_barkod_url", None) or "",
     })
+
+
+@app.route("/admin/lojistik/etiket", methods=["POST"])
+@admin_required
+def admin_lojistik_etiket():
+    from lojistik_sevkiyat import etiket_html
+    veri = request.get_json(silent=True) or {}
+    try:
+        sayfa = etiket_html(veri)
+    except Exception:
+        return jsonify({"success": False, "mesaj": "Etiket hazırlanamadı."}), 500
+    return Response(sayfa, mimetype="text/html; charset=utf-8")
+
+
+@app.route("/admin/lojistik/icmal", methods=["POST"])
+@admin_required
+def admin_lojistik_icmal():
+    from lojistik_sevkiyat import icmal_html
+    veri = request.get_json(silent=True) or {}
+    koliler = veri.get("koliler") if isinstance(veri, dict) else []
+    if not isinstance(koliler, list):
+        koliler = []
+    try:
+        sayfa = icmal_html(koliler[:200])
+    except Exception:
+        return jsonify({"success": False, "mesaj": "İcmal hazırlanamadı."}), 500
+    return Response(sayfa, mimetype="text/html; charset=utf-8")
 
 
 @app.route("/musteri-dosya-sil", methods=["POST"])
