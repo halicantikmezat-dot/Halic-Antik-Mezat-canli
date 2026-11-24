@@ -3351,10 +3351,17 @@ def _diger_ozel_yayinda():
         return False
 
 
+_ozel_yayin_sahne_birakildi = False
+
+
 def _diger_sahneyi_ozel_yayina_birak(dukkan, oda):
-    """Açık özel yayın varken otonom sahneyi boşaltır. Kalıcı otonom bayrağına dokunmaz."""
+    """Açık özel yayın varken otonom sahneyi bir kez boşaltır. Kalıcı otonom bayrağına dokunmaz."""
+    global _ozel_yayin_sahne_birakildi
     if dukkan != "diger" or oda is None:
         return
+    if _ozel_yayin_sahne_birakildi:
+        return
+    _ozel_yayin_sahne_birakildi = True
     bosalt = False
     with oda_kilitleri[dukkan]:
         if oda.get("sayac_aktif"):
@@ -3371,11 +3378,13 @@ def _diger_sahneyi_ozel_yayina_birak(dukkan, oda):
 
 def diger_otonom_pas_gec(pas):
     """Özel yayın açılınca Diğer dükkanını sıradan çıkarır, kapanınca aynı döngüye alır."""
+    global _ozel_yayin_sahne_birakildi
     kod = "diger"
     oda = odalar.get(kod)
     if oda is None:
         return
     if pas:
+        _ozel_yayin_sahne_birakildi = False
         sahip = (
             kod in _otonom_sahipleri
             or bool(_otonom_dongu_calisiyor.get(kod))
@@ -3384,6 +3393,7 @@ def diger_otonom_pas_gec(pas):
         if sahip:
             _diger_sahneyi_ozel_yayina_birak(kod, oda)
         return
+    _ozel_yayin_sahne_birakildi = False
     if oda.get("otonom_aktif"):
         _otonom_donguyu_garantile(kod)
 
