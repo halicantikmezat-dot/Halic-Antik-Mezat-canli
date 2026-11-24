@@ -95,6 +95,8 @@ def ek_guvenlik_ve_cors_ekle(response):
         response.headers["Cache-Control"] = "public, max-age=86400"
     if yol.startswith("/socket.io"):
         return response
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and 200 <= response.status_code < 400:
+        anasayfa_onbellek_sil()
     _yaniti_gzip_sikistir(response)
     return response
 
@@ -607,6 +609,8 @@ def _sahne_sesini_kes(dukkan):
 
 def _iki_odayi(olay, veri, dukkan):
     """Aynı sahne olayını dükkan odasına ve yönetici odasına birlikte yollar."""
+    if olay not in ("sayac_guncelle", "ses_oynat", "ses_kes"):
+        anasayfa_onbellek_sil()
     paket = dict(veri or {})
     paket.setdefault("dukkan", dukkan)
     socketio.emit(olay, paket, room=dukkan)
@@ -1236,6 +1240,7 @@ def _reji_hedef_listesi(ham):
 
 def _pey_duyur(dukkan, paket):
     """Pey hem dükkan sahnesine hem yönetici odasına gider."""
+    anasayfa_onbellek_sil()
     govde = dict(paket or {})
     govde["dukkan"] = dukkan
     govde["dukkan_etiket"] = _dukkan_etiketi(dukkan)
@@ -1399,11 +1404,12 @@ def ahmet_usta_yoruma_cevap_ver(dukkan, kullanici, mesaj):
 
 
 def minimum_pey_tabani(mevcut_fiyat):
-    """Kabul edilen en düşük pey. Üstündeki her tutar geçerlidir, tabana yuvarlanmaz."""
+    """+%10 Artır ile aynı taban. ceil(fiyat * 1.10) ve en az +1 TL."""
     mevcut = float(mevcut_fiyat or 0)
     if mevcut <= 0:
         return 1
-    return int(math.ceil(mevcut * 1.10))
+    taban = int(math.ceil(mevcut * 1.10))
+    return max(taban, int(mevcut) + 1)
 
 
 def kademeli_min_artis(fiyat, dukkan="gumus"):
@@ -3900,9 +3906,52 @@ def _ilk_canli_yayin_gomu():
     return paket if isinstance(paket, dict) else bos
 
 
-@app.route("/")
-def izleyici_index():
-    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
+_ANASAYFA_TTL_SANIYE = 1.5
+_anasayfa_onbellek = {}
+_anasayfa_nesil = 0
+_anasayfa_kilit = threading.Lock()
+_anasayfa_dukkan_kilitleri = {}
+
+
+def anasayfa_onbellek_sil():
+    """Yeni pey, ürün değişimi veya yazma isteği ana sayfa kabuğunu hemen düşürür."""
+    global _anasayfa_nesil
+    with _anasayfa_kilit:
+        _anasayfa_nesil += 1
+        _anasayfa_onbellek.clear()
+
+
+def _anasayfa_dukkan_kilidi(dukkan):
+    with _anasayfa_kilit:
+        kilit = _anasayfa_dukkan_kilitleri.get(dukkan)
+        if kilit is None:
+            kilit = threading.Lock()
+            _anasayfa_dukkan_kilitleri[dukkan] = kilit
+        return kilit
+
+
+def _anasayfa_kaydi_al(dukkan):
+    simdi = time.time()
+    with _anasayfa_kilit:
+        kayit = _anasayfa_onbellek.get(dukkan)
+        if not kayit or kayit["bitis"] <= simdi:
+            return None
+        return kayit
+
+
+def _anasayfa_yaniti(kayit):
+    gzip_ister = "gzip" in (request.headers.get("Accept-Encoding") or "").lower()
+    if gzip_ister and kayit.get("gzip"):
+        yanit = Response(kayit["gzip"], mimetype="text/html; charset=utf-8")
+        yanit.headers["Content-Encoding"] = "gzip"
+    else:
+        yanit = Response(kayit["html"], mimetype="text/html; charset=utf-8")
+    yanit.headers["Vary"] = "Accept-Encoding"
+    yanit.headers["Cache-Control"] = "private, no-store"
+    return yanit
+
+
+def _anasayfa_html_uret(dukkan):
     oda = odalar.get(dukkan) or {}
     durum = oda.get("durum") or {}
     ilk_sahne = {
@@ -3928,6 +3977,30 @@ def izleyici_index():
         ilk_sahne=ilk_sahne,
         ilk_canli_yayin=_ilk_canli_yayin_gomu(),
     )
+
+
+@app.route("/")
+def izleyici_index():
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
+    hazir = _anasayfa_kaydi_al(dukkan)
+    if hazir is not None:
+        return _anasayfa_yaniti(hazir)
+    with _anasayfa_dukkan_kilidi(dukkan):
+        hazir = _anasayfa_kaydi_al(dukkan)
+        if hazir is not None:
+            return _anasayfa_yaniti(hazir)
+        with _anasayfa_kilit:
+            nesil = _anasayfa_nesil
+        html = _anasayfa_html_uret(dukkan).encode("utf-8")
+        kayit = {
+            "bitis": time.time() + _ANASAYFA_TTL_SANIYE,
+            "html": html,
+            "gzip": gzip.compress(html, compresslevel=6) if len(html) >= 1024 else b"",
+        }
+        with _anasayfa_kilit:
+            if nesil == _anasayfa_nesil:
+                _anasayfa_onbellek[dukkan] = kayit
+        return _anasayfa_yaniti(kayit)
 
 
 @app.route("/favicon.ico")
@@ -6282,10 +6355,7 @@ def pey_ver():
                         taban = _acilis_tabani(oda, urun)
                         miktar = round(max(mevcut_fiyat, taban) + 1)
                     else:
-                        yuzde_on = round(mevcut_fiyat * 0.10)
-                        min_artis = kademeli_min_artis(mevcut_fiyat, dukkan)
-                        artis_tutari = max(min_artis, float(yuzde_on))
-                        miktar = round(mevcut_fiyat + artis_tutari)
+                        miktar = float(minimum_pey_tabani(mevcut_fiyat))
 
                 olur, uyari = _pey_kabul_mu(oda, urun, miktar, mevcut_fiyat)
                 if not olur:

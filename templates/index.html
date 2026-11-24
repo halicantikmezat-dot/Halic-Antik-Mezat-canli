@@ -6956,7 +6956,8 @@
     function minimumPeyTabani(mevcutFiyat) {
         const fiyat = Number(mevcutFiyat) || 0;
         if (fiyat <= 0) return 1;
-        return Math.ceil(fiyat * 1.10);
+        const taban = Math.ceil(fiyat * 1.10);
+        return Math.max(taban, Math.floor(fiyat) + 1);
     }
 
     function asgariArtisHesapla(mevcutFiyat) {
@@ -7130,12 +7131,7 @@
             peyGonder(taban > 0 ? minimumPeyTabani(taban) : 10);
             return;
         }
-        let yuzdeOnArtis = Math.round(current * 0.10);
-        let minArtis = asgariArtisHesapla(current);
-        let gercekArtis = Math.max(yuzdeOnArtis, minArtis);
-        let yeniTeklif = current + gercekArtis;
-
-        peyGonder(yeniTeklif);
+        peyGonder(minimumPeyTabani(current));
     }
 
     function serbestPeyVer() {
