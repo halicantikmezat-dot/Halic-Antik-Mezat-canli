@@ -8306,6 +8306,29 @@ def diger_satis_kayitlari():
     return jsonify({"success": True, "kayitlar": kayitlar, "sepetler": sepetler})
 
 
+@app.route("/api/diger/satis-kayitlari/temizle", methods=["POST"])
+@admin_required
+def diger_satis_kayitlari_temizle():
+    """Yönetici onayıyla odadaki birikmiş canlı satış ve ödeme kayıtlarını siler."""
+    try:
+        import diger_canli_sahne as depo
+    except Exception:
+        return jsonify({"success": False, "mesaj": "Satış listesi bulunamadı."}), 500
+    with depo._SATIS_KILIT:
+        depo._SATISLAR.clear()
+    try:
+        if depo._depo_hazir():
+            with depo._DEPO.engine.begin() as baglanti:
+                baglanti.execute(
+                    text("DELETE FROM kumbara_gece WHERE kaynak = :kaynak"),
+                    {"kaynak": "diger"},
+                )
+    except Exception as hata:
+        print(f"[DIGER SATIS] liste temizlenemedi: {hata}", flush=True)
+        return jsonify({"success": False, "mesaj": "Liste temizlenemedi."}), 500
+    return jsonify({"success": True, "kayitlar": [], "sepetler": []})
+
+
 @app.route("/api/diger/musteri-sepeti", methods=["GET"])
 def diger_musteri_sepeti():
     from diger_canli_sahne import musteri_sepeti_bul, satis_kayitlari
@@ -12103,20 +12126,15 @@ def wc_orders():
 @socketio.on("connect")
 def handle_connect():
     try:
-        aktif_izleyiciler.add(request.sid)
-        izleyici_sayisini_yayinla()
-        emit(
-            "izleyici_sayisi_guncelle",
-            {"sayi": len(aktif_izleyiciler), "dukkan": "diger"},
-        )
-    finally:
         db.session.remove()
+    except Exception:
+        pass
 
 
 @socketio.on("disconnect")
 def handle_disconnect():
     try:
-        aktif_izleyiciler.discard(request.sid)
+        _izleyici_oturum_sil(request.sid)
         izleyici_adlari.pop(request.sid, None)
         soketten_kullanici_kopar(request.sid)
         _sahne_izleyicisi_sil(request.sid)
@@ -12638,6 +12656,12 @@ def handle_join_dukkan(data):
                 join_room(dukkan)
             return
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
+        if _yonetici_soketi_mi(ad):
+            join_room(dukkan)
+            for paket in izleyici_sayisini_yayinla():
+                emit("izleyici_sayisi_guncelle", paket)
+            _katilana_sahneyi_ver(dukkan)
+            return
         izleyici_adlari[request.sid] = ad
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
         try:
@@ -12645,16 +12669,10 @@ def handle_join_dukkan(data):
         except (TypeError, ValueError):
             kayit_no = None
         _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
+        _izleyici_oturum_yaz(request.sid, dukkan, ad)
         join_room(dukkan)
-        izleyici_sayisini_yayinla()
-        emit(
-            "izleyici_sayisi_guncelle",
-            {
-                "dukkan": dukkan,
-                "sayi": len(aktif_izleyiciler),
-                "isimler": list(dict.fromkeys(izleyici_adlari.values())),
-            },
-        )
+        for paket in izleyici_sayisini_yayinla():
+            emit("izleyici_sayisi_guncelle", paket)
         _katilana_sahneyi_ver(dukkan)
     finally:
         db.session.remove()
@@ -12986,8 +13004,79 @@ def itiraz_duzelt_bildir():
     return jsonify({"success": True})
 
 
-aktif_izleyiciler = set()
+aktif_izleyiciler = {}
 izleyici_adlari = {}
+_izleyici_kilit = threading.Lock()
+_izleyici_yayin_imza = None
+_izleyici_sayac_dongusu_basladi = False
+
+
+def _yonetici_soketi_mi(ad=""):
+    """Yönetici paneli ve sessiz reji önizlemesi izleyici sayısına yazılmaz."""
+    try:
+        if session.get("is_admin"):
+            return True
+    except Exception:
+        pass
+    temiz = str(ad or "").strip().casefold()
+    return temiz in ("yonetici", "yönetici", "admin")
+
+
+def _soket_son_ping(sid):
+    """Socket.IO oturumunun son ping anı. Okunamazsa None."""
+    try:
+        yonetici = socketio.server.manager
+        eio_sid = None
+        if hasattr(yonetici, "eio_sid_from_sid"):
+            eio_sid = yonetici.eio_sid_from_sid(sid, "/")
+        soketler = getattr(getattr(socketio.server, "eio", None), "sockets", None) or {}
+        soket = soketler.get(eio_sid) if eio_sid else None
+        if soket is None:
+            return None
+        an = getattr(soket, "last_ping", None)
+        return float(an) if an else None
+    except Exception:
+        return None
+
+
+def _soket_hâlâ_bagli(sid):
+    try:
+        if not socketio.server.manager.is_connected(sid, "/"):
+            return False
+    except Exception:
+        return True
+    son = _soket_son_ping(sid)
+    if son is None:
+        return True
+    return (time.time() - son) <= 70
+
+
+def _izleyici_oturum_yaz(sid, dukkan, ad):
+    with _izleyici_kilit:
+        aktif_izleyiciler[sid] = {
+            "dukkan": dukkan,
+            "ad": str(ad or "Misafir")[:40],
+            "son": time.time(),
+        }
+
+
+def _izleyici_oturum_sil(sid):
+    with _izleyici_kilit:
+        aktif_izleyiciler.pop(sid, None)
+
+
+def _anlik_izleyici_gruplari():
+    """Kopmuş veya pingi düşmüş oturumları sayıdan hemen çıkarır."""
+    with _izleyici_kilit:
+        for sid in list(aktif_izleyiciler.keys()):
+            if not _soket_hâlâ_bagli(sid):
+                aktif_izleyiciler.pop(sid, None)
+                izleyici_adlari.pop(sid, None)
+        gruplar = {}
+        for bilgi in aktif_izleyiciler.values():
+            kod = bilgi.get("dukkan")
+            gruplar.setdefault(kod, []).append(bilgi)
+        return gruplar
 
 
 def _diger_canli_sahneyi_birak():
@@ -13034,19 +13123,74 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
     _dukkan_canli_yayinla()
 
 
-def izleyici_sayisini_yayinla():
-    sayi = len(aktif_izleyiciler)
-    isimler = []
-    for ad in izleyici_adlari.values():
-        temiz = str(ad or "").strip()
-        if temiz and temiz not in isimler:
-            isimler.append(temiz)
+def _izleyici_paketlerini_hazirla():
+    gruplar = _anlik_izleyici_gruplari()
+    paketler = []
     for kod in DUKKANLAR:
-        socketio.emit(
-            "izleyici_sayisi_guncelle",
-            {"dukkan": kod, "sayi": sayi, "isimler": isimler},
-            room=kod,
-        )
+        kayitlar = gruplar.get(kod) or []
+        isimler = []
+        for bilgi in kayitlar:
+            ad = str(bilgi.get("ad") or "").strip()
+            if ad and ad not in isimler:
+                isimler.append(ad)
+        sayi = len(kayitlar)
+        oda = odalar.get(kod)
+        if oda is not None:
+            oda["izleyici_sayisi"] = sayi
+        paketler.append({"dukkan": kod, "sayi": sayi, "isimler": isimler})
+    return paketler
+
+
+def izleyici_sayisini_yayinla():
+    """Yalnızca o an bağlı izleyici oturumlarını duyurur. Sayı değişmediyse susar."""
+    global _izleyici_yayin_imza
+    paketler = _izleyici_paketlerini_hazirla()
+    imza = tuple(
+        (paket["dukkan"], paket["sayi"], tuple(paket["isimler"]))
+        for paket in paketler
+    )
+    if imza == _izleyici_yayin_imza:
+        return paketler
+    _izleyici_yayin_imza = imza
+    for paket in paketler:
+        socketio.emit("izleyici_sayisi_guncelle", paket, room=paket["dukkan"])
+        socketio.emit("izleyici_sayisi_guncelle", paket, room="admin_room")
+    return paketler
+
+
+@socketio.on("izleyici_nabiz")
+def izleyici_nabiz(data=None):
+    """Açık oturumun son pingini tazeler. Kopmuş sid sayıya geri girmez."""
+    sid = request.sid
+    if not _soket_hâlâ_bagli(sid):
+        _izleyici_oturum_sil(sid)
+        izleyici_sayisini_yayinla()
+        return
+    veri = data or {}
+    with _izleyici_kilit:
+        bilgi = aktif_izleyiciler.get(sid)
+        if not bilgi:
+            return
+        bilgi["son"] = time.time()
+        if veri.get("dukkan"):
+            bilgi["dukkan"] = dukkan_dogrula(veri.get("dukkan"))
+
+
+def _izleyici_sayac_dongusu():
+    while True:
+        socketio.sleep(8)
+        try:
+            izleyici_sayisini_yayinla()
+        except Exception as hata:
+            print(f"[IZLEYICI] anlik sayac: {hata}", flush=True)
+
+
+def izleyici_sayacini_baslat():
+    global _izleyici_sayac_dongusu_basladi
+    if _izleyici_sayac_dongusu_basladi:
+        return
+    _izleyici_sayac_dongusu_basladi = True
+    socketio.start_background_task(_izleyici_sayac_dongusu)
 
 
 _veritabani_onarim_kilit = threading.Lock()
@@ -13329,6 +13473,10 @@ except Exception as hata:
     print(f"[BOOT] kamera sinyal atlandi: {hata}", flush=True)
 
 _gecikmeli_baslangici_kur()
+try:
+    izleyici_sayacini_baslat()
+except Exception as hata:
+    print(f"[BOOT] izleyici sayaci baslamadi: {hata}", flush=True)
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 
 # ==========================================

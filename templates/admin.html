@@ -82,25 +82,29 @@
         .reji-sahne-sutun { display: none; }
         #rejiKapsayici.reji-dikey {
             display: grid;
-            grid-template-columns: 1fr 420px;
+            grid-template-columns: 1fr;
             grid-template-rows: auto auto;
             gap: 16px;
-            align-items: stretch;
+            align-items: start;
         }
         #rejiKapsayici.reji-dikey #rejiSahneKontrol { grid-column: 1; grid-row: 1; }
         #rejiKapsayici.reji-dikey #rejiSunucuKarti { grid-column: 1; grid-row: 2; }
         #rejiKapsayici.reji-dikey .reji-sahne-sutun {
             display: flex;
             flex-direction: column;
-            grid-column: 2;
-            grid-row: 1 / span 2;
-            height: 100%;
-            min-height: 620px;
-            align-self: stretch;
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            width: 360px;
+            height: 460px;
+            min-height: 0;
+            max-height: calc(100vh - 32px);
+            z-index: 8000;
             border: 1px solid var(--accent-gold);
             border-radius: 8px;
             overflow: hidden;
             background: #0b1220;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
         }
         .reji-sahne-baslik {
             flex: 0 0 auto;
@@ -110,6 +114,9 @@
             background: #111827;
             padding: 8px 10px;
             border-bottom: 1px solid #283548;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
         }
         .reji-sahne-sutun iframe {
             flex: 1 1 auto;
@@ -125,14 +132,18 @@
                 grid-template-rows: auto;
             }
             #rejiKapsayici.reji-dikey #rejiSahneKontrol,
-            #rejiKapsayici.reji-dikey #rejiSunucuKarti,
-            #rejiKapsayici.reji-dikey .reji-sahne-sutun {
+            #rejiKapsayici.reji-dikey #rejiSunucuKarti {
                 grid-column: 1;
                 grid-row: auto;
-                min-height: 620px;
+                min-height: 0;
             }
-            #rejiKapsayici.reji-dikey #rejiSahneKontrol,
-            #rejiKapsayici.reji-dikey #rejiSunucuKarti { min-height: 0; }
+            #rejiKapsayici.reji-dikey .reji-sahne-sutun {
+                top: 8px;
+                right: 8px;
+                width: min(320px, calc(100vw - 16px));
+                height: 280px;
+                min-height: 0;
+            }
         }
 
         .card {
@@ -797,7 +808,10 @@
             <div id="digerSatisTakip" style="margin-top:10px; border-top:1px solid var(--card-border); padding-top:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
                     <span style="font-size:12px; font-weight:800; color:#fef08a;">Canlı Satış &amp; Kazanan Takibi</span>
-                    <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
+                    <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <button type="button" class="btn btn-sm btn-red" onclick="digerSatisListesiniSifirla()">Listeyi Sıfırla / Temizle</button>
+                        <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
+                    </span>
                 </div>
                 <div id="digerSatisListesi" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
                     <div style="font-size:11px; color:#64748b;">Henüz canlı satış yok.</div>
@@ -1836,6 +1850,7 @@
         if (kod !== "diger") {
             socket.emit('join_dukkan', { dukkan: "diger", isim: "Yonetici", dinle: true });
         }
+        izleyiciSayaciniCiz();
 
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         const activeTab = document.getElementById(`tab_${kod}`);
@@ -2044,7 +2059,46 @@
             cerceve.src = 'about:blank';
             cerceve.removeAttribute('data-yuklu');
         }
+        if (sutun) {
+            sutun.style.left = '';
+            sutun.style.top = '';
+            sutun.style.right = '';
+            sutun.style.bottom = '';
+        }
     }
+
+    (function rejiSahnePenceresiniSurukle() {
+        const sutun = document.getElementById('rejiSahneSutunu');
+        const baslik = sutun ? sutun.querySelector('.reji-sahne-baslik') : null;
+        if (!sutun || !baslik) return;
+        let surukleniyor = false;
+        let ofsetX = 0;
+        let ofsetY = 0;
+        baslik.addEventListener('pointerdown', function (e) {
+            if (e.button !== undefined && e.button !== 0) return;
+            const kutu = sutun.getBoundingClientRect();
+            surukleniyor = true;
+            ofsetX = e.clientX - kutu.left;
+            ofsetY = e.clientY - kutu.top;
+            baslik.style.cursor = 'grabbing';
+            try { baslik.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        baslik.addEventListener('pointermove', function (e) {
+            if (!surukleniyor) return;
+            const genislik = sutun.offsetWidth || 360;
+            const x = Math.max(8, Math.min(window.innerWidth - Math.min(genislik, 80), e.clientX - ofsetX));
+            const y = Math.max(8, Math.min(window.innerHeight - 36, e.clientY - ofsetY));
+            sutun.style.left = x + 'px';
+            sutun.style.top = y + 'px';
+            sutun.style.right = 'auto';
+        });
+        function birak() {
+            surukleniyor = false;
+            baslik.style.cursor = 'grab';
+        }
+        baslik.addEventListener('pointerup', birak);
+        baslik.addEventListener('pointercancel', birak);
+    })();
 
     function rejiFiltreDugmeleriniCiz() {
         const tumuSecili = rejiAkisFiltresi !== 'ozel';
@@ -4640,6 +4694,25 @@
             .catch(function () {});
     }
 
+    function digerSatisListesiniSifirla() {
+        if (!window.confirm("Bu odadaki birikmiş satış ve ödeme kayıtları silinsin mi?")) return;
+        fetch("/api/diger/satis-kayitlari/temizle", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || data.success === false) {
+                window.alert((data && data.mesaj) || "Liste temizlenemedi.");
+                return;
+            }
+            digerSatisKayitlari = [];
+            digerSatisListesiniCiz();
+        }).catch(function () {
+            window.alert("Liste temizlenemedi.");
+        });
+    }
+
     function digerSatisWhatsapp(id, dugme) {
         const kayit = digerSatisKayitlari.find(function (satir) { return String(satir.id) === String(id); });
         if (!kayit) return;
@@ -4768,10 +4841,18 @@
 
     socket.on('yeni_elestiri', elestiriSatiriEkle);
 
+    const anlikIzleyiciSayilari = {};
+    function izleyiciSayaciniCiz() {
+        const el = document.getElementById('izleyiciSayisi');
+        if (!el) return;
+        const sayi = anlikIzleyiciSayilari[seciliDukkan];
+        if (sayi !== undefined) el.innerText = sayi;
+    }
     socket.on('izleyici_sayisi_guncelle', function(data) {
-        if(data && data.dukkan === seciliDukkan && data.sayi !== undefined) {
-            document.getElementById('izleyiciSayisi').innerText = data.sayi;
-        }
+        if (!data || data.sayi === undefined) return;
+        const kod = data.dukkan || seciliDukkan;
+        anlikIzleyiciSayilari[kod] = data.sayi;
+        if (kod === seciliDukkan) izleyiciSayaciniCiz();
     });
 
     function adminUrunAra() {
