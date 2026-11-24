@@ -106,16 +106,25 @@
             position: fixed;
             top: 16px;
             right: 16px;
-            width: 320px;
-            height: 220px;
+            width: 340px;
+            height: 560px;
             min-height: 0;
+            max-width: calc(100vw - 32px);
             max-height: calc(100vh - 32px);
             z-index: 8000;
+            box-sizing: border-box;
             border: 1px solid var(--accent-gold);
             border-radius: 8px;
             overflow: hidden;
             background: #0b1220;
             box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+        }
+        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun,
+        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun iframe {
+            pointer-events: none;
+        }
+        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun {
+            opacity: 0;
         }
         .reji-sahne-baslik {
             flex: 0 0 auto;
@@ -127,10 +136,51 @@
             border-bottom: 1px solid #283548;
         }
         #rejiKapsayici.reji-diger-yuzer .reji-sahne-baslik {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
             cursor: grab;
             user-select: none;
             touch-action: none;
         }
+        .reji-sahne-baslik-metin { min-width: 0; line-height: 1.3; }
+        #rejiSahneGizle { display: none; }
+        #rejiKapsayici.reji-diger-yuzer #rejiSahneGizle {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 4px 8px;
+            border: 1px solid #d4af37;
+            border-radius: 4px;
+            background: #1e293b;
+            color: #fef08a;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.2;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .reji-sahne-goster {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 8100;
+            margin: 0;
+            padding: 8px 12px;
+            border: 1px solid #d4af37;
+            border-radius: 6px;
+            background: #111827;
+            color: #fef08a;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .reji-sahne-goster[hidden] { display: none !important; }
         .reji-sahne-sutun iframe {
             flex: 1 1 auto;
             width: 100%;
@@ -156,10 +206,11 @@
             #rejiKapsayici.reji-diger-yuzer .reji-sahne-sutun {
                 top: 8px;
                 right: 8px;
-                width: min(280px, calc(100vw - 16px));
-                height: 180px;
+                width: min(340px, calc(100vw - 16px));
+                height: min(560px, calc(100vh - 16px));
                 min-height: 0;
             }
+            .reji-sahne-goster { top: 8px; right: 8px; }
         }
 
         .card {
@@ -867,10 +918,14 @@
             </div>
         </div>
         <div id="rejiSahneSutunu" class="reji-sahne-sutun" aria-hidden="true">
-            <div class="reji-sahne-baslik">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</div>
+            <div class="reji-sahne-baslik">
+                <span class="reji-sahne-baslik-metin">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</span>
+                <button type="button" id="rejiSahneGizle" onclick="rejiSahneyiKucult()">Gizle / Küçült</button>
+            </div>
             <iframe id="rejiSahneOnizleme" title="Diğer - Her Şey canlı sahne önizleme" allow="autoplay"></iframe>
         </div>
     </div>
+    <button type="button" id="rejiSahneGoster" class="reji-sahne-goster" hidden onclick="rejiSahneyiGoster()">Canlı Sahneyi Göster</button>
 
     <!-- YENİ TEK ÜRÜN EKLEME VE SOSYAL MEDYA KONTROLÜ -->
     <div class="grid-2">
@@ -1800,6 +1855,7 @@
     let rejiOzelOnceki = null;
     let rejiBekleyenHedef = null;
     let rejiSessizZamanlayici = null;
+    let rejiSahneKucuk = false;
 
     const medyaDosyaHavuzu = new DataTransfer();
 
@@ -2049,17 +2105,42 @@
         } catch (e) {}
     }
 
+    function rejiSahneKucukDurumunuUygula(yuzer, yayinAcik) {
+        const kapsayici = document.getElementById('rejiKapsayici');
+        const sutun = document.getElementById('rejiSahneSutunu');
+        const gosterBtn = document.getElementById('rejiSahneGoster');
+        const kucuk = !!(yuzer && yayinAcik && rejiSahneKucuk);
+        if (kapsayici) kapsayici.classList.toggle('reji-sahne-kucuk', kucuk);
+        if (gosterBtn) gosterBtn.hidden = !kucuk;
+        if (sutun && yayinAcik) sutun.setAttribute('aria-hidden', kucuk ? 'true' : 'false');
+    }
+
+    function rejiSahneyiKucult() {
+        const kapsayici = document.getElementById('rejiKapsayici');
+        if (!kapsayici || !kapsayici.classList.contains('reji-diger-yuzer')) return;
+        rejiSahneKucuk = true;
+        rejiSahneKucukDurumunuUygula(true, true);
+    }
+
+    function rejiSahneyiGoster() {
+        rejiSahneKucuk = false;
+        rejiSahneKucukDurumunuUygula(true, true);
+    }
+
     function rejiIzgarayiCiz(acik) {
         const kapsayici = document.getElementById('rejiKapsayici');
         const sutun = document.getElementById('rejiSahneSutunu');
         const cerceve = document.getElementById('rejiSahneOnizleme');
         const yuzer = (typeof seciliDukkan === 'string' && seciliDukkan === 'diger');
+        const yayinAcik = !!acik;
+        if (!yayinAcik) rejiSahneKucuk = false;
         if (kapsayici) {
-            kapsayici.classList.toggle('reji-diger-yuzer', yuzer);
-            kapsayici.classList.toggle('reji-dikey', !yuzer && !!acik);
+            kapsayici.classList.toggle('reji-diger-yuzer', yuzer && yayinAcik);
+            kapsayici.classList.toggle('reji-dikey', !yuzer && yayinAcik);
         }
-        const gorunur = yuzer || !!acik;
+        const gorunur = yayinAcik;
         if (sutun) sutun.setAttribute('aria-hidden', gorunur ? 'false' : 'true');
+        rejiSahneKucukDurumunuUygula(yuzer, yayinAcik);
         if (sutun && !yuzer) {
             sutun.style.left = '';
             sutun.style.top = '';
@@ -2106,6 +2187,7 @@
         baslik.addEventListener('pointerdown', function (e) {
             const kapsayici = document.getElementById('rejiKapsayici');
             if (!kapsayici || !kapsayici.classList.contains('reji-diger-yuzer')) return;
+            if (e.target && e.target.closest && e.target.closest('#rejiSahneGizle')) return;
             if (e.button !== undefined && e.button !== 0) return;
             const kutu = sutun.getBoundingClientRect();
             surukleniyor = true;
