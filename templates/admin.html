@@ -82,21 +82,32 @@
         .reji-sahne-sutun { display: none; }
         #rejiKapsayici.reji-dikey {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 420px;
             grid-template-rows: auto auto;
             gap: 16px;
-            align-items: start;
+            align-items: stretch;
         }
         #rejiKapsayici.reji-dikey #rejiSahneKontrol { grid-column: 1; grid-row: 1; }
         #rejiKapsayici.reji-dikey #rejiSunucuKarti { grid-column: 1; grid-row: 2; }
         #rejiKapsayici.reji-dikey .reji-sahne-sutun {
             display: flex;
             flex-direction: column;
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            height: 100%;
+            min-height: 620px;
+            align-self: stretch;
+            border: 1px solid var(--accent-gold);
+            background: #0b1220;
+        }
+        #rejiKapsayici.reji-diger-yuzer .reji-sahne-sutun {
+            display: flex;
+            flex-direction: column;
             position: fixed;
             top: 16px;
             right: 16px;
-            width: 360px;
-            height: 460px;
+            width: 320px;
+            height: 220px;
             min-height: 0;
             max-height: calc(100vh - 32px);
             z-index: 8000;
@@ -114,6 +125,8 @@
             background: #111827;
             padding: 8px 10px;
             border-bottom: 1px solid #283548;
+        }
+        #rejiKapsayici.reji-diger-yuzer .reji-sahne-baslik {
             cursor: grab;
             user-select: none;
             touch-action: none;
@@ -132,16 +145,19 @@
                 grid-template-rows: auto;
             }
             #rejiKapsayici.reji-dikey #rejiSahneKontrol,
-            #rejiKapsayici.reji-dikey #rejiSunucuKarti {
+            #rejiKapsayici.reji-dikey #rejiSunucuKarti,
+            #rejiKapsayici.reji-dikey .reji-sahne-sutun {
                 grid-column: 1;
                 grid-row: auto;
-                min-height: 0;
+                min-height: 620px;
             }
-            #rejiKapsayici.reji-dikey .reji-sahne-sutun {
+            #rejiKapsayici.reji-dikey #rejiSahneKontrol,
+            #rejiKapsayici.reji-dikey #rejiSunucuKarti { min-height: 0; }
+            #rejiKapsayici.reji-diger-yuzer .reji-sahne-sutun {
                 top: 8px;
                 right: 8px;
-                width: min(320px, calc(100vw - 16px));
-                height: 280px;
+                width: min(280px, calc(100vw - 16px));
+                height: 180px;
                 min-height: 0;
             }
         }
@@ -809,7 +825,7 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
                     <span style="font-size:12px; font-weight:800; color:#fef08a;">Canlı Satış &amp; Kazanan Takibi</span>
                     <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <button type="button" class="btn btn-sm btn-red" onclick="digerSatisListesiniSifirla()">Listeyi Sıfırla / Temizle</button>
+                        <button type="button" id="digerListeSifirlaBtn" class="btn btn-sm btn-red" onclick="digerSatisListesiniSifirla()">Listeyi Sıfırla</button>
                         <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
                     </span>
                 </div>
@@ -1862,6 +1878,8 @@
         document.getElementById('otonomBaslikMetni').innerText = `🤖 7/24 Otonom Mezat (${ad})`;
         document.getElementById('formDukkan').value = kod;
 
+        const listeSifirlaBtn = document.getElementById('digerListeSifirlaBtn');
+        if (listeSifirlaBtn) listeSifirlaBtn.hidden = kod !== 'diger';
         document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
         const cyFiyatSatiri = document.getElementById('cyManuelFiyatSatiri');
@@ -2035,10 +2053,21 @@
         const kapsayici = document.getElementById('rejiKapsayici');
         const sutun = document.getElementById('rejiSahneSutunu');
         const cerceve = document.getElementById('rejiSahneOnizleme');
-        if (kapsayici) kapsayici.classList.toggle('reji-dikey', !!acik);
-        if (sutun) sutun.setAttribute('aria-hidden', acik ? 'false' : 'true');
+        const yuzer = (typeof seciliDukkan === 'string' && seciliDukkan === 'diger');
+        if (kapsayici) {
+            kapsayici.classList.toggle('reji-diger-yuzer', yuzer);
+            kapsayici.classList.toggle('reji-dikey', !yuzer && !!acik);
+        }
+        const gorunur = yuzer || !!acik;
+        if (sutun) sutun.setAttribute('aria-hidden', gorunur ? 'false' : 'true');
+        if (sutun && !yuzer) {
+            sutun.style.left = '';
+            sutun.style.top = '';
+            sutun.style.right = '';
+            sutun.style.bottom = '';
+        }
         if (!cerceve) return;
-        if (acik) {
+        if (gorunur) {
             const hedef = '/?dukkan=' + encodeURIComponent(CANLI_YAYIN_DUKKANI);
             if (cerceve.getAttribute('data-yuklu') !== hedef) {
                 cerceve.onload = function () { rejiCerceveyiSessizlestir(); };
@@ -2059,7 +2088,7 @@
             cerceve.src = 'about:blank';
             cerceve.removeAttribute('data-yuklu');
         }
-        if (sutun) {
+        if (sutun && !yuzer) {
             sutun.style.left = '';
             sutun.style.top = '';
             sutun.style.right = '';
@@ -2075,6 +2104,8 @@
         let ofsetX = 0;
         let ofsetY = 0;
         baslik.addEventListener('pointerdown', function (e) {
+            const kapsayici = document.getElementById('rejiKapsayici');
+            if (!kapsayici || !kapsayici.classList.contains('reji-diger-yuzer')) return;
             if (e.button !== undefined && e.button !== 0) return;
             const kutu = sutun.getBoundingClientRect();
             surukleniyor = true;
@@ -4695,7 +4726,8 @@
     }
 
     function digerSatisListesiniSifirla() {
-        if (!window.confirm("Bu odadaki birikmiş satış ve ödeme kayıtları silinsin mi?")) return;
+        if (seciliDukkan !== "diger") return;
+        if (!window.confirm("Yalnızca Diğer - Her Şey odasının birikmiş satış ve ödeme kayıtları silinsin mi?")) return;
         fetch("/api/diger/satis-kayitlari/temizle", {
             method: "POST",
             credentials: "same-origin",

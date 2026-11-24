@@ -8314,8 +8314,6 @@ def diger_satis_kayitlari_temizle():
         import diger_canli_sahne as depo
     except Exception:
         return jsonify({"success": False, "mesaj": "Satış listesi bulunamadı."}), 500
-    with depo._SATIS_KILIT:
-        depo._SATISLAR.clear()
     try:
         if depo._depo_hazir():
             with depo._DEPO.engine.begin() as baglanti:
@@ -8326,6 +8324,8 @@ def diger_satis_kayitlari_temizle():
     except Exception as hata:
         print(f"[DIGER SATIS] liste temizlenemedi: {hata}", flush=True)
         return jsonify({"success": False, "mesaj": "Liste temizlenemedi."}), 500
+    with depo._SATIS_KILIT:
+        depo._SATISLAR.clear()
     return jsonify({"success": True, "kayitlar": [], "sepetler": []})
 
 
@@ -12126,6 +12126,12 @@ def wc_orders():
 @socketio.on("connect")
 def handle_connect():
     try:
+        if not _reji_onizleme_baglantisi_mi():
+            bagli_soketler.add(request.sid)
+        izleyici_sayisini_yayinla()
+    except Exception:
+        pass
+    try:
         db.session.remove()
     except Exception:
         pass
@@ -12134,6 +12140,7 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     try:
+        bagli_soketler.discard(request.sid)
         _izleyici_oturum_sil(request.sid)
         izleyici_adlari.pop(request.sid, None)
         soketten_kullanici_kopar(request.sid)
@@ -12669,7 +12676,10 @@ def handle_join_dukkan(data):
         except (TypeError, ValueError):
             kayit_no = None
         _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
-        _izleyici_oturum_yaz(request.sid, dukkan, ad)
+        if dukkan == "diger":
+            _izleyici_oturum_yaz(request.sid, dukkan, ad)
+        else:
+            _izleyici_oturum_sil(request.sid)
         join_room(dukkan)
         for paket in izleyici_sayisini_yayinla():
             emit("izleyici_sayisi_guncelle", paket)
@@ -12682,6 +12692,9 @@ def handle_join_dukkan(data):
 def handle_leave_dukkan(data):
     dukkan = dukkan_dogrula((data or {}).get("dukkan", "gumus"))
     leave_room(dukkan)
+    if dukkan == "diger":
+        _izleyici_oturum_sil(request.sid)
+        izleyici_sayisini_yayinla()
     with _ozel_kilit:
         if _sid_dukkan.get(request.sid) == dukkan:
             _sid_dukkan.pop(request.sid, None)
@@ -13004,11 +13017,23 @@ def itiraz_duzelt_bildir():
     return jsonify({"success": True})
 
 
+bagli_soketler = set()
 aktif_izleyiciler = {}
 izleyici_adlari = {}
 _izleyici_kilit = threading.Lock()
 _izleyici_yayin_imza = None
 _izleyici_sayac_dongusu_basladi = False
+
+
+def _reji_onizleme_baglantisi_mi():
+    """Sessiz reji çerçevesi diğer dükkanların toplam sayacına yazılmaz."""
+    try:
+        if not session.get("is_admin"):
+            return False
+        kaynak = (request.headers.get("Referer") or request.referrer or "").lower()
+    except Exception:
+        return False
+    return "dukkan=diger" in kaynak or "dukkan%3ddiger" in kaynak
 
 
 def _yonetici_soketi_mi(ad=""):
@@ -13052,9 +13077,11 @@ def _soket_hâlâ_bagli(sid):
 
 
 def _izleyici_oturum_yaz(sid, dukkan, ad):
+    if dukkan != "diger":
+        return
     with _izleyici_kilit:
         aktif_izleyiciler[sid] = {
-            "dukkan": dukkan,
+            "dukkan": "diger",
             "ad": str(ad or "Misafir")[:40],
             "son": time.time(),
         }
@@ -13069,9 +13096,8 @@ def _anlik_izleyici_gruplari():
     """Kopmuş veya pingi düşmüş oturumları sayıdan hemen çıkarır."""
     with _izleyici_kilit:
         for sid in list(aktif_izleyiciler.keys()):
-            if not _soket_hâlâ_bagli(sid):
+            if aktif_izleyiciler.get(sid, {}).get("dukkan") != "diger" or not _soket_hâlâ_bagli(sid):
                 aktif_izleyiciler.pop(sid, None)
-                izleyici_adlari.pop(sid, None)
         gruplar = {}
         for bilgi in aktif_izleyiciler.values():
             kod = bilgi.get("dukkan")
@@ -13123,38 +13149,60 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
     _dukkan_canli_yayinla()
 
 
+def _genel_baglanti_ozeti():
+    """Diger dışındaki dükkanların önceki sayacı: bağlı soketlerin toplamı."""
+    with _izleyici_kilit:
+        sayi = len(bagli_soketler)
+    isimler = []
+    for ad in list(izleyici_adlari.values()):
+        temiz = str(ad or "").strip()
+        if temiz and temiz not in isimler:
+            isimler.append(temiz)
+    return sayi, isimler
+
+
+def _diger_anlik_paketi():
+    """Yalnızca diger odasında şu an bağlı gerçek izleyici oturumları."""
+    kayitlar = (_anlik_izleyici_gruplari().get("diger") or [])
+    isimler = []
+    for bilgi in kayitlar:
+        ad = str(bilgi.get("ad") or "").strip()
+        if ad and ad not in isimler:
+            isimler.append(ad)
+    sayi = len(kayitlar)
+    oda = odalar.get("diger")
+    if oda is not None:
+        oda["izleyici_sayisi"] = sayi
+    return {"dukkan": "diger", "sayi": sayi, "isimler": isimler}
+
+
 def _izleyici_paketlerini_hazirla():
-    gruplar = _anlik_izleyici_gruplari()
+    sayi, isimler = _genel_baglanti_ozeti()
+    diger = _diger_anlik_paketi()
     paketler = []
     for kod in DUKKANLAR:
-        kayitlar = gruplar.get(kod) or []
-        isimler = []
-        for bilgi in kayitlar:
-            ad = str(bilgi.get("ad") or "").strip()
-            if ad and ad not in isimler:
-                isimler.append(ad)
-        sayi = len(kayitlar)
-        oda = odalar.get(kod)
-        if oda is not None:
-            oda["izleyici_sayisi"] = sayi
-        paketler.append({"dukkan": kod, "sayi": sayi, "isimler": isimler})
+        if kod == "diger":
+            paketler.append(diger)
+        else:
+            paketler.append({"dukkan": kod, "sayi": sayi, "isimler": list(isimler)})
     return paketler
 
 
 def izleyici_sayisini_yayinla():
-    """Yalnızca o an bağlı izleyici oturumlarını duyurur. Sayı değişmediyse susar."""
+    """Diger odasına anlık oturum sayısını, diğer odalara önceki toplamı yollar."""
     global _izleyici_yayin_imza
     paketler = _izleyici_paketlerini_hazirla()
-    imza = tuple(
-        (paket["dukkan"], paket["sayi"], tuple(paket["isimler"]))
-        for paket in paketler
-    )
-    if imza == _izleyici_yayin_imza:
-        return paketler
-    _izleyici_yayin_imza = imza
+    onceki = _izleyici_yayin_imza or {}
+    yeni = {}
     for paket in paketler:
+        imza = (paket["sayi"], tuple(paket["isimler"]))
+        yeni[paket["dukkan"]] = imza
+        if onceki.get(paket["dukkan"]) == imza:
+            continue
         socketio.emit("izleyici_sayisi_guncelle", paket, room=paket["dukkan"])
-        socketio.emit("izleyici_sayisi_guncelle", paket, room="admin_room")
+        if paket["dukkan"] == "diger":
+            socketio.emit("izleyici_sayisi_guncelle", paket, room="admin_room")
+    _izleyici_yayin_imza = yeni
     return paketler
 
 
@@ -13167,13 +13215,19 @@ def izleyici_nabiz(data=None):
         izleyici_sayisini_yayinla()
         return
     veri = data or {}
+    hedef = dukkan_dogrula(veri.get("dukkan")) if veri.get("dukkan") else "diger"
+    cikti = False
     with _izleyici_kilit:
         bilgi = aktif_izleyiciler.get(sid)
-        if not bilgi:
+        if not bilgi or bilgi.get("dukkan") != "diger":
             return
-        bilgi["son"] = time.time()
-        if veri.get("dukkan"):
-            bilgi["dukkan"] = dukkan_dogrula(veri.get("dukkan"))
+        if hedef != "diger":
+            aktif_izleyiciler.pop(sid, None)
+            cikti = True
+        else:
+            bilgi["son"] = time.time()
+    if cikti:
+        izleyici_sayisini_yayinla()
 
 
 def _izleyici_sayac_dongusu():
