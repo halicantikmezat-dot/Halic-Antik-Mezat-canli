@@ -4,6 +4,8 @@ import math
 import threading
 import time
 
+from sqlalchemy import text
+
 DUKKAN = "diger"
 AD = "Canlı Yayın Ürünü"
 KAYNAK = "canli_yayin"
@@ -464,6 +466,9 @@ _SATIS_KILIT = threading.Lock()
 _SATISLAR = []
 _SATIS_SIRA = 0
 _SATIS_TAVAN = 80
+_DEPO = None
+_DEPO_HAZIR = False
+_DEPO_KILIT = threading.Lock()
 _PLATFORMLAR = {
     "web": "Web",
     "tiktok": "TikTok",
@@ -566,7 +571,9 @@ def satis_kaydi_ekle(
         _SATISLAR.append(kayit)
         if len(_SATISLAR) > _SATIS_TAVAN:
             del _SATISLAR[: len(_SATISLAR) - _SATIS_TAVAN]
-        return _satis_herkese(kayit)
+        kalici = dict(kayit)
+    kumbara_depo_yaz(kalici, "diger")
+    return _satis_herkese(kalici)
 
 
 def satis_kayitlari():
@@ -583,8 +590,14 @@ def satis_odendi_isaretle(kayit_id):
         for kayit in _SATISLAR:
             if kayit["id"] == hedef:
                 kayit["durum"] = "Ödendi"
-                return _satis_herkese(kayit)
-    return None
+                kopya = _satis_herkese(kayit)
+                break
+        else:
+            kopya = None
+    if kopya is None:
+        return kumbara_depo_durum(hedef, "Ödendi")
+    kumbara_depo_durum(hedef, "Ödendi")
+    return kopya
 
 
 # Ciroya oranlı kargo kumbarası. Yalnızca Diğer canlı satış listesini okur.
@@ -605,6 +618,206 @@ def _ad_anahtar(ad):
         "İ": "i", "I": "ı", "Ş": "ş", "Ğ": "ğ", "Ü": "ü", "Ö": "ö", "Ç": "ç",
     }))
     return metin.casefold()
+
+
+def bagla(db):
+    """Gece sepeti deposunu mevcut SQLAlchemy örneğine bağlar."""
+    global _DEPO
+    _DEPO = db
+
+
+def _depo_hazir():
+    global _DEPO_HAZIR
+    if _DEPO is None:
+        return False
+    if _DEPO_HAZIR:
+        return True
+    with _DEPO_KILIT:
+        if _DEPO_HAZIR:
+            return True
+        try:
+            with _DEPO.engine.begin() as baglanti:
+                baglanti.execute(text(
+                    """
+                    CREATE TABLE IF NOT EXISTS kumbara_gece (
+                        id INTEGER PRIMARY KEY,
+                        urun_id INTEGER,
+                        lot_no VARCHAR(40),
+                        urun_adi VARCHAR(200),
+                        son_fiyat FLOAT,
+                        kazanan_adi VARCHAR(120),
+                        kazanan_platform VARCHAR(40),
+                        telefon VARCHAR(40),
+                        saat VARCHAR(16),
+                        durum VARCHAR(40),
+                        donem VARCHAR(16),
+                        an FLOAT,
+                        kaynak VARCHAR(20)
+                    )
+                    """
+                ))
+                baglanti.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_kumbara_gece_donem "
+                    "ON kumbara_gece (donem)"
+                ))
+            _DEPO_HAZIR = True
+        except Exception as hata:
+            print(f"[KUMBARA] depo acilamadi: {hata}", flush=True)
+            return False
+    return True
+
+
+def _depo_satiri(satir):
+    return {
+        "id": int(satir[0]),
+        "urun_id": int(satir[1] or 0),
+        "lot_no": satir[2] if satir[2] not in (None, "") else "",
+        "urun_adi": satir[3] or "",
+        "son_fiyat": float(satir[4] or 0),
+        "kazanan_adi": satir[5] or "",
+        "kazanan_platform": satir[6] or "Web",
+        "telefon": satir[7] or "",
+        "saat": satir[8] or "",
+        "durum": satir[9] or "Ödeme Bekliyor",
+        "donem": satir[10] or "",
+        "an": float(satir[11] or 0),
+    }
+
+
+_DEPO_SUTUNLAR = (
+    "id, urun_id, lot_no, urun_adi, son_fiyat, kazanan_adi, "
+    "kazanan_platform, telefon, saat, durum, donem, an"
+)
+
+
+def kumbara_depo_yaz(kayit, kaynak):
+    """Gece satışını tabloya ekler. Aynı kimlik varsa ikinci satır açmaz."""
+    if not isinstance(kayit, dict) or not _depo_hazir():
+        return
+    try:
+        kimlik = int(kayit.get("id") or 0)
+    except (TypeError, ValueError):
+        return
+    if kimlik <= 0:
+        return
+    try:
+        urun_id = int(kayit.get("urun_id") or 0)
+    except (TypeError, ValueError):
+        urun_id = 0
+    try:
+        tutar = float(kayit.get("son_fiyat") or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    try:
+        an = float(kayit.get("an") or 0)
+    except (TypeError, ValueError):
+        an = 0.0
+    lot = kayit.get("lot_no")
+    parametre = {
+        "id": kimlik,
+        "urun_id": urun_id,
+        "lot_no": "" if lot is None else str(lot)[:40],
+        "urun_adi": str(kayit.get("urun_adi") or "")[:200],
+        "son_fiyat": tutar,
+        "kazanan_adi": str(kayit.get("kazanan_adi") or "")[:120],
+        "kazanan_platform": str(kayit.get("kazanan_platform") or "Web")[:40],
+        "telefon": str(kayit.get("telefon") or "")[:40],
+        "saat": str(kayit.get("saat") or "")[:16],
+        "durum": str(kayit.get("durum") or "Ödeme Bekliyor")[:40],
+        "donem": str(kayit.get("donem") or "")[:16],
+        "an": an,
+        "kaynak": str(kaynak or "")[:20],
+    }
+    try:
+        with _DEPO.engine.begin() as baglanti:
+            baglanti.execute(
+                text(
+                    """
+                    INSERT INTO kumbara_gece (
+                        id, urun_id, lot_no, urun_adi, son_fiyat, kazanan_adi,
+                        kazanan_platform, telefon, saat, durum, donem, an, kaynak
+                    ) VALUES (
+                        :id, :urun_id, :lot_no, :urun_adi, :son_fiyat, :kazanan_adi,
+                        :kazanan_platform, :telefon, :saat, :durum, :donem, :an, :kaynak
+                    )
+                    """
+                ),
+                parametre,
+            )
+    except Exception as hata:
+        metin = str(hata).casefold()
+        if "unique" in metin or "integrity" in metin or "duplicate" in metin:
+            return
+        print(f"[KUMBARA] depo yazilamadi: {hata}", flush=True)
+
+
+def kumbara_depo_oku(donem):
+    """Bu gecenin kalıcı satışları. Bellek tavanı bu listeyi kırpmaz."""
+    if not _depo_hazir():
+        return []
+    try:
+        with _DEPO.engine.connect() as baglanti:
+            satirlar = baglanti.execute(
+                text(
+                    "SELECT " + _DEPO_SUTUNLAR +
+                    " FROM kumbara_gece WHERE donem = :donem ORDER BY an ASC, id ASC"
+                ),
+                {"donem": str(donem or "")[:16]},
+            ).fetchall()
+    except Exception as hata:
+        print(f"[KUMBARA] depo okunamadi: {hata}", flush=True)
+        return []
+    return [_depo_satiri(satir) for satir in satirlar]
+
+
+def kumbara_depo_durum(kayit_id, durum):
+    if not _depo_hazir():
+        return None
+    try:
+        hedef = int(kayit_id)
+    except (TypeError, ValueError):
+        return None
+    try:
+        with _DEPO.engine.begin() as baglanti:
+            baglanti.execute(
+                text("UPDATE kumbara_gece SET durum = :durum WHERE id = :id"),
+                {"durum": str(durum or "")[:40], "id": hedef},
+            )
+            satir = baglanti.execute(
+                text(
+                    "SELECT " + _DEPO_SUTUNLAR + " FROM kumbara_gece WHERE id = :id"
+                ),
+                {"id": hedef},
+            ).fetchone()
+    except Exception as hata:
+        print(f"[KUMBARA] depo durumu yazilamadi: {hata}", flush=True)
+        return None
+    if satir is None:
+        return None
+    return _depo_satiri(satir)
+
+
+def kumbara_gece_birlestir(ram_kayitlari, donem=None):
+    """Kalıcı gece kayıtları ile bellekteki taze satışları tek listede toplar."""
+    aktif = donem or _donem_tarihi()
+    gorulen = set()
+    sonuc = []
+    for kayit in list(kumbara_depo_oku(aktif)) + list(ram_kayitlari or []):
+        if not isinstance(kayit, dict):
+            continue
+        kayit_donem = str(kayit.get("donem") or "")
+        if kayit_donem and kayit_donem != aktif:
+            continue
+        try:
+            kimlik = int(kayit.get("id") or 0)
+        except (TypeError, ValueError):
+            kimlik = 0
+        if kimlik and kimlik in gorulen:
+            continue
+        if kimlik:
+            gorulen.add(kimlik)
+        sonuc.append(kayit)
+    return sonuc
 
 
 def kumbara_hesapla(toplam):

@@ -2745,16 +2745,16 @@
         
         <div style="background:#080c13; padding:6px; border-radius:5px; font-size:10px; margin-bottom:8px; border:1px solid var(--card-border);">
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                <span>Ara Toplam:</span> <b id="sepetAraToplam">0 TL</b>
+                <span>Ürün Net Tutarı:</span> <b id="sepetAraToplam">0 TL</b>
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                <span>KDV (%20):</span> <b id="sepetKdv">0 TL</b>
+                <span>Kargo Katkı İndirimi (%10):</span> <b id="sepetKargoDestek">0 TL</b>
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                <span>Kargo Bedeli:</span> <b id="sepetKargo">0 TL</b>
+                <span>Kargo:</span> <b id="sepetKargo">Alıcı Ödemeli</b>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--accent-gold); border-top:1px dashed #334; padding-top:3px;">
-                <span>Genel Toplam:</span> <b id="sepetGenelToplam">0 TL</b>
+                <span>Ödenecek Net Tutar:</span> <b id="sepetGenelToplam">0 TL</b>
             </div>
         </div>
 
@@ -3742,9 +3742,14 @@
     function yuzerCanliSureMetni(data) {
         if (!data || data.asama === 'bekliyor' || !data.aktif_urun) return '--';
         const ham = Math.max(0, parseInt(data.kalan_sure != null ? data.kalan_sure : data.kalan, 10) || 0);
-        if (data.asama === 'pazarlik' || data.asama === 'karar') {
-            return Math.floor(ham / 60) + ':' + String(ham % 60).padStart(2, '0');
+        if (data.asama === 'pazarlik') {
+            if (digerCanliPey) {
+                return Math.floor(ham / 60) + ':' + String(ham % 60).padStart(2, '0');
+            }
+            const sn = Math.max(0, ham - 60);
+            return Math.floor(sn / 60) + ':' + String(sn % 60).padStart(2, '0');
         }
+        if (data.asama === 'karar') return String(ham).padStart(2, '0');
         if (data.sayac_gorunsun === false) return '--';
         return String(ham).padStart(2, '0');
     }
@@ -7312,17 +7317,19 @@
             if (!res.success || !res.urunler || res.urunler.length === 0) {
                 listDiv.innerHTML = '<p style="color:var(--text-muted); font-size:9px; padding:8px 0;">Sepetiniz boş.</p>';
                 document.getElementById('sepetAraToplam').innerText = formatFiyat(0);
-                document.getElementById('sepetKdv').innerText = formatFiyat(0);
-                document.getElementById('sepetKargo').innerText = formatFiyat(0);
+                document.getElementById('sepetKargoDestek').innerText = formatFiyat(0);
+                document.getElementById('sepetKargo').innerText = 'Alıcı Ödemeli';
                 document.getElementById('sepetGenelToplam').innerText = formatFiyat(0);
                 document.getElementById('sepetAdet').innerText = "0";
                 return;
             }
             document.getElementById('sepetAdet').innerText = res.urunler.length;
-            document.getElementById('sepetAraToplam').innerText = formatFiyat(res.ara_toplam);
-            document.getElementById('sepetKdv').innerText = formatFiyat(res.kdv_tutari);
-            document.getElementById('sepetKargo').innerText = formatFiyat(res.kargo_ucreti);
-            document.getElementById('sepetGenelToplam').innerText = formatFiyat(res.genel_toplam);
+            const urunNet = res.toplam_tutar != null ? res.toplam_tutar : res.ara_toplam;
+            const odenecek = res.net_odenecek != null ? res.net_odenecek : res.genel_toplam;
+            document.getElementById('sepetAraToplam').innerText = formatFiyat(urunNet);
+            document.getElementById('sepetKargoDestek').innerText = formatFiyat(res.kargo_destegi || 0);
+            document.getElementById('sepetKargo').innerText = res.kargo_bilgi || 'Alıcı Ödemeli';
+            document.getElementById('sepetGenelToplam').innerText = formatFiyat(odenecek);
             let html = '<table class="table-custom"><thead><tr><th>Lot</th><th>Ürün Adı</th><th>Tutar</th></tr></thead><tbody>';
             res.urunler.forEach(item => {
                 html += `<tr><td><b>#${escapeHtml(item.lot)}</b></td><td>${escapeHtml(item.ad)}</td><td style="color:#34d399; font-weight:bold;">${formatFiyat(item.fiyat)}</td></tr>`;

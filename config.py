@@ -43,10 +43,10 @@ def _havuz_tam_sayi(ad, varsayilan):
 
 
 def _sqlalchemy_engine_options(db_uri):
-    """PostgreSQL havuzu. 17 salon aynı anda açılınca 20+30 bağlantı yeter. SQLite havuz ayarı istemez."""
+    """PostgreSQL havuzu. Yerel SQLite dosyasında kilit beklemesi 30 saniyedir."""
     adres = str(db_uri or "")
     if adres.startswith("sqlite"):
-        return {}
+        return {"connect_args": {"timeout": 30}}
     return {
         "pool_pre_ping": True,
         "pool_recycle": 280,

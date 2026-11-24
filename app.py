@@ -201,6 +201,33 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 print("[BOOT] sqlalchemy kuruluyor", flush=True)
 db = SQLAlchemy(app)
+
+
+def _sqlite_baglanti_kilidini_ayarlar(dbapi_connection, _connection_record):
+    """Yerel dosyada yazıcılar birbirini 30 sn bekler. WAL okuma ile yazmayı ayırır."""
+    imlec = dbapi_connection.cursor()
+    try:
+        imlec.execute("PRAGMA journal_mode=WAL")
+        imlec.execute("PRAGMA synchronous=NORMAL")
+        imlec.execute("PRAGMA busy_timeout=30000")
+    finally:
+        imlec.close()
+
+
+if IS_SQLITE:
+    from sqlalchemy import event
+
+    with app.app_context():
+        event.listen(db.engine, "connect", _sqlite_baglanti_kilidini_ayarlar)
+    print("[BOOT] sqlite WAL ve 30sn kilit beklemesi acik", flush=True)
+
+try:
+    import diger_canli_sahne as _kumbara_deposu
+
+    _kumbara_deposu.bagla(db)
+except Exception as hata:
+    print(f"[BOOT] kumbara deposu baglanamadi: {hata}", flush=True)
+
 print("[BOOT] socketio kuruluyor", flush=True)
 socketio = SocketIO(
     app,
@@ -2635,6 +2662,13 @@ def _kumbara_capraz_kaydet(urun, kazanan_adi, fiyat, urun_adi=None, lot_no=None,
         })
         if len(_KUMBARA_CAPRAZ) > _KUMBARA_CAPRAZ_TAVAN:
             del _KUMBARA_CAPRAZ[: len(_KUMBARA_CAPRAZ) - _KUMBARA_CAPRAZ_TAVAN]
+        kalici = dict(_KUMBARA_CAPRAZ[-1])
+    try:
+        from diger_canli_sahne import kumbara_depo_yaz
+
+        kumbara_depo_yaz(kalici, "capraz")
+    except Exception as hata:
+        print(f"[KUMBARA] capraz kayit kalici yazilamadi: {hata}", flush=True)
 
 
 def _kumbara_capraz_kayitlari():
@@ -5819,17 +5853,20 @@ def sepet_getir(musteri_id):
                     ),
                 })
 
-    kdv_tutari = round(ara_toplam * 0.20, 2)
-    kargo_ucreti = 150.0 if ara_toplam > 0 else 0.0
-    genel_toplam = round(ara_toplam + kdv_tutari + kargo_ucreti, 2)
+    from diger_canli_sahne import kumbara_hesapla
 
+    ozet = kumbara_hesapla(ara_toplam)
     return jsonify({
         "success": True,
         "urunler": sepet_listesi,
-        "ara_toplam": ara_toplam,
-        "kdv_tutari": kdv_tutari,
-        "kargo_ucreti": kargo_ucreti,
-        "genel_toplam": genel_toplam,
+        "ara_toplam": ozet["toplam_tutar"],
+        "toplam_tutar": ozet["toplam_tutar"],
+        "kdv_tutari": 0,
+        "kargo_ucreti": 0,
+        "kargo_destegi": ozet["kargo_destegi"],
+        "net_odenecek": ozet["net_odenecek"],
+        "kargo_bilgi": "Alıcı Ödemeli",
+        "genel_toplam": ozet["net_odenecek"],
     })
 
 
@@ -8193,8 +8230,11 @@ def diger_satis_kayitlari():
 def diger_musteri_sepeti():
     from diger_canli_sahne import musteri_sepeti_bul, satis_kayitlari
 
-    kaynak = list(satis_kayitlari())
-    kaynak.extend(_kumbara_capraz_kayitlari())
+    from diger_canli_sahne import kumbara_gece_birlestir
+
+    kaynak = kumbara_gece_birlestir(
+        list(satis_kayitlari()) + _kumbara_capraz_kayitlari()
+    )
     tekil, sepet, sepetler = musteri_sepeti_bul(
         kaynak,
         request.args.get("isim") or "",
