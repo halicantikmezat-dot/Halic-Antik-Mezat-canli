@@ -7987,26 +7987,52 @@ def _kurumsal_satiri_var(deger):
     return metin
 
 
-def _diger_satis_mesaji(kayit):
+def _tl_yazi(tutar):
+    try:
+        sayi = float(tutar or 0)
+    except (TypeError, ValueError):
+        sayi = 0.0
+    if sayi == int(sayi):
+        return str(int(sayi))
+    return str(sayi)
+
+
+def _diger_satis_mesaji(kayit, sepet=None, kayitlar=None):
+    from diger_canli_sahne import kumbara_hesapla
+
     kurumsal = {}
     try:
         kurumsal = kurumsal_bilgileri_oku() or {}
     except Exception:
         kurumsal = {}
-    try:
-        tutar = float(kayit.get("son_fiyat") or 0)
-    except (TypeError, ValueError):
-        tutar = 0.0
-    tutar_yazi = str(int(tutar)) if tutar == int(tutar) else str(tutar)
+    if not sepet:
+        sepet = kumbara_hesapla(kayit.get("son_fiyat"))
+        sepet["kayit_idler"] = [kayit.get("id")]
+        sepet["urun_sayisi"] = 1
+    idler = set(sepet.get("kayit_idler") or [])
+    urunler = []
+    if kayitlar and idler:
+        urunler = [satir for satir in reversed(list(kayitlar)) if satir.get("id") in idler]
+    if not urunler:
+        urunler = [kayit]
     satirlar = [
-        "Sayın {ad},".format(ad=kayit.get("kazanan_adi") or "kazanan"),
-        "Lot #{lot} — {urun}".format(
-            lot=kayit.get("lot_no") if kayit.get("lot_no") not in (None, "") else "-",
-            urun=kayit.get("urun_adi") or "Eser",
-        ),
-        "Tutar: {tutar} TL".format(tutar=tutar_yazi),
-        "Ödemeniz bekleniyor. Havale/EFT açıklamasına adınızı ve lot numarasını yazınız.",
+        "Sayın {ad},".format(ad=(sepet.get("kazanan_adi") or kayit.get("kazanan_adi") or "kazanan")),
+        "Kazandığınız ürünler:",
     ]
+    for urun in urunler:
+        satirlar.append("• Lot #{lot} — {ad} — {tutar} TL".format(
+            lot=urun.get("lot_no") if urun.get("lot_no") not in (None, "") else "-",
+            ad=urun.get("urun_adi") or "Eser",
+            tutar=_tl_yazi(urun.get("son_fiyat")),
+        ))
+    satirlar.extend([
+        "Toplam Tutar: {0} TL".format(_tl_yazi(sepet.get("toplam_tutar"))),
+        "Kargo Katkı İndirimi (%10): {0} TL".format(_tl_yazi(sepet.get("kargo_destegi"))),
+        "Ödenecek Net Tutar: {0} TL".format(_tl_yazi(sepet.get("net_odenecek"))),
+        "Kargo teslimatı tek kolide birleştirilir ve alıcı ödemeli çıkar.",
+        "7 gün ücretsiz tek koli birleştirme. Kargo çıkışı öncesi adres teyidi WhatsApp ile alınır.",
+        "Ödemeniz bekleniyor. Havale/EFT açıklamasına adınızı ve lot numarasını yazınız.",
+    ])
     banka = _kurumsal_satiri_var(kurumsal.get("bankaAdi"))
     alici = _kurumsal_satiri_var(kurumsal.get("aliciAdi"))
     iban = _kurumsal_satiri_var(kurumsal.get("iban"))
@@ -8022,31 +8048,74 @@ def _diger_satis_mesaji(kayit):
     return "\n".join(satirlar)
 
 
+def _diger_satis_paketle(kayitlar_ham):
+    from diger_canli_sahne import sepet_gruplari
+
+    sepetler = sepet_gruplari(kayitlar_ham)
+    harita = {}
+    for sepet in sepetler:
+        for kayit_id in sepet.get("kayit_idler") or []:
+            harita[kayit_id] = sepet
+    kayitlar = []
+    for kayit in kayitlar_ham:
+        satir = dict(kayit)
+        sepet = harita.get(satir.get("id"))
+        if sepet:
+            satir["sepet"] = sepet
+        satir["mesaj"] = _diger_satis_mesaji(satir, sepet, kayitlar_ham)
+        kayitlar.append(satir)
+    return kayitlar, sepetler
+
+
 @app.route("/api/diger/satis-kayitlari", methods=["GET"])
 @admin_required
 def diger_satis_kayitlari():
     from diger_canli_sahne import satis_kayitlari
 
+    kayitlar, sepetler = _diger_satis_paketle(satis_kayitlari())
+    return jsonify({"success": True, "kayitlar": kayitlar, "sepetler": sepetler})
+
+
+@app.route("/api/diger/musteri-sepeti", methods=["GET"])
+def diger_musteri_sepeti():
+    from diger_canli_sahne import musteri_sepeti_bul, satis_kayitlari
+
+    tekil, sepet, sepetler = musteri_sepeti_bul(
+        satis_kayitlari(),
+        request.args.get("isim") or "",
+        request.args.get("platform") or None,
+    )
     kayitlar = []
-    for kayit in satis_kayitlari():
-        satir = dict(kayit)
-        satir["mesaj"] = _diger_satis_mesaji(satir)
+    for kayit in tekil:
+        satir = {anahtar: deger for anahtar, deger in kayit.items() if anahtar != "telefon"}
+        satir["sepet"] = sepet
         kayitlar.append(satir)
-    return jsonify({"success": True, "kayitlar": kayitlar})
+    cevap = jsonify({
+        "success": True,
+        "kayitlar": kayitlar,
+        "sepet": sepet,
+        "sepetler": sepetler,
+    })
+    cevap.headers["Cache-Control"] = "no-store"
+    return cevap
 
 
 @app.route("/api/diger/satis-odendi", methods=["POST"])
 @admin_required
 def diger_satis_odendi():
-    from diger_canli_sahne import satis_odendi_isaretle
+    from diger_canli_sahne import satis_kayitlari, satis_odendi_isaretle
 
     veri = request.json or {}
     kayit = satis_odendi_isaretle(veri.get("id"))
     if kayit is None:
         return jsonify({"success": False, "mesaj": "Satış kaydı bulunamadı."}), 404
-    kayit = dict(kayit)
-    kayit["mesaj"] = _diger_satis_mesaji(kayit)
-    return jsonify({"success": True, "kayit": kayit})
+    kayitlar, _sepetler = _diger_satis_paketle(satis_kayitlari())
+    bulunan = None
+    for satir in kayitlar:
+        if satir.get("id") == kayit.get("id"):
+            bulunan = satir
+            break
+    return jsonify({"success": True, "kayit": bulunan or kayit})
 
 
 @app.route("/satis-bitir", methods=["POST"])

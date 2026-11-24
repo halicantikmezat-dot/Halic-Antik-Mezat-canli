@@ -792,7 +792,7 @@
                     <span style="font-size:12px; font-weight:800; color:#fef08a;">Canlı Satış &amp; Kazanan Takibi</span>
                     <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
                 </div>
-                <div id="digerSatisListesi" style="max-height:168px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+                <div id="digerSatisListesi" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
                     <div style="font-size:11px; color:#64748b;">Henüz canlı satış yok.</div>
                 </div>
             </div>
@@ -4536,6 +4536,10 @@
         Facebook: "#1d4ed8"
     };
 
+    function adminKumbaraTl(deger) {
+        return Math.round(Number(deger) || 0).toLocaleString("tr-TR") + " TL";
+    }
+
     function digerSatisListesiniCiz() {
         const liste = document.getElementById("digerSatisListesi");
         const sayac = document.getElementById("digerSatisSayac");
@@ -4583,6 +4587,16 @@
             alt.appendChild(durum);
             sol.appendChild(baslik);
             sol.appendChild(alt);
+            const sepet = kayit.sepet;
+            if (sepet && Number(sepet.urun_sayisi) > 1) {
+                const ozet = document.createElement("div");
+                ozet.style.cssText = "font-size:10px; color:#86efac; line-height:1.35; margin-top:2px;";
+                ozet.textContent = "Birleşik sepet: " + sepet.urun_sayisi
+                    + " ürün · Toplam " + adminKumbaraTl(sepet.toplam_tutar)
+                    + " · %10 Kargo Desteği: " + adminKumbaraTl(sepet.kargo_destegi)
+                    + " · Ödenecek Net: " + adminKumbaraTl(sepet.net_odenecek);
+                sol.appendChild(ozet);
+            }
             ust.appendChild(sol);
             satir.appendChild(ust);
             const dugmeler = document.createElement("div");

@@ -503,6 +503,7 @@ def _satis_herkese(kayit):
         "telefon": kayit["telefon"],
         "saat": kayit["saat"],
         "durum": kayit["durum"],
+        "donem": kayit.get("donem") or "",
     }
 
 
@@ -559,6 +560,7 @@ def satis_kaydi_ekle(
             "telefon": str(telefon or "").strip()[:40],
             "saat": time.strftime("%H:%M:%S"),
             "durum": "Ödeme Bekliyor",
+            "donem": _donem_tarihi(simdi),
             "an": simdi,
         }
         _SATISLAR.append(kayit)
@@ -583,3 +585,132 @@ def satis_odendi_isaretle(kayit_id):
                 kayit["durum"] = "Ödendi"
                 return _satis_herkese(kayit)
     return None
+
+
+# Ciroya oranlı kargo kumbarası. Yalnızca Diğer canlı satış listesini okur.
+KARGO_BARAJ = 1000
+KARGO_ORAN = 0.10
+
+
+def _donem_tarihi(an=None):
+    """Türkiye saatiyle 06:00'da yenilenen gece/dönem anahtarı."""
+    if an is None:
+        an = time.time()
+    return time.strftime("%Y-%m-%d", time.gmtime(float(an) + 3 * 3600 - 6 * 3600))
+
+
+def _ad_anahtar(ad):
+    metin = str(ad or "").strip()
+    metin = metin.translate(str.maketrans({
+        "İ": "i", "I": "ı", "Ş": "ş", "Ğ": "ğ", "Ü": "ü", "Ö": "ö", "Ç": "ç",
+    }))
+    return metin.casefold()
+
+
+def kumbara_hesapla(toplam):
+    """1.000 TL ve üzerinde toplamın %10'u. Altında destek 0 TL."""
+    try:
+        tutar = float(toplam or 0)
+    except (TypeError, ValueError):
+        tutar = 0.0
+    if tutar < 0:
+        tutar = 0.0
+    tutar = float(_js_yuvarla(tutar))
+    if tutar >= KARGO_BARAJ:
+        destek = float(_js_yuvarla(tutar * KARGO_ORAN))
+    else:
+        destek = 0.0
+    if tutar <= 0:
+        kalan = float(KARGO_BARAJ)
+    else:
+        artik = int(tutar) % KARGO_BARAJ
+        kalan = float(KARGO_BARAJ if artik == 0 else KARGO_BARAJ - artik)
+    sonraki = tutar + kalan
+    return {
+        "toplam_tutar": tutar,
+        "kargo_destegi": destek,
+        "net_odenecek": tutar - destek,
+        "sonraki_baraj_kalan": kalan,
+        "sonraki_kargo_destegi": float(_js_yuvarla(sonraki * KARGO_ORAN)),
+    }
+
+
+def _aktif_donem(kayit, donem):
+    kayit_donem = str(kayit.get("donem") or "")
+    if not kayit_donem:
+        return donem == _donem_tarihi()
+    return kayit_donem == donem
+
+
+def sepet_gruplari(kayitlar, donem=None):
+    """Aynı gece, aynı ad ve platform satışlarını tek müşteri sepetinde birleştirir."""
+    if donem is None:
+        donem = _donem_tarihi()
+    gruplar = {}
+    sira = []
+    for kayit in kayitlar or []:
+        if not isinstance(kayit, dict) or not _aktif_donem(kayit, donem):
+            continue
+        ad = str(kayit.get("kazanan_adi") or "").strip()
+        if not ad or _ad_anahtar(ad) in ("yok", "none", "-", "kimse"):
+            continue
+        platform = str(kayit.get("kazanan_platform") or "Web").strip() or "Web"
+        anahtar = (_ad_anahtar(ad), platform.casefold())
+        if anahtar not in gruplar:
+            gruplar[anahtar] = {
+                "kazanan_adi": ad,
+                "kazanan_platform": platform,
+                "urunler": [],
+            }
+            sira.append(anahtar)
+        gruplar[anahtar]["urunler"].append(kayit)
+    sonuc = []
+    for anahtar in sira:
+        grup = gruplar[anahtar]
+        toplam = 0.0
+        for urun in grup["urunler"]:
+            try:
+                toplam += float(urun.get("son_fiyat") or 0)
+            except (TypeError, ValueError):
+                continue
+        ozet = kumbara_hesapla(toplam)
+        ozet["kazanan_adi"] = grup["kazanan_adi"]
+        ozet["kazanan_platform"] = grup["kazanan_platform"]
+        ozet["urun_sayisi"] = len(grup["urunler"])
+        ozet["kayit_idler"] = [urun.get("id") for urun in grup["urunler"]]
+        ozet["donem"] = donem
+        sonuc.append(ozet)
+    return sonuc
+
+
+def musteri_sepeti_bul(kayitlar, isim, platform=None, donem=None):
+    """İsim (ve varsa platform) ile bu gecenin sepetini ve tekil satışlarını döndürür."""
+    ham = str(isim or "").strip()
+    onek_var = ham.startswith("[") and "]" in ham
+    ad, rozet = kazanan_ayir(ham, platform)
+    if platform or onek_var:
+        hedef_platform = rozet
+    else:
+        hedef_platform = "Web"
+    bos = kumbara_hesapla(0)
+    bos.update({
+        "kazanan_adi": ad if ad != "Yok" else "",
+        "kazanan_platform": hedef_platform,
+        "urun_sayisi": 0,
+        "kayit_idler": [],
+        "donem": donem or _donem_tarihi(),
+    })
+    if not ad or _ad_anahtar(ad) in ("yok", "none", "-", "kimse"):
+        return [], bos, []
+    sepetler = sepet_gruplari(kayitlar, donem)
+    eslesen = [
+        sepet for sepet in sepetler
+        if _ad_anahtar(sepet.get("kazanan_adi")) == _ad_anahtar(ad)
+        and str(sepet.get("kazanan_platform") or "").casefold() == hedef_platform.casefold()
+    ]
+    if not eslesen:
+        return [], bos, []
+    secilen = eslesen[0]
+    idler = set(secilen.get("kayit_idler") or [])
+    tekil = [kayit for kayit in (kayitlar or []) if kayit.get("id") in idler]
+    return tekil, secilen, eslesen

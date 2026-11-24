@@ -631,6 +631,69 @@
         }
         .zafer-kart .zafer-wp { background: #128C7E; color: #fff; }
         .zafer-kart .zafer-pos { background: #1c1917; color: #fef3c7; }
+        .zafer-kart .zafer-sepet {
+            margin-top: 8px; text-align: left; background: rgba(255, 251, 235, 0.55);
+            border-radius: 10px; padding: 8px 10px;
+        }
+        .zafer-kart .zafer-sepet p { margin: 2px 0; font-size: 13px; font-weight: 800; }
+        .zafer-kart .zafer-kargo-not {
+            margin-top: 8px; font-size: 11px; font-weight: 700; line-height: 1.35; color: #44403c;
+        }
+        .kargo-fanus {
+            position: relative; z-index: 2; box-sizing: border-box;
+            width: 32px; height: 32px; flex: 0 0 32px; padding: 0; margin: 0;
+            border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.4);
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.28), rgba(8, 18, 32, 0.55) 46%, rgba(2, 8, 18, 0.72));
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 1px 4px rgba(0,0,0,0.35);
+            overflow: hidden; cursor: pointer; color: #ecfeff;
+        }
+        .kargo-fanus[hidden] { display: none !important; }
+        .kargo-fanus-sivi {
+            position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+            height: 18%; overflow: hidden;
+            background: linear-gradient(180deg, rgba(153, 246, 228, 0.95), rgba(13, 148, 136, 0.96));
+            transition: height 0.7s ease;
+        }
+        .kargo-fanus-dalga, .kargo-fanus-dalga::after {
+            content: ""; position: absolute; left: -70%; top: -6px; width: 240%; height: 12px;
+            border-radius: 46%; background: rgba(236, 254, 255, 0.55);
+            animation: kargoDalga 2.4s linear infinite;
+        }
+        .kargo-fanus-dalga::after {
+            top: -3px; opacity: 0.65; animation-duration: 3.3s; animation-direction: reverse;
+            background: rgba(253, 230, 138, 0.35);
+        }
+        @keyframes kargoDalga { from { transform: translateX(0); } to { transform: translateX(-28%); } }
+        .kargo-fanus-ikon, .kargo-fanus-tutar {
+            position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center;
+            pointer-events: none;
+        }
+        .kargo-fanus-ikon { font-size: 12px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45)); }
+        .kargo-fanus-tutar {
+            display: none; z-index: 4; font-size: 8px; font-weight: 900; letter-spacing: -0.3px; color: #082f2a;
+            text-shadow: 0 0 3px rgba(255,255,255,0.85);
+        }
+        .kargo-fanus::after {
+            content: ""; position: absolute; inset: 1px; z-index: 3; border-radius: 50%; pointer-events: none;
+            background: linear-gradient(145deg, rgba(255,255,255,0.55), transparent 42%, transparent 62%, rgba(255,255,255,0.16));
+        }
+        .kargo-fanus.dolu {
+            border-color: rgba(253, 230, 138, 0.95);
+            box-shadow: 0 0 8px rgba(45, 212, 191, 0.75), 0 0 10px rgba(212, 175, 55, 0.55), inset 0 0 8px rgba(253, 230, 138, 0.35);
+            animation: kargoParla 1.8s ease-in-out infinite;
+        }
+        .kargo-fanus.dolu .kargo-fanus-sivi {
+            background: linear-gradient(180deg, rgba(254, 240, 138, 0.92), rgba(20, 184, 166, 0.96));
+        }
+        .kargo-fanus.dolu .kargo-fanus-ikon { opacity: 0; }
+        .kargo-fanus.dolu .kargo-fanus-tutar { display: flex; }
+        @keyframes kargoParla {
+            0%, 100% { box-shadow: 0 0 6px rgba(45, 212, 191, 0.45), 0 0 8px rgba(212, 175, 55, 0.35); }
+            50% { box-shadow: 0 0 12px rgba(45, 212, 191, 0.9), 0 0 14px rgba(253, 230, 138, 0.75); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .kargo-fanus-dalga, .kargo-fanus-dalga::after, .kargo-fanus.dolu { animation: none; }
+        }
         .zafer-muhur {
             display: none; position: fixed; left: 50%; top: 36%; z-index: 13001;
             transform: translate(-50%, -50%) rotate(-8deg);
@@ -2251,6 +2314,12 @@
     <h1 id="zaferBaslik">Tebrikler, Ürünü Kazandınız!</h1>
     <p id="zaferAlt">Tebrikler!</p>
     <p class="zafer-fiyat" id="zaferFiyat"></p>
+    <div id="zaferSepet" class="zafer-sepet" hidden>
+        <p>Birleşik sepet: <b id="zaferSepetToplam">0 TL</b></p>
+        <p>%10 Kargo Katkı İndirimi: <b id="zaferKargoDestek">0 TL</b></p>
+        <p>Ödenecek Net Tutar: <b id="zaferNet">0 TL</b></p>
+    </div>
+    <p id="zaferKargoNot" class="zafer-kargo-not" hidden>Ürünleriniz 7 gün içinde tek kolide birleştirilir, çıkış öncesi WhatsApp teyidiniz alınarak alıcı ödemeli gönderilir.</p>
     <div class="zafer-eylem">
         <button type="button" class="zafer-wp" onclick="kazananWhatsappOnayla()">WhatsApp ile Siparişi Onayla</button>
         <button type="button" class="zafer-pos" onclick="kazananOdemeyeGit()">Hemen Ödeme Yap (POS / Sepet)</button>
@@ -2313,6 +2382,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
         <button type="button" class="menu-oge" onclick="menuIslem(ozelSohbetAc)">💬 Sohbet (İzleyici Odası)</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
+        <button type="button" class="menu-oge" id="menuKargoKurallar" {% if secili_dukkan is defined and secili_dukkan != 'diger' %}hidden{% endif %} onclick="menuIslem(kargoKurallarAc)">Kargo &amp; Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
         <select id="currencySelector" aria-label="Para birimi seçimi" onchange="paraBirimiDegistir()" style="margin-top:8px;">
             <option value="TRY">₺ TL</option>
@@ -2352,6 +2422,27 @@
             </div>
         </div>
         <button type="button" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:8px;" onclick="kurumsalIzleyiciKapat()">Kapat</button>
+    </div>
+</div>
+
+<div id="kargoKurallarModal" class="modal" onclick="if (event.target === this) kargoKurallarKapat()">
+    <div class="modal-content" style="text-align:left; max-width:460px; width:100%; padding:14px;" onclick="event.stopPropagation()">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+            <h3 style="color:#fef08a; font-size:16px; margin:0;">Kargo &amp; Kurallar</h3>
+            <button type="button" onclick="kargoKurallarKapat()" aria-label="Kargo kurallarını kapat" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:6px 12px; font-weight:800; cursor:pointer; width:auto;">✕</button>
+        </div>
+        <div id="kargoFanusOzet" style="display:grid; gap:4px; margin-bottom:10px; padding:8px 10px; border-radius:10px; background:#0b1220; border:1px solid rgba(212,175,55,0.45); font-size:13px; line-height:1.35; color:#f8fafc;">
+            <div>Sepet tutarı: <b id="kargoOzetSepet" style="color:#fef08a;">0 TL</b></div>
+            <div>%10 kargo desteği: <b id="kargoOzetDestek" style="color:#5eead4;">0 TL</b></div>
+            <div>Sonraki 1.000 TL barajına kalan: <b id="kargoOzetKalan" style="color:#fff;">1.000 TL</b></div>
+        </div>
+        <ol style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:10px; font-size:13px; line-height:1.45; color:#e2e8f0;">
+            <li><b style="color:#fef08a;">Ciroya Oranlı Kargo Kumbarası.</b> Aynı gece kazandığınız ürünler tek sepette birleşir. Sepet 1.000 TL ve üzerine çıktığında toplamın %10'u Kargo Katkı İndirimi olarak düşer: 1.000 TL sepette 100 TL, 5.000 TL sepette 500 TL. 1.000 TL altındaki sepetlerde indirim 0 TL'dir. Ödenecek net tutar, sepet tutarından bu indirimin düşülmüş halidir. Ürünler tek kolide birleştirilir ve kargo alıcı ödemeli çıkar.</li>
+            <li><b style="color:#fef08a;">7 Günlük Açık Kutu Limiti.</b> Kazandığınız ürünler 7 gün boyunca ücretsiz olarak tek kolide birleştirilmek üzere bekler. Süre dolunca koli otomatik sevkiyata çıkar. Bu süreden sonra depoda kalan parçalar için günlük ardiye kuralı uygulanır.</li>
+            <li><b style="color:#fef08a;">Kargo Çıkış Teyidi ve Teslim Alınmayan Kargo Mahsubu.</b> Çıkış öncesi adresiniz WhatsApp ile teyit edilir. Keyfi olarak teslim alınmayan paketlerde gidiş-dönüş kargo bedeli bakiyeden mahsup edilir. 50 kg ve üzeri ağır yüklerde nakliye peşin alınır.</li>
+            <li><b style="color:#fef08a;">Kayıp Kargo Güvencesi.</b> Gönderiler faturalı, gizli paketlemeli ve barkodlu çıkar. Taşıyıcı kaynaklı kayıplarda tazmin güvencesi uygulanır.</li>
+        </ol>
+        <button type="button" class="btn-bid" style="width:100%; background:#475569; color:#fff; margin-top:12px;" onclick="kargoKurallarKapat()">Kapat</button>
     </div>
 </div>
 
@@ -2516,6 +2607,11 @@
             <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
         </div>
         <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
+        <button type="button" id="kargoFanus" class="kargo-fanus" {% if secili_dukkan is defined and secili_dukkan != 'diger' %}hidden{% endif %} onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
+            <span class="kargo-fanus-sivi" id="kargoFanusSivi" aria-hidden="true"><span class="kargo-fanus-dalga"></span></span>
+            <span class="kargo-fanus-ikon" aria-hidden="true">📦</span>
+            <span class="kargo-fanus-tutar" id="kargoFanusTutar"></span>
+        </button>
         </div>
         <div class="akis-mesaj-satiri">
             <div class="mesaj-kutu-yigin">
@@ -3182,6 +3278,7 @@
         });
         if (katalogPaneliAcikMi()) katalogAcikkenDukkanYenile();
         satildiDamgasiniGizle();
+        kargoKumbarasiniCiz();
         odayaKatil();
         canliDurumuGetirHafif();
         canliYayinArayuzunuCiz();
@@ -5788,6 +5885,7 @@
             }
         }
         canliDurumuGetirHafif();
+        kargoKumbarasiniCiz();
     };
 
     socket.on('urun_takip_bildirimi', function(data) {
@@ -6026,6 +6124,126 @@
         return gelen === benim;
     }
 
+    function kumbaraTl(deger) {
+        return Math.round(Number(deger) || 0).toLocaleString("tr-TR") + " TL";
+    }
+
+    function kumbaraYerel(toplam, adet) {
+        const tutar = Math.round(Number(toplam) || 0);
+        const destek = tutar >= 1000 ? Math.round(tutar * 0.1) : 0;
+        const mod = tutar > 0 ? (tutar % 1000) : 0;
+        const kalan = tutar <= 0 ? 1000 : (mod === 0 ? 1000 : 1000 - mod);
+        const sonraki = tutar + kalan;
+        return {
+            toplam_tutar: tutar,
+            kargo_destegi: destek,
+            net_odenecek: tutar - destek,
+            sonraki_baraj_kalan: kalan,
+            sonraki_kargo_destegi: Math.round(sonraki * 0.1),
+            urun_sayisi: adet || 0
+        };
+    }
+
+    function kargoKurallarAc() {
+        const kutu = document.getElementById("kargoKurallarModal");
+        if (kutu) kutu.style.display = "flex";
+    }
+
+    function kargoKurallarKapat() {
+        const kutu = document.getElementById("kargoKurallarModal");
+        if (kutu) kutu.style.display = "none";
+        if (typeof menuGeriGetir === "function") menuGeriGetir();
+    }
+
+    function kargoFanusEtiket(destek) {
+        const n = Math.round(Number(destek) || 0);
+        if (n >= 10000) return Math.round(n / 1000) + "k₺";
+        return n.toLocaleString("tr-TR") + "₺";
+    }
+
+    function kargoCubugunuYaz(sepet) {
+        const ozet = sepet || kumbaraYerel(0, 0);
+        window.kargoFanusSepet = ozet;
+        const fanus = document.getElementById("kargoFanus");
+        const sivi = document.getElementById("kargoFanusSivi");
+        const tutar = document.getElementById("kargoFanusTutar");
+        const toplam = Number(ozet.toplam_tutar) || 0;
+        const destek = Number(ozet.kargo_destegi) || 0;
+        const kalan = Number(ozet.sonraki_baraj_kalan) || 1000;
+        const yuzde = toplam <= 0 ? 0 : (kalan >= 1000 ? 100 : ((1000 - kalan) / 1000) * 100);
+        const seviye = toplam <= 0 ? 18 : Math.max(18, Math.min(100, yuzde));
+        const acik = destek > 0;
+        let yazi;
+        if (toplam <= 0) {
+            yazi = "Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!";
+        } else {
+            yazi = "Sepetin: " + kumbaraTl(toplam)
+                + " · Kargo Desteğin: " + kumbaraTl(destek)
+                + " — " + kumbaraTl(kalan)
+                + " daha alırsan " + kumbaraTl(ozet.sonraki_kargo_destegi)
+                + " Kargo Desteğin açılıyor!";
+        }
+        if (fanus) {
+            fanus.classList.toggle("dolu", acik);
+            fanus.title = yazi;
+            fanus.setAttribute("aria-label", acik ? ("Kargo desteği " + kargoFanusEtiket(destek)) : "Kargo kumbarası");
+        }
+        if (sivi) sivi.style.height = seviye + "%";
+        if (tutar) tutar.textContent = acik ? kargoFanusEtiket(destek) : "";
+        const sepetYazi = document.getElementById("kargoOzetSepet");
+        const destekYazi = document.getElementById("kargoOzetDestek");
+        const kalanYazi = document.getElementById("kargoOzetKalan");
+        if (sepetYazi) sepetYazi.textContent = kumbaraTl(toplam);
+        if (destekYazi) destekYazi.textContent = kumbaraTl(destek);
+        if (kalanYazi) kalanYazi.textContent = kumbaraTl(kalan);
+    }
+
+    function kargoSepetiniGetir(isim) {
+        const ad = String(isim || kullaniciAdi || "").trim();
+        if (!ad) return Promise.resolve({ sepet: kumbaraYerel(0, 0), kayitlar: [] });
+        return fetch("/api/diger/musteri-sepeti?isim=" + encodeURIComponent(ad), {
+            cache: "no-store",
+            credentials: "same-origin"
+        }).then(function (r) { return r.json(); }).catch(function () { return null; });
+    }
+
+    function kargoKumbarasiniCiz() {
+        const serit = document.getElementById("kargoFanus");
+        const menu = document.getElementById("menuKargoKurallar");
+        const diger = aktifDukkan === "diger";
+        if (serit) serit.hidden = !diger;
+        if (menu) menu.hidden = !diger;
+        if (!diger) return;
+        const ad = String(kullaniciAdi || "").trim();
+        if (!ad) {
+            kargoCubugunuYaz(kumbaraYerel(0, 0));
+            return;
+        }
+        kargoSepetiniGetir(ad).then(function (paket) {
+            if (aktifDukkan !== "diger") return;
+            kargoCubugunuYaz((paket && paket.sepet) || kumbaraYerel(0, 0));
+        });
+    }
+
+    function zaferSepetiniYaz(sepet, goster) {
+        const kutu = document.getElementById("zaferSepet");
+        const not = document.getElementById("zaferKargoNot");
+        if (!goster) {
+            if (kutu) kutu.hidden = true;
+            if (not) not.hidden = true;
+            return;
+        }
+        const ozet = sepet || kumbaraYerel(0, 0);
+        const toplam = document.getElementById("zaferSepetToplam");
+        const destek = document.getElementById("zaferKargoDestek");
+        const net = document.getElementById("zaferNet");
+        if (toplam) toplam.textContent = kumbaraTl(ozet.toplam_tutar);
+        if (destek) destek.textContent = kumbaraTl(ozet.kargo_destegi);
+        if (net) net.textContent = kumbaraTl(ozet.net_odenecek);
+        if (kutu) kutu.hidden = false;
+        if (not) not.hidden = false;
+    }
+
     function kazananSiparisiniYaz(data) {
         const fiyatHam = data && data.son_fiyat != null ? data.son_fiyat : (data && data.fiyat);
         const fiyat = Math.round(parseFloat(fiyatHam) || 0);
@@ -6086,6 +6304,30 @@
         const lotYazi = sip.lot === 0 || sip.lot ? ("Lot #" + sip.lot + " · ") : "";
         if (alt) alt.textContent = "Sayın " + ad + ", " + lotYazi + (sip.ad || "eser") + " sizin oldu.";
         if (fiyatYazi) fiyatYazi.textContent = fiyat + " TL";
+        const digerKazanan = aktifDukkan === "diger";
+        zaferSepetiniYaz(kumbaraYerel(sip.fiyat, sip.fiyat ? 1 : 0), digerKazanan);
+        if (digerKazanan) {
+            kargoSepetiniGetir(gorunenAd || kullaniciAdi).then(function (paket) {
+                const kartAcik = document.getElementById("zaferKart");
+                if (!kartAcik || !kartAcik.classList.contains("acik") || aktifDukkan !== "diger") return;
+                const gelen = paket && paket.sepet;
+                if (!gelen) return;
+                const kayitlar = paket.kayitlar || [];
+                const varMi = kayitlar.some(function (satir) {
+                    const ayniLot = String(satir.lot_no) === String(sip.lot);
+                    const ayniFiyat = Math.round(Number(satir.son_fiyat) || 0) === Math.round(Number(sip.fiyat) || 0);
+                    return ayniLot && ayniFiyat;
+                });
+                if (varMi || !(Number(sip.fiyat) > 0)) {
+                    zaferSepetiniYaz(gelen, true);
+                    kargoCubugunuYaz(gelen);
+                    return;
+                }
+                const birlesik = kumbaraYerel((Number(gelen.toplam_tutar) || 0) + (Number(sip.fiyat) || 0), (Number(gelen.urun_sayisi) || 0) + 1);
+                zaferSepetiniYaz(birlesik, true);
+                kargoCubugunuYaz(birlesik);
+            });
+        }
         if (kart) kart.classList.add("acik");
         window.kazananKartAcilis = Date.now();
         window.zaferMuzikKilit = true;
