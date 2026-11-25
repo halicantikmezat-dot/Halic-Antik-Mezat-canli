@@ -98,33 +98,9 @@
             min-height: 620px;
             align-self: stretch;
             border: 1px solid var(--accent-gold);
-            background: #0b1220;
-        }
-        #rejiKapsayici.reji-diger-yuzer .reji-sahne-sutun {
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            width: 340px;
-            height: 560px;
-            min-height: 0;
-            max-width: calc(100vw - 32px);
-            max-height: calc(100vh - 32px);
-            z-index: 8000;
-            box-sizing: border-box;
-            border: 1px solid var(--accent-gold);
             border-radius: 8px;
             overflow: hidden;
             background: #0b1220;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-        }
-        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun,
-        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun iframe {
-            pointer-events: none;
-        }
-        #rejiKapsayici.reji-diger-yuzer.reji-sahne-kucuk .reji-sahne-sutun {
-            opacity: 0;
         }
         .reji-sahne-baslik {
             flex: 0 0 auto;
@@ -135,52 +111,6 @@
             padding: 8px 10px;
             border-bottom: 1px solid #283548;
         }
-        #rejiKapsayici.reji-diger-yuzer .reji-sahne-baslik {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            cursor: grab;
-            user-select: none;
-            touch-action: none;
-        }
-        .reji-sahne-baslik-metin { min-width: 0; line-height: 1.3; }
-        #rejiSahneGizle { display: none; }
-        #rejiKapsayici.reji-diger-yuzer #rejiSahneGizle {
-            display: inline-flex;
-            flex: 0 0 auto;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            padding: 4px 8px;
-            border: 1px solid #d4af37;
-            border-radius: 4px;
-            background: #1e293b;
-            color: #fef08a;
-            font-size: 11px;
-            font-weight: 800;
-            line-height: 1.2;
-            cursor: pointer;
-            touch-action: manipulation;
-        }
-        .reji-sahne-goster {
-            position: fixed;
-            top: 16px;
-            right: 16px;
-            z-index: 8100;
-            margin: 0;
-            padding: 8px 12px;
-            border: 1px solid #d4af37;
-            border-radius: 6px;
-            background: #111827;
-            color: #fef08a;
-            font-size: 12px;
-            font-weight: 800;
-            line-height: 1.2;
-            cursor: pointer;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        }
-        .reji-sahne-goster[hidden] { display: none !important; }
         .reji-sahne-sutun iframe {
             flex: 1 1 auto;
             width: 100%;
@@ -203,14 +133,6 @@
             }
             #rejiKapsayici.reji-dikey #rejiSahneKontrol,
             #rejiKapsayici.reji-dikey #rejiSunucuKarti { min-height: 0; }
-            #rejiKapsayici.reji-diger-yuzer .reji-sahne-sutun {
-                top: 8px;
-                right: 8px;
-                width: min(340px, calc(100vw - 16px));
-                height: min(560px, calc(100vh - 16px));
-                min-height: 0;
-            }
-            .reji-sahne-goster { top: 8px; right: 8px; }
         }
 
         .card {
@@ -585,9 +507,6 @@
                 <span id="cyRozetTiktok" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">TikTok: kapalı</span>
                 <span id="cyRozetTwitch" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Twitch: kapalı</span>
                 <span id="cyRozetKick" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Kick: kapalı</span>
-                <span id="cyRozetFacebook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Facebook: kapalı</span>
-                <span id="cyRozetInstagram" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Instagram: kapalı</span>
-                <span id="cyRozetTelegram" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Telegram: kapalı</span>
                 <span id="cyRozetMeta" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Meta: kapalı</span>
                 <span id="cyRozetWebhook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Webhook: kapalı</span>
                 <span id="cyRozetPush" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#e2e8f0; font-size:12px;">Web Push Abone: 0</span>
@@ -604,9 +523,10 @@
                 <input type="text" id="cyKick" placeholder="Kick kullanıcı adı veya link">
                 <input type="text" id="cyTwitch" placeholder="Twitch kullanıcı adı veya link">
                 <input type="url" id="cyX" placeholder="X">
-                <input type="text" id="cyTelegram" placeholder="Telegram @kanal, sohbet no veya t.me linki">
+                <input type="url" id="cyTelegram" placeholder="Telegram">
             </div>
-            <input type="url" id="cyWebhook" hidden placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
+            <input type="url" id="cyWebhook" placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
+            <div style="font-size:11px; color:#94a3b8;">Facebook ve Instagram yorumları POST /api/canli-havuz/meta-webhook adresine gelir. Alanlar: platform, kullanici, mesaj. Webhook doğrulama anahtarı veya ilgili kanal açıkken yönetici oturumu aranmaz.</div>
             <div id="sosyalKopruKutu" style="display:flex; flex-direction:column; gap:6px; padding:8px; border:1px dashed var(--card-border); border-radius:6px;">
                 <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Yorum köprüleri</div>
                 <div style="font-size:11px; color:#94a3b8;">TikTok, Instagram ve Facebook başlat/durdur aynı durumdan okunur. Aynı yorum son 10 saniyede bir kez sohbete düşer.</div>
@@ -629,16 +549,18 @@
             <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
-                <button type="button" hidden class="btn btn-sm" style="background:#14532d; color:#86efac;" onclick="canliWebhookTest()">Test Webhook Gönder</button>
+                <button type="button" class="btn btn-sm" style="background:#14532d; color:#86efac;" onclick="canliWebhookTest()">Test Webhook Gönder</button>
                 <button type="button" class="btn btn-blue btn-sm" onclick="canliSosyalKopyala()">Sosyal Linkleri Kopyala</button>
                 <button type="button" class="btn btn-sm" style="background:#0d9488; color:#fff;" onclick="canliDuyuruKopyala()">Duyuruyu Kopyala</button>
             </div>
             <div id="restreamKopruKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
-                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Kamera ve Mikrofon</div>
-                <div style="font-size:11px; color:#94a3b8;">Iriun Webcam burada seçilir. Yayın, aşağıdaki listede Aktif olan platformların RTMP adreslerine basılır.</div>
-                <input type="text" id="cyRestreamUrl" hidden value="rtmp://live.restream.io/live" autocomplete="off" spellcheck="false">
-                <input type="password" id="cyRestreamKey" hidden autocomplete="new-password" data-lpignore="true" spellcheck="false">
-                <button type="button" id="cyRestreamKeyGoster" hidden>Göster</button>
+                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Restream RTMP Köprüsü (opsiyonel)</div>
+                <div style="font-size:11px; color:#94a3b8;">Boş bırakılırsa mevcut web yayını eskisi gibi sürer. Yalnızca Diğer - Her Şey canlı yayını açıkken ve iki alan da doluyken köprü kurulur.</div>
+                <input type="text" id="cyRestreamUrl" value="rtmp://live.restream.io/live" placeholder="Restream RTMP URL" autocomplete="off" spellcheck="false">
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="password" id="cyRestreamKey" placeholder="Restream Akış Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
+                    <button type="button" id="cyRestreamKeyGoster" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Göster</button>
+                </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                     <select id="cyRestreamKamera" style="margin:0;"><option value="">Kamera seçin</option></select>
                     <select id="cyRestreamMikrofon" style="margin:0;"><option value="">Mikrofon seçin</option></select>
@@ -647,24 +569,16 @@
                     <button type="button" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;" onclick="restreamCihazIzni()">Kamera ve Mikrofonu Listele</button>
                 </div>
                 <div id="cyRestreamDurum" style="font-size:12px; color:#94a3b8; min-height:16px;"></div>
+                <div style="font-size:11px; color:#cbd5e1; line-height:1.45;">
+                    OBS ile göndermek için: Ayarlar → Yayın → Servis: Özel.
+                    Sunucu <b>rtmp://live.restream.io/live</b>, yayın anahtarı yukarıdaki Stream Key.
+                    OBS’te Yayını Başlat deyince Restream çevrimiçi olur. Tarayıcı köprüsü ancak sunucu “aktarılıyor” derse aynı işi görür.
+                </div>
             </div>
             <div id="sosyalHavuzKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
                 <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Çoklu Sosyal Medya Yayın Havuzu (Instagram / Facebook / TikTok)</div>
-                <div style="font-size:11px; color:#94a3b8;">Diğer - Her Şey yayını açılınca yalnızca Aktif satırlara, her biri ayrı FFmpeg süreciyle basılır. Bir hesabın hatası diğerlerini kesmez. Durdurunca süreçler kapanır.</div>
-                <select id="syhTur" style="margin:0;">
-                    <option value="instagram">Instagram</option>
-                    <option value="facebook">Facebook</option>
-                    <option value="tiktok">TikTok</option>
-                    <option value="youtube">YouTube</option>
-                    <option value="kick">Kick</option>
-                    <option value="twitch">Twitch</option>
-                    <option value="x">X</option>
-                    <option value="telegram">Telegram</option>
-                    <option value="restream">Restream</option>
-                    <option value="ozel">Özel</option>
-                </select>
-                <input type="text" id="syhAd" maxlength="80" placeholder="Sayfa Adı (örn. Instagram 1, FB Grup 2)" autocomplete="off">
-                <input type="url" id="syhLink" maxlength="500" placeholder="Sayfa Linki (https://...)" autocomplete="off" spellcheck="false">
+                <div style="font-size:11px; color:#94a3b8;">Üstteki Restream köprüsü olduğu gibi kalır. Diğer - Her Şey yayını açılınca yalnızca “Yayına Dahil Et” işaretli hesaplara, her biri ayrı FFmpeg süreciyle, ana Restream hedefiyle birlikte yayın gider. Bir hesabın hatası diğerlerini kesmez.</div>
+                <input type="text" id="syhAd" maxlength="80" placeholder="Hesap / Sayfa Adı (örn. Instagram 1, FB Grup 2)" autocomplete="off">
                 <input type="text" id="syhUrl" maxlength="500" placeholder="RTMP Sunucu URL (rtmp:// veya rtmps://)" autocomplete="off" spellcheck="false">
                 <div style="display:flex; gap:6px; align-items:center;">
                     <input type="password" id="syhKey" maxlength="400" placeholder="Yayın Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
@@ -883,10 +797,7 @@
             <div id="digerSatisTakip" style="margin-top:10px; border-top:1px solid var(--card-border); padding-top:8px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
                     <span style="font-size:12px; font-weight:800; color:#fef08a;">Canlı Satış &amp; Kazanan Takibi</span>
-                    <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <button type="button" id="digerListeSifirlaBtn" class="btn btn-sm btn-red" onclick="digerSatisListesiniSifirla()">Listeyi Sıfırla</button>
-                        <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
-                    </span>
+                    <span id="digerSatisSayac" style="font-size:10px; color:#94a3b8;">0 satış</span>
                 </div>
                 <div id="digerSatisListesi" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
                     <div style="font-size:11px; color:#64748b;">Henüz canlı satış yok.</div>
@@ -926,14 +837,10 @@
             </div>
         </div>
         <div id="rejiSahneSutunu" class="reji-sahne-sutun" aria-hidden="true">
-            <div class="reji-sahne-baslik">
-                <span class="reji-sahne-baslik-metin">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</span>
-                <button type="button" id="rejiSahneGizle" onclick="rejiSahneyiKucult()">Gizle / Küçült</button>
-            </div>
+            <div class="reji-sahne-baslik">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</div>
             <iframe id="rejiSahneOnizleme" title="Diğer - Her Şey canlı sahne önizleme" allow="autoplay"></iframe>
         </div>
     </div>
-    <button type="button" id="rejiSahneGoster" class="reji-sahne-goster" hidden onclick="rejiSahneyiGoster()">Canlı Sahneyi Göster</button>
 
     <!-- YENİ TEK ÜRÜN EKLEME VE SOSYAL MEDYA KONTROLÜ -->
     <div class="grid-2">
@@ -1863,7 +1770,6 @@
     let rejiOzelOnceki = null;
     let rejiBekleyenHedef = null;
     let rejiSessizZamanlayici = null;
-    let rejiSahneKucuk = false;
 
     const medyaDosyaHavuzu = new DataTransfer();
 
@@ -1930,7 +1836,6 @@
         if (kod !== "diger") {
             socket.emit('join_dukkan', { dukkan: "diger", isim: "Yonetici", dinle: true });
         }
-        izleyiciSayaciniCiz();
 
         document.querySelectorAll('.shop-tab').forEach(t => t.classList.remove('active'));
         const activeTab = document.getElementById(`tab_${kod}`);
@@ -1942,8 +1847,6 @@
         document.getElementById('otonomBaslikMetni').innerText = `🤖 7/24 Otonom Mezat (${ad})`;
         document.getElementById('formDukkan').value = kod;
 
-        const listeSifirlaBtn = document.getElementById('digerListeSifirlaBtn');
-        if (listeSifirlaBtn) listeSifirlaBtn.hidden = kod !== 'diger';
         document.getElementById('linkCanliEkran').href = `/?dukkan=${kod}`;
         document.getElementById('linkVitrin').href = `/vitrin?dukkan=${kod}`;
         const cyFiyatSatiri = document.getElementById('cyManuelFiyatSatiri');
@@ -2113,50 +2016,14 @@
         } catch (e) {}
     }
 
-    function rejiSahneKucukDurumunuUygula(yuzer, yayinAcik) {
-        const kapsayici = document.getElementById('rejiKapsayici');
-        const sutun = document.getElementById('rejiSahneSutunu');
-        const gosterBtn = document.getElementById('rejiSahneGoster');
-        const kucuk = !!(yuzer && yayinAcik && rejiSahneKucuk);
-        if (kapsayici) kapsayici.classList.toggle('reji-sahne-kucuk', kucuk);
-        if (gosterBtn) gosterBtn.hidden = !kucuk;
-        if (sutun && yayinAcik) sutun.setAttribute('aria-hidden', kucuk ? 'true' : 'false');
-    }
-
-    function rejiSahneyiKucult() {
-        const kapsayici = document.getElementById('rejiKapsayici');
-        if (!kapsayici || !kapsayici.classList.contains('reji-diger-yuzer')) return;
-        rejiSahneKucuk = true;
-        rejiSahneKucukDurumunuUygula(true, true);
-    }
-
-    function rejiSahneyiGoster() {
-        rejiSahneKucuk = false;
-        rejiSahneKucukDurumunuUygula(true, true);
-    }
-
     function rejiIzgarayiCiz(acik) {
         const kapsayici = document.getElementById('rejiKapsayici');
         const sutun = document.getElementById('rejiSahneSutunu');
         const cerceve = document.getElementById('rejiSahneOnizleme');
-        const yuzer = (typeof seciliDukkan === 'string' && seciliDukkan === 'diger');
-        const yayinAcik = !!acik;
-        if (!yayinAcik) rejiSahneKucuk = false;
-        if (kapsayici) {
-            kapsayici.classList.toggle('reji-diger-yuzer', yuzer && yayinAcik);
-            kapsayici.classList.toggle('reji-dikey', !yuzer && yayinAcik);
-        }
-        const gorunur = yayinAcik;
-        if (sutun) sutun.setAttribute('aria-hidden', gorunur ? 'false' : 'true');
-        rejiSahneKucukDurumunuUygula(yuzer, yayinAcik);
-        if (sutun && !yuzer) {
-            sutun.style.left = '';
-            sutun.style.top = '';
-            sutun.style.right = '';
-            sutun.style.bottom = '';
-        }
+        if (kapsayici) kapsayici.classList.toggle('reji-dikey', !!acik);
+        if (sutun) sutun.setAttribute('aria-hidden', acik ? 'false' : 'true');
         if (!cerceve) return;
-        if (gorunur) {
+        if (acik) {
             const hedef = '/?dukkan=' + encodeURIComponent(CANLI_YAYIN_DUKKANI);
             if (cerceve.getAttribute('data-yuklu') !== hedef) {
                 cerceve.onload = function () { rejiCerceveyiSessizlestir(); };
@@ -2177,49 +2044,7 @@
             cerceve.src = 'about:blank';
             cerceve.removeAttribute('data-yuklu');
         }
-        if (sutun && !yuzer) {
-            sutun.style.left = '';
-            sutun.style.top = '';
-            sutun.style.right = '';
-            sutun.style.bottom = '';
-        }
     }
-
-    (function rejiSahnePenceresiniSurukle() {
-        const sutun = document.getElementById('rejiSahneSutunu');
-        const baslik = sutun ? sutun.querySelector('.reji-sahne-baslik') : null;
-        if (!sutun || !baslik) return;
-        let surukleniyor = false;
-        let ofsetX = 0;
-        let ofsetY = 0;
-        baslik.addEventListener('pointerdown', function (e) {
-            const kapsayici = document.getElementById('rejiKapsayici');
-            if (!kapsayici || !kapsayici.classList.contains('reji-diger-yuzer')) return;
-            if (e.target && e.target.closest && e.target.closest('#rejiSahneGizle')) return;
-            if (e.button !== undefined && e.button !== 0) return;
-            const kutu = sutun.getBoundingClientRect();
-            surukleniyor = true;
-            ofsetX = e.clientX - kutu.left;
-            ofsetY = e.clientY - kutu.top;
-            baslik.style.cursor = 'grabbing';
-            try { baslik.setPointerCapture(e.pointerId); } catch (err) {}
-        });
-        baslik.addEventListener('pointermove', function (e) {
-            if (!surukleniyor) return;
-            const genislik = sutun.offsetWidth || 360;
-            const x = Math.max(8, Math.min(window.innerWidth - Math.min(genislik, 80), e.clientX - ofsetX));
-            const y = Math.max(8, Math.min(window.innerHeight - 36, e.clientY - ofsetY));
-            sutun.style.left = x + 'px';
-            sutun.style.top = y + 'px';
-            sutun.style.right = 'auto';
-        });
-        function birak() {
-            surukleniyor = false;
-            baslik.style.cursor = 'grab';
-        }
-        baslik.addEventListener('pointerup', birak);
-        baslik.addEventListener('pointercancel', birak);
-    })();
 
     function rejiFiltreDugmeleriniCiz() {
         const tumuSecili = rejiAkisFiltresi !== 'ozel';
@@ -2253,40 +2078,9 @@
     }
 
     function canliRozetBoyasi(el, acik) {
-        canliRozetDurumu(el, acik ? 'bagli' : 'kapali');
-    }
-
-    function canliDurumSoz(durum) {
-        if (durum === 'bagli') return 'bağlı';
-        if (durum === 'baglaniyor') return 'bağlanıyor';
-        if (durum === 'hata') return 'hata';
-        return 'kapalı';
-    }
-
-    function canliRozetDurumu(el, durum) {
         if (!el) return;
-        if (durum === 'bagli') {
-            el.style.background = '#14532d';
-            el.style.color = '#86efac';
-        } else if (durum === 'baglaniyor') {
-            el.style.background = '#713f12';
-            el.style.color = '#fde68a';
-        } else if (durum === 'hata') {
-            el.style.background = '#7f1d1d';
-            el.style.color = '#fecaca';
-        } else {
-            el.style.background = '#1e293b';
-            el.style.color = '#cbd5e1';
-        }
-    }
-
-    function canliRozetYaz(el, etiket, durum, mesaj) {
-        if (!el) return;
-        const notu = String(mesaj || '').trim();
-        const soz = canliDurumSoz(durum);
-        el.textContent = etiket + ': ' + soz + (notu && durum !== 'bagli' ? ' · ' + notu : '');
-        el.title = notu || (etiket + ' ' + soz);
-        canliRozetDurumu(el, durum);
+        el.style.background = acik ? '#14532d' : '#1e293b';
+        el.style.color = acik ? '#86efac' : '#cbd5e1';
     }
 
     function canliDinleyiciRozetleri(din) {
@@ -2294,25 +2088,46 @@
         const tiktok = document.getElementById('cyRozetTiktok');
         const twitch = document.getElementById('cyRozetTwitch');
         const kick = document.getElementById('cyRozetKick');
-        const facebook = document.getElementById('cyRozetFacebook');
-        const instagram = document.getElementById('cyRozetInstagram');
-        const telegram = document.getElementById('cyRozetTelegram');
         const meta = document.getElementById('cyRozetMeta');
         const webhook = document.getElementById('cyRozetWebhook');
         const push = document.getElementById('cyRozetPush');
         const sayac = document.getElementById('cyHavuzSayac');
         const ek = document.getElementById('cyEkKaynakDurum');
-        canliRozetYaz(youtube, 'YouTube', din.youtube, din.youtube_mesaj);
-        canliRozetYaz(tiktok, 'TikTok', din.tiktok, din.tiktok_mesaj);
-        canliRozetYaz(twitch, 'Twitch', din.twitch, din.twitch_mesaj);
-        canliRozetYaz(kick, 'Kick', din.kick, din.kick_mesaj);
-        canliRozetYaz(facebook, 'Facebook', din.facebook, din.facebook_mesaj);
-        canliRozetYaz(instagram, 'Instagram', din.instagram, din.instagram_mesaj);
-        canliRozetYaz(telegram, 'Telegram', din.telegram, din.telegram_mesaj);
-        canliRozetYaz(meta, 'Meta', din.meta, din.meta_mesaj);
+        if (youtube) {
+            const ytBagli = din.youtube === 'bagli';
+            const ytMesaj = String(din.youtube_mesaj || '').trim();
+            youtube.textContent = 'YouTube: ' + (ytBagli ? 'bağlı' : 'kapalı');
+            youtube.title = ytMesaj || (ytBagli ? 'YouTube sohbeti bağlı' : 'YouTube dinleyici kapalı');
+        }
+        if (tiktok) {
+            const ttBagli = din.tiktok === 'bagli';
+            const ttMesaj = String(din.tiktok_mesaj || '').trim();
+            tiktok.textContent = 'TikTok: ' + (ttBagli ? 'bağlı' : 'kapalı');
+            tiktok.title = ttMesaj || (ttBagli ? 'TikTok sohbeti bağlı' : 'TikTok dinleyici kapalı');
+        }
+        if (twitch) {
+            const twBagli = din.twitch === 'bagli';
+            twitch.textContent = 'Twitch: ' + (twBagli ? 'bağlı' : 'kapalı');
+            twitch.title = String(din.twitch_mesaj || '').trim() || (twBagli ? 'Twitch sohbeti bağlı' : 'Twitch dinleyici kapalı');
+        }
+        if (kick) {
+            const kkBagli = din.kick === 'bagli';
+            kick.textContent = 'Kick: ' + (kkBagli ? 'bağlı' : 'kapalı');
+            kick.title = String(din.kick_mesaj || '').trim() || (kkBagli ? 'Kick sohbeti bağlı' : 'Kick dinleyici kapalı');
+        }
+        if (meta) {
+            const metaBagli = din.meta === 'bagli';
+            meta.textContent = 'Meta: ' + (metaBagli ? 'bağlı' : 'kapalı');
+            meta.title = String(din.meta_mesaj || '').trim() || (metaBagli ? 'Meta yorum ucu açık' : 'Meta yorum ucu kapalı');
+        }
         const webhookAktif = din.webhook === 'aktif';
         if (webhook) webhook.textContent = 'Webhook: ' + (webhookAktif ? 'aktif' : 'kapalı');
-        canliRozetDurumu(webhook, webhookAktif ? 'bagli' : 'kapali');
+        canliRozetBoyasi(youtube, din.youtube === 'bagli');
+        canliRozetBoyasi(tiktok, din.tiktok === 'bagli');
+        canliRozetBoyasi(twitch, din.twitch === 'bagli');
+        canliRozetBoyasi(kick, din.kick === 'bagli');
+        canliRozetBoyasi(meta, din.meta === 'bagli');
+        canliRozetBoyasi(webhook, webhookAktif);
         if (ek) {
             const bagli = [];
             if (din.twitch === 'bagli') bagli.push('Twitch');
@@ -2336,20 +2151,19 @@
             ['facebook', 'kopruFacebookDurum', 'Facebook', '']
         ];
         satirlar.forEach(function (satir) {
-            const durum = kaynak[satir[0]] || 'kapali';
-            const acik = durum === 'bagli';
+            const acik = kaynak[satir[0]] === 'bagli';
             const notu = String(kaynak[satir[0] + '_mesaj'] || '').trim();
-            const yazi = satir[2] + ': ' + canliDurumSoz(durum) + (notu && durum !== 'bagli' ? ' · ' + notu : '');
+            const yazi = satir[2] + ': ' + (acik ? 'bağlı' : 'kapalı') + (notu && !acik ? ' · ' + notu : '');
             const kutu = document.getElementById(satir[1]);
             if (kutu) {
                 kutu.textContent = yazi;
-                kutu.style.color = durum === 'bagli' ? '#86efac' : (durum === 'hata' ? '#fecaca' : (durum === 'baglaniyor' ? '#fde68a' : '#cbd5e1'));
+                kutu.style.color = acik ? '#86efac' : '#cbd5e1';
                 kutu.title = notu;
             }
             if (satir[3]) {
                 const eski = document.getElementById(satir[3]);
                 if (eski) {
-                    eski.textContent = 'Durum: ' + canliDurumSoz(durum) + (notu && durum !== 'bagli' ? ' · ' + notu : '');
+                    eski.textContent = 'Durum: ' + (acik ? 'Bağlı' : (notu || 'Bağlantı Yok'));
                     eski.style.color = acik ? '#34d399' : '#aaa';
                 }
             }
@@ -2557,7 +2371,8 @@
     }
 
     function kopruMedyasiGerekli() {
-        return sosyalHavuzSecili();
+        const alan = restreamAlanlari();
+        return !!(alan.restream_rtmp_url && alan.restream_stream_key) || sosyalHavuzSecili();
     }
 
     const SYH_DURUM = {
@@ -2565,10 +2380,6 @@
         bekliyor: ['Bekliyor', '#713f12', '#fde68a'],
         yayinda: ['Yayında', '#14532d', '#86efac'],
         hata: ['Hata', '#7f1d1d', '#fecaca']
-    };
-    const SYH_TUR = {
-        instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', youtube: 'YouTube',
-        kick: 'Kick', twitch: 'Twitch', x: 'X', telegram: 'Telegram', restream: 'Restream', ozel: 'Özel'
     };
     let sosyalHavuzImza = '';
     let sosyalHavuzZamanlayici = null;
@@ -2603,20 +2414,8 @@
 
     function sosyalHavuzImzaHesapla(hesaplar) {
         return (hesaplar || []).map(function (kayit) {
-            return [kayit.id, kayit.ad, kayit.tur || '', kayit.sayfa_linki || '', kayit.rtmp_url, kayit.dahil ? '1' : '0', kayit.stream_key].join('\u001f');
+            return [kayit.id, kayit.ad, kayit.rtmp_url, kayit.dahil ? '1' : '0', kayit.stream_key].join('\u001f');
         }).join('\u001e');
-    }
-
-    function sosyalHavuzAltNot(kayit) {
-        if (!kayit) return { metin: '', renk: '#fecaca' };
-        if (kayit.durum === 'hata' && kayit.hata) return { metin: kayit.hata, renk: '#fecaca' };
-        if (CANLI_YAYIN_DUKKANI === 'diger' && kayit.parca_notu) {
-            return {
-                metin: kayit.parca_notu,
-                renk: kayit.parca_notu === 'Parça geldi' ? '#86efac' : '#fde68a'
-            };
-        }
-        return { metin: '', renk: '#fecaca' };
     }
 
     function sosyalHavuzRozetleriGuncelle(hesaplar) {
@@ -2628,12 +2427,6 @@
             rozet.style.background = boya[1];
             rozet.style.color = boya[2];
             rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
-            const not = document.querySelector('[data-syh-hata="' + kayit.id + '"]');
-            if (not) {
-                const alt = sosyalHavuzAltNot(kayit);
-                not.textContent = alt.metin;
-                not.style.color = alt.renk;
-            }
         });
     }
 
@@ -2651,7 +2444,7 @@
         kutu.setAttribute('data-syh-dahil', kayit.id);
         kutu.checked = !!kayit.dahil;
         const yazi = document.createElement('span');
-        yazi.textContent = 'Aktif';
+        yazi.textContent = 'Yayına Dahil Et';
         sol.appendChild(kutu);
         sol.appendChild(yazi);
         const boya = sosyalHavuzRozet(kayit.durum);
@@ -2660,36 +2453,11 @@
         rozet.textContent = boya[0];
         rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
         rozet.style.cssText = 'padding:3px 8px; border-radius:999px; font-size:12px; background:' + boya[1] + '; color:' + boya[2] + ';';
-        const hata = document.createElement('span');
-        hata.setAttribute('data-syh-hata', kayit.id);
-        const altNot = sosyalHavuzAltNot(kayit);
-        hata.style.cssText = 'font-size:11px; color:' + altNot.renk + '; flex:1; min-width:140px;';
-        hata.textContent = altNot.metin;
         ust.appendChild(sol);
         ust.appendChild(rozet);
-        ust.appendChild(hata);
         const ad = document.createElement('div');
         ad.style.cssText = 'font-size:13px; color:#f8fafc; font-weight:bold;';
-        ad.textContent = (SYH_TUR[kayit.tur] || 'Özel') + ' · ' + (kayit.ad || '');
-        const link = document.createElement('input');
-        link.type = 'url';
-        link.maxLength = 500;
-        link.placeholder = 'Sayfa Linki (https://...)';
-        link.setAttribute('data-syh-link', kayit.id);
-        link.value = kayit.sayfa_linki || '';
-        link.autocomplete = 'off';
-        link.spellcheck = false;
-        link.style.cssText = 'margin:0;';
-        const tur = document.createElement('select');
-        tur.setAttribute('data-syh-tur', kayit.id);
-        tur.style.margin = '0';
-        Object.keys(SYH_TUR).forEach(function (kod) {
-            const secenek = document.createElement('option');
-            secenek.value = kod;
-            secenek.textContent = SYH_TUR[kod];
-            if ((kayit.tur || 'ozel') === kod) secenek.selected = true;
-            tur.appendChild(secenek);
-        });
+        ad.textContent = kayit.ad || '';
         const url = document.createElement('div');
         url.style.cssText = 'font-size:11px; color:#94a3b8; word-break:break-all;';
         url.textContent = kayit.rtmp_url || '';
@@ -2720,8 +2488,6 @@
         alt.appendChild(sil);
         satir.appendChild(ust);
         satir.appendChild(ad);
-        satir.appendChild(tur);
-        satir.appendChild(link);
         satir.appendChild(url);
         satir.appendChild(alt);
         return satir;
@@ -2792,22 +2558,17 @@
         const liste = document.getElementById('syhListe');
         if (ekle) {
             ekle.addEventListener('click', function () {
-                const tur = document.getElementById('syhTur');
                 const ad = document.getElementById('syhAd');
-                const sayfa = document.getElementById('syhLink');
                 const url = document.getElementById('syhUrl');
                 const anahtar = document.getElementById('syhKey');
                 sosyalHavuzGonder('sosyal_havuz_ekle', {
-                    tur: tur ? tur.value : 'ozel',
                     ad: ad ? ad.value : '',
-                    sayfa_linki: sayfa ? sayfa.value : '',
                     rtmp_url: url ? url.value : '',
                     stream_key: anahtar ? anahtar.value : ''
                 }).then(function (veri) {
                     sosyalHavuzUygula(veri, false);
                     if (veri && veri.success !== false) {
                         if (ad) ad.value = '';
-                        if (sayfa) sayfa.value = '';
                         if (url) url.value = '';
                         if (anahtar) anahtar.value = '';
                     }
@@ -2837,13 +2598,9 @@
                 const sil = hedef.getAttribute('data-syh-sil');
                 if (guncelle) {
                     const alan = liste.querySelector('[data-syh-key="' + guncelle + '"]');
-                    const turAlan = liste.querySelector('[data-syh-tur="' + guncelle + '"]');
-                    const linkAlan = liste.querySelector('[data-syh-link="' + guncelle + '"]');
                     const kutu = liste.querySelector('[data-syh-dahil="' + guncelle + '"]');
                     sosyalHavuzGonder('sosyal_havuz_guncelle', {
                         id: guncelle,
-                        tur: turAlan ? turAlan.value : 'ozel',
-                        sayfa_linki: linkAlan ? linkAlan.value : '',
                         stream_key: alan ? alan.value : ''
                     }).then(function (veri) {
                         sosyalHavuzUygula(veri, false);
@@ -3584,8 +3341,13 @@
     }
 
     function restreamKopruSenkron() {
+        const kayit = canliYayinKaydi || {};
+        const ayar = kayit.ayarlar || {};
         const acik = iriunCanliMi();
-        const medyaGerekli = sosyalHavuzSecili();
+        const alan = restreamAlanlari();
+        const restreamHazir = !!(alan.restream_rtmp_url && alan.restream_stream_key);
+        const medyaGerekli = restreamHazir || sosyalHavuzSecili();
+        const imza = String(ayar.restream_imza || '');
         if (!acik) {
             iriunBeklemeyiDurdur();
             restreamKopruKapat();
@@ -3598,23 +3360,22 @@
             }
             restreamKayit = null;
         }
+        if (restreamAcik && restreamHazir && imza && imza !== restreamImza && iriunVideoCanli(restreamAkis)) {
+            restreamImza = imza;
+            restreamKaydiYenile();
+        }
         if (!restreamAcik) {
+            restreamImza = imza;
             restreamKopruAc();
             return;
-        }
-        if (medyaGerekli && iriunVideoCanli(restreamAkis) && (!restreamKayit || restreamKayit.state === 'inactive')) {
-            restreamKaydiBaslat();
         }
         if (!iriunVideoCanli(restreamAkis)) iriunBeklemeyiBaslat();
     }
 
     function restreamKopruAc() {
+        if (iriunVideoCanli(restreamAkis)) return;
         restreamAcik = true;
         restreamYeniden = 0;
-        if (iriunVideoCanli(restreamAkis)) {
-            if (kopruMedyasiGerekli() && (!restreamKayit || restreamKayit.state === 'inactive')) restreamKaydiBaslat();
-            return;
-        }
         iriunBeklemeyiBaslat();
     }
 
@@ -3629,11 +3390,9 @@
             return;
         }
         let ilk = true;
-        const digerKopru = CANLI_YAYIN_DUKKANI === 'diger';
         rec.ondataavailable = function (olay) {
             if (!olay.data || !olay.data.size || !restreamAcik) return;
-            const gonderMime = digerKopru ? (rec.mimeType || '') : mime;
-            restreamParcaGonder(olay.data, ilk, gonderMime);
+            restreamParcaGonder(olay.data, ilk, mime);
             ilk = false;
         };
         rec.onerror = function () {
@@ -3648,23 +3407,9 @@
         restreamKayit = rec;
     }
 
-    function restreamParcasiBase64(blob) {
-        return new Promise(function (resolve) {
-            const okuyucu = new FileReader();
-            okuyucu.onloadend = function () {
-                const sonuc = String(okuyucu.result || "");
-                const im = sonuc.indexOf(";base64,");
-                resolve(im >= 0 ? sonuc.slice(im + 8) : "");
-            };
-            okuyucu.onerror = function () { resolve(""); };
-            okuyucu.readAsDataURL(blob);
-        });
-    }
-
     function restreamParcaGonder(blob, baslik, mime) {
-        const kodla = CANLI_YAYIN_DUKKANI === "diger" ? restreamParcasiBase64 : blobBase64;
         restreamKuyruk = restreamKuyruk.then(function () {
-            return kodla(blob).then(function (b64) {
+            return blobBase64(blob).then(function (b64) {
                 if (!b64 || !restreamAcik) return null;
                 return fetch('/api/canli-yayin/kontrol', {
                     method: 'POST',
@@ -4105,14 +3850,7 @@
     if (btnPatronYayin) btnPatronYayin.addEventListener("click", patronModuAcKapa);
 
     // CANLI SOHBET VE MEZAT SUNUCUSU AKIŞI
-    const havuzYorumKimlik = {};
     socket.on("yeni_canli_yorum", function(data) {
-        const kimlik = String((data && data.kimlik) || "");
-        if (kimlik) {
-            const simdi = Date.now();
-            if (havuzYorumKimlik[kimlik] && simdi - havuzYorumKimlik[kimlik] < 4000) return;
-            havuzYorumKimlik[kimlik] = simdi;
-        }
         const bosUyari = document.getElementById("sohbetBosUyarisi");
         if (bosUyari) bosUyari.remove();
 
@@ -4131,12 +3869,6 @@
         const sol = document.createElement("span");
         sol.style.cssText = "font-weight:bold; color:#f8fafc; display:flex; align-items:center; gap:4px; flex-wrap:wrap;";
         sol.appendChild(rozet.rozet);
-        if (data.sayfa) {
-            const sayfa = document.createElement("span");
-            sayfa.textContent = data.sayfa;
-            sayfa.style.color = "#93c5fd";
-            sol.appendChild(sayfa);
-        }
         if (data.dukkan) {
             const dukkan = document.createElement("span");
             dukkan.textContent = dukkanEtiketi(data.dukkan);
@@ -4507,18 +4239,6 @@
             etiket = "YouTube";
             bg = "#ef4444";
             kenar = "#ef4444";
-        } else if (k.indexOf("twitch") >= 0) {
-            etiket = "Twitch";
-            bg = "#9146ff";
-            kenar = "#9146ff";
-        } else if (k.indexOf("kick") >= 0) {
-            etiket = "Kick";
-            bg = "#53fc18";
-            kenar = "#53fc18";
-        } else if (k.indexOf("telegram") >= 0) {
-            etiket = "Telegram";
-            bg = "#0ea5e9";
-            kenar = "#0ea5e9";
         } else if (k.indexOf("web") >= 0) {
             etiket = "Web";
             bg = "#16a34a";
@@ -4920,26 +4640,6 @@
             .catch(function () {});
     }
 
-    function digerSatisListesiniSifirla() {
-        if (seciliDukkan !== "diger") return;
-        if (!window.confirm("Yalnızca Diğer - Her Şey odasının birikmiş satış ve ödeme kayıtları silinsin mi?")) return;
-        fetch("/api/diger/satis-kayitlari/temizle", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: "{}"
-        }).then(function (r) { return r.json(); }).then(function (data) {
-            if (!data || data.success === false) {
-                window.alert((data && data.mesaj) || "Liste temizlenemedi.");
-                return;
-            }
-            digerSatisKayitlari = [];
-            digerSatisListesiniCiz();
-        }).catch(function () {
-            window.alert("Liste temizlenemedi.");
-        });
-    }
-
     function digerSatisWhatsapp(id, dugme) {
         const kayit = digerSatisKayitlari.find(function (satir) { return String(satir.id) === String(id); });
         if (!kayit) return;
@@ -5068,18 +4768,10 @@
 
     socket.on('yeni_elestiri', elestiriSatiriEkle);
 
-    const anlikIzleyiciSayilari = {};
-    function izleyiciSayaciniCiz() {
-        const el = document.getElementById('izleyiciSayisi');
-        if (!el) return;
-        const sayi = anlikIzleyiciSayilari[seciliDukkan];
-        if (sayi !== undefined) el.innerText = sayi;
-    }
     socket.on('izleyici_sayisi_guncelle', function(data) {
-        if (!data || data.sayi === undefined) return;
-        const kod = data.dukkan || seciliDukkan;
-        anlikIzleyiciSayilari[kod] = data.sayi;
-        if (kod === seciliDukkan) izleyiciSayaciniCiz();
+        if(data && data.dukkan === seciliDukkan && data.sayi !== undefined) {
+            document.getElementById('izleyiciSayisi').innerText = data.sayi;
+        }
     });
 
     function adminUrunAra() {

@@ -2019,79 +2019,6 @@
             #medyaKapsayici:not(.pinch-aktif):not(.tanitim-zoom) > img {
                 transform: none !important;
             }
-            .header.sade-header,
-            .dukkan-serit-kutu,
-            .shop-nav-bar {
-                max-width: 100%;
-                min-width: 0;
-                box-sizing: border-box;
-            }
-            .dukkan-serit-kutu,
-            .shop-nav-bar {
-                overflow-x: auto;
-                overflow-y: hidden;
-            }
-            .lot-galeri-satiri {
-                left: 8px;
-                right: 8px;
-                top: max(6px, env(safe-area-inset-top, 0px));
-                max-width: calc(100% - 16px);
-                box-sizing: border-box;
-                overflow: hidden;
-            }
-            .lot-rozet {
-                max-width: 46vw;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-            #stageWrapper,
-            #medyaKapsayici {
-                aspect-ratio: auto !important;
-                width: 100% !important;
-                height: 100% !important;
-                max-width: 100% !important;
-            }
-            #canliKameraVideo,
-            .stage-media-box img,
-            .stage-media-box video,
-            #medyaKapsayici > img,
-            #medyaKapsayici > video {
-                object-fit: contain !important;
-                object-position: center center !important;
-                background: #000 !important;
-            }
-            .sabit-pey-bar {
-                width: 100%;
-                max-width: 100%;
-                left: 0;
-                transform: none;
-                padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
-            }
-            .akis-mesaj-satiri {
-                bottom: calc(118px + env(safe-area-inset-bottom, 0px));
-                width: 100%;
-                max-width: 100%;
-            }
-        }
-        @media (min-width: 901px) and (orientation: landscape) {
-            #stageWrapper,
-            #medyaKapsayici {
-                aspect-ratio: auto !important;
-                width: 100% !important;
-                height: 100% !important;
-            }
-            #canliKameraVideo,
-            .stage-media-box img,
-            .stage-media-box video,
-            #medyaKapsayici > img,
-            #medyaKapsayici > video {
-                object-fit: contain !important;
-                object-position: center center !important;
-                background: #000 !important;
-                max-width: 100% !important;
-                max-height: 100% !important;
-            }
         }
         @media (max-width: 480px) {
             .header.sade-header {
@@ -4578,7 +4505,7 @@
             const satir = document.createElement('div');
             satir.className = 'chat-item';
             const etiket = data.rozet || (data.platform ? ('[' + data.platform + ']') : '');
-        const rozet = (etiket && (data.havuz || data.rozet))
+        const rozet = (data.havuz && etiket)
                 ? `<span class="platform-rozet">${escapeHtml(etiket)}</span> `
                 : '';
             satir.innerHTML = `<span class="mesaj-govde">${rozet}<b>${escapeHtml(data.kullanici || 'İzleyici')}:</b> ${escapeHtml(metin)}</span><button type="button" class="mesaj-kalp" aria-label="Beğen">❤️ <span>0</span></button>`;

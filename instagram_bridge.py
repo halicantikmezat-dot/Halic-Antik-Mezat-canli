@@ -78,31 +78,12 @@ def konsol_ve_sunucu_test(platform, user, text):
 
 
 def chrome_baglan():
-    import socket
-
-    port_acik = False
-    try:
-        with socket.create_connection(("127.0.0.1", 9222), timeout=1.0):
-            port_acik = True
-    except Exception:
-        port_acik = False
-
-    if port_acik:
-        options = Options()
-        options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-        try:
-            return webdriver.Chrome(options=options)
-        except Exception as e:
-            print(f"❌ Chrome 9222 bağlantısı kurulamadı, headless başlatılıyor: {e}")
-
     options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
     try:
         return webdriver.Chrome(options=options)
     except Exception as e:
-        print(f"❌ Headless Chrome başlatılamadı: {e}")
+        print(f"❌ Chrome bağlantı hatası (Port 9222 açık mı?): {e}")
         return None
 
 

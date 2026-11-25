@@ -22,7 +22,6 @@ cloudinary
 pywebpush>=2.0.1
 pytchat
 TikTokLive
-selenium
 cryptography
 certifi
 imageio-ffmpeg
