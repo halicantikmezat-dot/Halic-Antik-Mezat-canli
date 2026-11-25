@@ -80,27 +80,50 @@
         .reji-akis-filtre { display: flex; align-items: center; gap: 6px; }
         .reji-akis-filtre span { font-size: 11px; color: #94a3b8; font-weight: 700; }
         .reji-sahne-sutun { display: none; }
-        #rejiKapsayici.reji-dikey {
-            display: grid;
-            grid-template-columns: 1fr 420px;
-            grid-template-rows: auto auto;
-            gap: 16px;
-            align-items: stretch;
+        /* Diğer - Her Şey sahnesi akışın dışında, sağda 9:16 yüzen pencere */
+        body:has(#rejiKapsayici.reji-dikey) {
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
         }
-        #rejiKapsayici.reji-dikey #rejiSahneKontrol { grid-column: 1; grid-row: 1; }
-        #rejiKapsayici.reji-dikey #rejiSunucuKarti { grid-column: 1; grid-row: 2; }
+        body:has(#rejiKapsayici.reji-dikey) .container {
+            max-width: none;
+            width: auto;
+            height: calc(100vh - 30px);
+            height: calc(100dvh - 30px);
+            margin: 0;
+            margin-right: calc(min(360px, (100dvh - 24px) * 9 / 16) + 8px);
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        #rejiKapsayici.reji-dikey {
+            align-items: start;
+        }
+        #rejiKapsayici.reji-dikey #rejiSahneKontrol,
+        #rejiKapsayici.reji-dikey #rejiSunucuKarti {
+            grid-column: auto;
+            grid-row: auto;
+            min-width: 0;
+            min-height: 0;
+        }
         #rejiKapsayici.reji-dikey .reji-sahne-sutun {
             display: flex;
             flex-direction: column;
-            grid-column: 2;
-            grid-row: 1 / span 2;
-            height: 100%;
-            min-height: 620px;
-            align-self: stretch;
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 80;
+            width: min(360px, calc((100dvh - 24px) * 9 / 16));
+            aspect-ratio: 9 / 16;
+            height: auto;
+            min-height: 0;
+            max-height: calc(100dvh - 24px);
+            overflow: hidden;
             border: 1px solid var(--accent-gold);
             border-radius: 8px;
-            overflow: hidden;
             background: #0b1220;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
         }
         .reji-sahne-baslik {
             flex: 0 0 auto;
@@ -110,29 +133,20 @@
             background: #111827;
             padding: 8px 10px;
             border-bottom: 1px solid #283548;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .reji-sahne-sutun iframe {
             flex: 1 1 auto;
             width: 100%;
             height: 100%;
+            min-width: 0;
             min-height: 0;
             border: 0;
-            background: #0b1220;
-        }
-        @media (max-width: 1024px) {
-            #rejiKapsayici.reji-dikey {
-                grid-template-columns: 1fr;
-                grid-template-rows: auto;
-            }
-            #rejiKapsayici.reji-dikey #rejiSahneKontrol,
-            #rejiKapsayici.reji-dikey #rejiSunucuKarti,
-            #rejiKapsayici.reji-dikey .reji-sahne-sutun {
-                grid-column: 1;
-                grid-row: auto;
-                min-height: 620px;
-            }
-            #rejiKapsayici.reji-dikey #rejiSahneKontrol,
-            #rejiKapsayici.reji-dikey #rejiSunucuKarti { min-height: 0; }
+            overflow: hidden;
+            background: #000;
+            aspect-ratio: auto;
         }
 
         .card {
@@ -838,7 +852,7 @@
         </div>
         <div id="rejiSahneSutunu" class="reji-sahne-sutun" aria-hidden="true">
             <div class="reji-sahne-baslik">Canlı Sahne İzleme · Diğer - Her Şey · sessiz</div>
-            <iframe id="rejiSahneOnizleme" title="Diğer - Her Şey canlı sahne önizleme" allow="autoplay"></iframe>
+            <iframe id="rejiSahneOnizleme" title="Diğer - Her Şey canlı sahne önizleme" allow="autoplay" scrolling="no"></iframe>
         </div>
     </div>
 
