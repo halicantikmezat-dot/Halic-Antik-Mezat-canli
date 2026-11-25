@@ -3609,6 +3609,9 @@
     let moderatorBasili = false;
     let moderatorSira = 0;
     let patronYayinda = false;
+    let digerRejiMute = false;
+    let gizliRejiAkis = null;
+    let gizliRejiKaydi = null;
     let patronTaniyici = null;
     let yayinKaydi = null;
     function moderatorMime() {
@@ -3709,15 +3712,92 @@
         console.log("[MIC] Kayıt başladı");
     }
 
+    function digerRejiCanliSesiKapat(kapali) {
+        digerRejiMute = !!kapali;
+        if (socket) socket.emit('diger_reji_mikrofon_mute', { mute: !!kapali, dukkan: 'diger' });
+    }
+
+    async function gizliRejiAyriKayitBaslat() {
+        gizliRejiAkis = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!moderatorBasili) {
+            gizliRejiAkis.getTracks().forEach(function (track) { track.stop(); });
+            gizliRejiAkis = null;
+            return;
+        }
+        const parcalar = [];
+        let rec;
+        try {
+            rec = new MediaRecorder(gizliRejiAkis);
+        } catch (e) {
+            const mime = moderatorMime();
+            rec = mime ? new MediaRecorder(gizliRejiAkis, { mimeType: mime }) : new MediaRecorder(gizliRejiAkis);
+        }
+        gizliRejiKaydi = rec;
+        rec.ondataavailable = function (ev) {
+            if (ev.data && ev.data.size > 0) parcalar.push(ev.data);
+        };
+        rec.onstop = function () {
+            const tur = (rec.mimeType || 'audio/webm').indexOf('wav') >= 0 ? 'audio/wav' : 'audio/webm';
+            const butun = new Blob(parcalar, { type: tur });
+            if (gizliRejiAkis) {
+                gizliRejiAkis.getTracks().forEach(function (track) { track.stop(); });
+                gizliRejiAkis = null;
+            }
+            if (gizliRejiKaydi === rec) gizliRejiKaydi = null;
+            if (!butun.size || butun.size < 400) {
+                rejiLogYaz('[Gizli Reji] Kayıt çok kısa veya sessiz. Mikrofonu basılı tutup net konuşun, sonra bırakın.');
+                return;
+            }
+            const okuyucu = new FileReader();
+            okuyucu.onloadend = function () {
+                const sonuc = String(okuyucu.result || '');
+                const virgul = sonuc.indexOf(',');
+                const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
+                if (!base64Data || base64Data.length < 80) {
+                    rejiLogYaz('[Gizli Reji] Kayıt boş veya çok kısa. Mikrofonu basılı tutup net konuşun, sonra bırakın.');
+                    return;
+                }
+                socket.emit('reji_ses_komutu', {
+                    audio: base64Data,
+                    room: 'diger',
+                    mime: tur,
+                    gizli: true
+                });
+            };
+            okuyucu.readAsDataURL(butun);
+        };
+        rec.start(250);
+    }
+
     async function basKonusBaslat(e) {
         if (e) e.preventDefault();
-        if (patronYayinda || moderatorBasili) return;
+        if (moderatorBasili) return;
+        const diger = rejiHedefKodu() === 'diger';
+        if (patronYayinda && !diger) return;
         moderatorBasili = true;
+        if (diger) digerRejiCanliSesiKapat(true);
+        if (patronYayinda && diger) {
+            try {
+                await gizliRejiAyriKayitBaslat();
+                if (!moderatorBasili) return;
+                if (btnBasKonus) {
+                    btnBasKonus.classList.add('kayit-aktif');
+                    btnBasKonus.innerText = "🔴 Gizli reji... Bırakın!";
+                }
+            } catch (err) {
+                moderatorBasili = false;
+                digerRejiCanliSesiKapat(false);
+                console.log("[MIC] Kayıt engeli:", err);
+                alert("Mikrofon erişim izni verilmedi: " + err);
+            }
+            return;
+        }
         try {
             moderatorAkis = await navigator.mediaDevices.getUserMedia({ audio: true });
             if (!moderatorBasili) {
                 moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
                 moderatorAkis = null;
+                if (diger) digerRejiCanliSesiKapat(false);
                 return;
             }
             moderatorDilimiBaslat();
@@ -3727,13 +3807,27 @@
             }
         } catch (err) {
             moderatorBasili = false;
+            if (diger) digerRejiCanliSesiKapat(false);
             console.log("[MIC] Kayıt engeli:", err);
             alert("Mikrofon erişim izni verilmedi: " + err);
         }
     }
 
     function basKonusBitir() {
-        if (patronYayinda) return;
+        if (digerRejiMute) digerRejiCanliSesiKapat(false);
+        if (gizliRejiKaydi && gizliRejiKaydi.state === 'recording') {
+            moderatorBasili = false;
+            try { gizliRejiKaydi.stop(); } catch (e) {}
+            if (btnBasKonus) {
+                btnBasKonus.classList.remove('kayit-aktif');
+                btnBasKonus.innerText = "🎙️ Bas-Konuş (Gizli Reji)";
+            }
+            return;
+        }
+        if (patronYayinda) {
+            moderatorBasili = false;
+            return;
+        }
         if (!moderatorBasili && !(mediaRecorder && mediaRecorder.state === "recording")) return;
         moderatorBasili = false;
         if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -3790,7 +3884,10 @@
         moderatorSira = 0;
         rec.ondataavailable = function (ev) {
             if (!patronYayinda || !ev.data || !ev.data.size) return;
+            const kesildi = digerRejiMute;
+            if (kesildi) return;
             blobBase64(ev.data).then(function (b64) {
+                if (kesildi || digerRejiMute) return;
                 if (!b64 || !patronYayinda) return;
                 moderatorSira += 1;
                 socket.emit("moderator_ses_parcasi", {

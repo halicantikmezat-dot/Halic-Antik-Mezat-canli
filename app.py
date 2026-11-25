@@ -67,6 +67,7 @@ from werkzeug.utils import secure_filename
 # Servis Katmanı
 from bizimhesap_service import bizimhesap_siparis_aktar
 from config import Config
+import diger_canli_kapi as diger_kapi
 
 # Yükleme klasörünü garantiye al
 UPLOADS_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
@@ -774,11 +775,13 @@ def _otonom_disi_satisi_bosalt(dukkan, oda):
     _sahneyi_bosa_al(dukkan, "satildi", sesi_kes=False)
 
 
-def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False):
+def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False, susturma_as=False):
     """Tanıtım kesilmeden kuyruğa girer. Zorunlu kesinti satış ve yeni sahne içindir."""
     global _ses_nesil
     temiz = ses_metnini_temizle(ses_icin_fonetik(metin))
     if not temiz:
+        return
+    if not susturma_as and diger_kapi.ses_kesilsin_mi(dukkan, tur):
         return
     imza = f"{dukkan}:{temiz}"
     simdi = time.time()
@@ -12095,9 +12098,10 @@ def handle_connect():
     try:
         aktif_izleyiciler.add(request.sid)
         izleyici_sayisini_yayinla()
+        diger_sayi, _diger_isimler = diger_kapi.anlik()
         emit(
             "izleyici_sayisi_guncelle",
-            {"sayi": len(aktif_izleyiciler), "dukkan": "diger"},
+            {"sayi": diger_sayi, "dukkan": "diger"},
         )
     finally:
         db.session.remove()
@@ -12110,6 +12114,7 @@ def handle_disconnect():
         izleyici_adlari.pop(request.sid, None)
         soketten_kullanici_kopar(request.sid)
         _sahne_izleyicisi_sil(request.sid)
+        diger_kapi.sid_dusur(request.sid)
         izleyici_sayisini_yayinla()
     finally:
         db.session.remove()
@@ -12181,6 +12186,8 @@ def _patron_emrini_uygula(dukkan, metin):
         try:
             patron_komut = _patron_papaganini_sil(metin).strip()
             if len(patron_komut) < 2:
+                return
+            if _diger_reji_emri_varsa_uygula(dukkan, patron_komut):
                 return
             if _patron_emir_turu(patron_komut) == "sayac":
                 _sayaci_tetikle(dukkan)
@@ -12265,6 +12272,22 @@ def _patron_yayinina_cevap(dukkan, metin):
     temiz = ses_metnini_temizle(metin)
     if len(temiz) < 2:
         return
+    if dukkan == "diger" and (diger_kapi.emir_karari(temiz) or diger_kapi.sessiz_mi()):
+        socketio.emit(
+            "yeni_canli_yorum",
+            {
+                "platform": "Patron",
+                "kullanici": "Patron",
+                "mesaj": temiz,
+                "yorum": temiz,
+                "zaman": time.strftime("%H:%M:%S"),
+                "dukkan": dukkan,
+            },
+            room=dukkan,
+        )
+        _nabiz_dokun(dukkan)
+        _diger_reji_emri_varsa_uygula(dukkan, temiz)
+        return
     socketio.emit(
         "yeni_canli_yorum",
         {
@@ -12302,6 +12325,8 @@ def _reji_emrini_uygula(dukkan, metin, sid=None, bildir=True):
                     sid,
                     "[Gizli Reji] Kayıt sessiz veya anlaşılamadı. Mikrofonu basılı tutup net konuşun, sonra bırakın.",
                 )
+                return
+            if _diger_reji_emri_varsa_uygula(dukkan, komut, sid=sid, bildir=bildir):
                 return
             if _patron_emir_turu(komut) == "sayac":
                 _sayaci_tetikle(dukkan)
@@ -12480,7 +12505,9 @@ def moderator_ses_parcasi(veri):
         if ornek_hizi < 8000 or ornek_hizi > 48000:
             ornek_hizi = 16000
         mime = str(veri.get("mime") or "audio/webm;codecs=opus")[:80]
-        for dukkan in _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus"):
+        for dukkan in diger_kapi.hedeflerden_digeri_cikar(
+            _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        ):
             _iki_odayi(
                 "izleyici_moderator_sesi",
                 {
@@ -12508,7 +12535,9 @@ def admin_voice_broadcast(veri):
         if not session.get("is_admin"):
             print("[MIC SOKET] Yönetici oturumu yok, ses iletilmedi.")
             return
-        hedefler = _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        hedefler = diger_kapi.hedeflerden_digeri_cikar(
+            _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        )
         for dukkan in hedefler:
             _iki_odayi(
                 "play_admin_audio_blob",
@@ -12537,7 +12566,9 @@ def admin_voice_chunk(veri):
             sira = int(veri.get("seq") or 0)
         except (TypeError, ValueError):
             sira = 0
-        hedefler = _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        hedefler = diger_kapi.hedeflerden_digeri_cikar(
+            _reji_hedef_listesi(veri.get("dukkan") or veri.get("room") or "gumus")
+        )
         for dukkan in hedefler:
             _iki_odayi(
                 "play_admin_voice",
@@ -12636,13 +12667,27 @@ def handle_join_dukkan(data):
             kayit_no = None
         _sahne_izleyicisi_yaz(request.sid, dukkan, ad, kayit_no)
         join_room(dukkan)
+        if dukkan == "diger" and not session.get("is_admin"):
+            if diger_kapi.dokun(
+                request.sid,
+                veri.get("oturum"),
+                veri.get("nesil"),
+                ad,
+                kayit_no,
+            ):
+                _diger_izleyici_duyur()
         izleyici_sayisini_yayinla()
+        if dukkan == "diger":
+            sayi, isimler = diger_kapi.anlik()
+        else:
+            sayi = len(aktif_izleyiciler)
+            isimler = list(dict.fromkeys(izleyici_adlari.values()))
         emit(
             "izleyici_sayisi_guncelle",
             {
                 "dukkan": dukkan,
-                "sayi": len(aktif_izleyiciler),
-                "isimler": list(dict.fromkeys(izleyici_adlari.values())),
+                "sayi": sayi,
+                "isimler": isimler,
             },
         )
         _katilana_sahneyi_ver(dukkan)
@@ -12652,13 +12697,76 @@ def handle_join_dukkan(data):
 
 @socketio.on("leave_dukkan")
 def handle_leave_dukkan(data):
-    dukkan = dukkan_dogrula((data or {}).get("dukkan", "gumus"))
+    ham = str((data or {}).get("dukkan") or "").strip().lower()
+    dukkan = dukkan_dogrula(ham or "gumus")
     leave_room(dukkan)
+    if ham == "diger" and diger_kapi.sid_dusur(request.sid):
+        _diger_izleyici_duyur()
     with _ozel_kilit:
         if _sid_dukkan.get(request.sid) == dukkan:
             _sid_dukkan.pop(request.sid, None)
             (_dukkan_izleyici.get(dukkan) or {}).pop(request.sid, None)
     _ozel_odayi_kapat(request.sid)
+
+
+@socketio.on("diger_izleyici_nabiz")
+def diger_izleyici_nabiz(veri):
+    """Yalnızca diger odası. Yönetici ve diğer dükkanlar sayaca yazılmaz."""
+    try:
+        if session.get("is_admin"):
+            return
+        veri = veri or {}
+        if str(veri.get("dukkan") or "").strip().lower() != "diger":
+            return
+        ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
+        try:
+            kayit_no = int(veri.get("kullanici_id")) if veri.get("kullanici_id") not in (None, "", "null") else None
+        except (TypeError, ValueError):
+            kayit_no = None
+        if diger_kapi.dokun(request.sid, veri.get("oturum"), veri.get("nesil"), ad, kayit_no):
+            _diger_izleyici_duyur()
+    finally:
+        db.session.remove()
+
+
+@socketio.on("diger_izleyici_ayril")
+def diger_izleyici_ayril_olayi(veri):
+    try:
+        if session.get("is_admin"):
+            return
+        veri = veri or {}
+        if str(veri.get("dukkan") or "").strip().lower() != "diger":
+            return
+        if diger_kapi.ayril(veri.get("oturum"), veri.get("nesil")):
+            _diger_izleyici_duyur()
+    finally:
+        db.session.remove()
+
+
+@socketio.on("diger_reji_mikrofon_mute")
+def diger_reji_mikrofon_mute(veri):
+    """Bas-konuş basılıyken yalnız diger odasına giden patron sesini keser."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        if str(veri.get("dukkan") or "").strip().lower() != "diger":
+            return
+        diger_kapi.mikrofon_kis(bool(veri.get("mute")))
+    finally:
+        db.session.remove()
+
+
+@app.route("/api/diger/izleyici-ayril", methods=["POST"])
+def diger_izleyici_ayril_http():
+    if session.get("is_admin"):
+        return ("", 204)
+    veri = request.get_json(silent=True) or {}
+    if str(veri.get("dukkan") or "").strip().lower() != "diger":
+        return ("", 204)
+    if diger_kapi.ayril(veri.get("oturum"), veri.get("nesil")):
+        _diger_izleyici_duyur()
+    return ("", 204)
 
 
 _ozel_kilit = threading.Lock()
@@ -13024,6 +13132,61 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
     _dukkan_canli_yayinla()
 
 
+def _diger_izleyici_duyur():
+    """Yalnızca diger odasının sayaç ve isim listesini yayınlar."""
+    sayi, isimler = diger_kapi.anlik()
+    socketio.emit(
+        "izleyici_sayisi_guncelle",
+        {"dukkan": "diger", "sayi": sayi, "isimler": isimler},
+        room="diger",
+    )
+
+
+def _diger_spiker_sessizlestir():
+    """Kuyruktaki yorum/pey anonslarını bırakır. Sayaç, satış ve sahne olayına ses_kes göndermez."""
+    diger_kapi.sustur()
+    with _ses_kuyruk_kilit:
+        kayit = _ses_kuyruk.get("diger")
+        if not kayit:
+            return
+        kayit["ogeler"] = [
+            oge for oge in (kayit.get("ogeler") or [])
+            if str(oge.get("tur") or "") in ("satis", "zafer", "sahne", "yeni_urun")
+        ]
+
+
+def _diger_reji_emri_varsa_uygula(dukkan, metin, sid=None, bildir=False):
+    """Yalnızca diger. Diğer dükkanlarda False döner ve eski reji akışı sürer."""
+    if dukkan != "diger":
+        return False
+    karar = diger_kapi.emir_karari(metin)
+    if karar == "sus":
+        _diger_spiker_sessizlestir()
+        ahmet_ses_akisi(
+            "diger",
+            diger_kapi.ONAY_CUMLESI,
+            tur="anons",
+            kesinti=False,
+            susturma_as=True,
+        )
+        if bildir:
+            _reji_admin_yaz(sid, "[Gizli Reji] Spiker durdu: " + diger_kapi.ONAY_CUMLESI)
+        return True
+    if karar == "devam":
+        diger_kapi.ac()
+        if bildir:
+            _reji_admin_yaz(sid, "[Gizli Reji] Spiker devam ediyor.")
+        return True
+    if diger_kapi.sessiz_mi():
+        if bildir:
+            _reji_admin_yaz(
+                sid,
+                "[Gizli Reji] Spiker sessiz. Devam için: devam et, devral veya sahne sende.",
+            )
+        return True
+    return False
+
+
 def izleyici_sayisini_yayinla():
     sayi = len(aktif_izleyiciler)
     isimler = []
@@ -13032,6 +13195,14 @@ def izleyici_sayisini_yayinla():
         if temiz and temiz not in isimler:
             isimler.append(temiz)
     for kod in DUKKANLAR:
+        if kod == "diger":
+            diger_sayi, diger_isimler = diger_kapi.anlik()
+            socketio.emit(
+                "izleyici_sayisi_guncelle",
+                {"dukkan": "diger", "sayi": diger_sayi, "isimler": diger_isimler},
+                room="diger",
+            )
+            continue
         socketio.emit(
             "izleyici_sayisi_guncelle",
             {"dukkan": kod, "sayi": sayi, "isimler": isimler},
@@ -13099,6 +13270,9 @@ def _arkaplan_agir_baslangic():
     print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
         socketio.start_background_task(_bellek_temizleme_dongusu)
+        socketio.start_background_task(
+            diger_kapi.temizlik_dongusu, socketio.sleep, _diger_izleyici_duyur,
+        )
         veritabani_onarimini_bir_kez_baslat()
         if _pazaryeri_semasi is not None:
             print("[BOOT] pazaryeri tablolari", flush=True)

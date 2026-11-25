@@ -3257,9 +3257,99 @@
         });
     }
 
+    let digerIzleyiciZamanlayici = null;
+    let digerIzleyiciNesil = 0;
+    let digerIzleyiciDinleyiciKuruldu = false;
+
+    function digerIzleyiciOturum() {
+        let token = sessionStorage.getItem('diger_izleyici_oturum');
+        if (!token) {
+            token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
+            sessionStorage.setItem('diger_izleyici_oturum', token);
+        }
+        return token;
+    }
+
+    function digerIzleyiciNesilAl() {
+        if (!digerIzleyiciNesil) {
+            digerIzleyiciNesil = Number(sessionStorage.getItem('diger_izleyici_nesil') || '0') + 1;
+            sessionStorage.setItem('diger_izleyici_nesil', String(digerIzleyiciNesil));
+        }
+        return digerIzleyiciNesil;
+    }
+
+    function digerIzleyiciPaket() {
+        const kayitli = (localStorage.getItem('halic_antik_ad') || kullaniciAdi || 'Misafir').replace(/^\[.*?\]\s*/, '').trim();
+        return {
+            dukkan: 'diger',
+            oturum: digerIzleyiciOturum(),
+            nesil: digerIzleyiciNesilAl(),
+            isim: kayitli || 'Misafir',
+            kullanici_id: kullaniciId || ''
+        };
+    }
+
+    function digerIzleyiciNabiz() {
+        if (aktifDukkan !== 'diger' || !socket || !socket.connected) return;
+        socket.emit('diger_izleyici_nabiz', digerIzleyiciPaket());
+    }
+
+    function digerIzleyiciAyrilIste() {
+        if (aktifDukkan !== 'diger' || !digerIzleyiciNesil) return;
+        const paket = digerIzleyiciPaket();
+        const govde = JSON.stringify(paket);
+        if (navigator.sendBeacon) {
+            try {
+                navigator.sendBeacon('/api/diger/izleyici-ayril', new Blob([govde], { type: 'application/json' }));
+            } catch (e) {}
+        }
+        if (socket && socket.connected) socket.emit('diger_izleyici_ayril', paket);
+    }
+
+    function digerIzleyiciIzle() {
+        if (aktifDukkan !== 'diger') {
+            if (digerIzleyiciZamanlayici) {
+                clearInterval(digerIzleyiciZamanlayici);
+                digerIzleyiciZamanlayici = null;
+            }
+            return;
+        }
+        digerIzleyiciDinleyicileriKur();
+        digerIzleyiciNabiz();
+        if (!digerIzleyiciZamanlayici) {
+            digerIzleyiciZamanlayici = setInterval(digerIzleyiciNabiz, 5000);
+        }
+    }
+
+    function digerIzleyiciDinleyicileriKur() {
+        if (digerIzleyiciDinleyiciKuruldu) return;
+        digerIzleyiciDinleyiciKuruldu = true;
+        const sayfadanCik = function () {
+            if (digerIzleyiciZamanlayici) {
+                clearInterval(digerIzleyiciZamanlayici);
+                digerIzleyiciZamanlayici = null;
+            }
+            digerIzleyiciAyrilIste();
+        };
+        window.addEventListener('pagehide', sayfadanCik);
+        window.addEventListener('beforeunload', sayfadanCik);
+        document.addEventListener('visibilitychange', function () {
+            if (aktifDukkan !== 'diger') return;
+            if (document.visibilityState === 'hidden') sayfadanCik();
+            else digerIzleyiciIzle();
+        });
+    }
+
     function dukkanDegistir(kod) {
         kod = String(kod || '').trim().toLowerCase();
         if (!kod || kod === aktifDukkan) return;
+        if (aktifDukkan === 'diger' && kod !== 'diger') {
+            if (digerIzleyiciZamanlayici) {
+                clearInterval(digerIzleyiciZamanlayici);
+                digerIzleyiciZamanlayici = null;
+            }
+            digerIzleyiciAyrilIste();
+        }
         socket.emit('leave_dukkan', { dukkan: aktifDukkan });
         aktifDukkan = kod;
         const adres = new URL(window.location.href);
@@ -3286,7 +3376,14 @@
 
     function odayaKatil() {
         const kayitli = (localStorage.getItem('halic_antik_ad') || kullaniciAdi || 'Misafir').replace(/^\[.*?\]\s*/, '').trim();
-        socket.emit('join_dukkan', { dukkan: aktifDukkan, isim: kayitli || 'Misafir', kullanici_id: kullaniciId || '' });
+        const paket = { dukkan: aktifDukkan, isim: kayitli || 'Misafir', kullanici_id: kullaniciId || '' };
+        if (aktifDukkan === 'diger') {
+            const kimlik = digerIzleyiciPaket();
+            paket.oturum = kimlik.oturum;
+            paket.nesil = kimlik.nesil;
+        }
+        socket.emit('join_dukkan', paket);
+        digerIzleyiciIzle();
         canliKameraIzle();
         azSonraSahneyiGetir();
     }
