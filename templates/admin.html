@@ -2543,8 +2543,7 @@
     }
 
     function kopruMedyasiGerekli() {
-        const alan = restreamAlanlari();
-        return !!(alan.restream_rtmp_url && alan.restream_stream_key) || sosyalHavuzSecili();
+        return sosyalHavuzSecili();
     }
 
     const SYH_DURUM = {
@@ -2603,6 +2602,8 @@
             rozet.style.background = boya[1];
             rozet.style.color = boya[2];
             rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+            const not = document.querySelector('[data-syh-hata="' + kayit.id + '"]');
+            if (not) not.textContent = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
         });
     }
 
@@ -2629,8 +2630,13 @@
         rozet.textContent = boya[0];
         rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
         rozet.style.cssText = 'padding:3px 8px; border-radius:999px; font-size:12px; background:' + boya[1] + '; color:' + boya[2] + ';';
+        const hata = document.createElement('span');
+        hata.setAttribute('data-syh-hata', kayit.id);
+        hata.style.cssText = 'font-size:11px; color:#fecaca; flex:1; min-width:140px;';
+        hata.textContent = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
         ust.appendChild(sol);
         ust.appendChild(rozet);
+        ust.appendChild(hata);
         const ad = document.createElement('div');
         ad.style.cssText = 'font-size:13px; color:#f8fafc; font-weight:bold;';
         ad.textContent = (SYH_TUR[kayit.tur] || 'Özel') + ' · ' + (kayit.ad || '');
@@ -3547,13 +3553,8 @@
     }
 
     function restreamKopruSenkron() {
-        const kayit = canliYayinKaydi || {};
-        const ayar = kayit.ayarlar || {};
         const acik = iriunCanliMi();
-        const alan = restreamAlanlari();
-        const restreamHazir = !!(alan.restream_rtmp_url && alan.restream_stream_key);
-        const medyaGerekli = restreamHazir || sosyalHavuzSecili();
-        const imza = String(ayar.restream_imza || '');
+        const medyaGerekli = sosyalHavuzSecili();
         if (!acik) {
             iriunBeklemeyiDurdur();
             restreamKopruKapat();
@@ -3566,22 +3567,23 @@
             }
             restreamKayit = null;
         }
-        if (restreamAcik && restreamHazir && imza && imza !== restreamImza && iriunVideoCanli(restreamAkis)) {
-            restreamImza = imza;
-            restreamKaydiYenile();
-        }
         if (!restreamAcik) {
-            restreamImza = imza;
             restreamKopruAc();
             return;
+        }
+        if (medyaGerekli && iriunVideoCanli(restreamAkis) && (!restreamKayit || restreamKayit.state === 'inactive')) {
+            restreamKaydiBaslat();
         }
         if (!iriunVideoCanli(restreamAkis)) iriunBeklemeyiBaslat();
     }
 
     function restreamKopruAc() {
-        if (iriunVideoCanli(restreamAkis)) return;
         restreamAcik = true;
         restreamYeniden = 0;
+        if (iriunVideoCanli(restreamAkis)) {
+            if (kopruMedyasiGerekli() && (!restreamKayit || restreamKayit.state === 'inactive')) restreamKaydiBaslat();
+            return;
+        }
         iriunBeklemeyiBaslat();
     }
 

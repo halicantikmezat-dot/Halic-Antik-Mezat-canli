@@ -13,6 +13,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+import time
 
 _DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instance", "sosyal_yayin_havuzu.json")
 _KILIT = threading.RLock()
@@ -26,6 +27,26 @@ _KALICI_OKU = None
 _KALICI_YAZ = None
 _ORTAK = None
 _ORTAK_KILIT = threading.Lock()
+
+_OLUMCUL = (
+    "error opening",
+    "cannot open",
+    "connection refused",
+    "connection timed out",
+    "timed out",
+    "i/o error",
+    "protocol not found",
+    "handshake",
+    "server error",
+    "broken pipe",
+)
+_BEKLEME_SN = 20
+
+
+def _olumcul_mu(metin):
+    satir = str(metin or "").lower()
+    return any(iz in satir for iz in _OLUMCUL)
+
 
 _URL = re.compile(
     r"^(rtmps?)://([A-Za-z0-9._-]{1,253})(?::\d{2,5})?(/[^\s\"'\\]{0,420})?$",
@@ -89,6 +110,8 @@ def parca_yaz(paket, baslik, mime):
     with _KILIT:
         if not _YAYIN:
             return {"adet": 0, "yeniden": False}
+        if not _BASLIK:
+            baslik = True
         if baslik:
             _BASLIK = bytes(paket)
             _MIME = str(mime or "")
@@ -148,7 +171,10 @@ def liste():
         yayin = _YAYIN
         hesaplar = _oku()
         slotlar = {
-            kim: {"durum": slot.get("durum") or "bekliyor", "hata": slot.get("hata") or ""}
+            kim: {
+                "durum": slot.get("durum") or "bekliyor",
+                "hata": slot.get("hata") or slot.get("son_satir") or "",
+            }
             for kim, slot in _SLOTLAR.items()
         }
     cikti = []
@@ -162,6 +188,9 @@ def liste():
             else:
                 durum = slot["durum"] if slot["durum"] in ("bekliyor", "yayinda", "hata") else "bekliyor"
                 hata = slot["hata"] if durum == "hata" else ""
+                if durum == "bekliyor" and _olumcul_mu(slot.get("hata")):
+                    durum = "hata"
+                    hata = slot["hata"]
         cikti.append(
             {
                 "id": kayit["id"],
@@ -381,7 +410,8 @@ def _isci(slot):
         try:
             paket = slot["kuyruk"].get(timeout=0.5)
         except queue.Empty:
-            _proc_dustu_mu(slot)
+            if not _bekleyis_doldu(slot):
+                _proc_dustu_mu(slot)
             continue
         if paket is None or slot["dur"].is_set():
             break
@@ -420,6 +450,7 @@ def _slot_yaz(slot, paket, baslik, mime):
                 _hata_kilit_icinde(slot, "FFmpeg açılamadı")
                 return
             slot["proc"] = proc
+            slot["acilis"] = time.monotonic()
         else:
             on_ek = b""
         stdin = proc.stdin
@@ -431,7 +462,7 @@ def _slot_yaz(slot, paket, baslik, mime):
         _hata_isaretle(slot, "Yayın koptu", nesil)
         return
     with slot["kilit"]:
-        if slot.get("proc") is proc and not slot["dur"].is_set():
+        if slot.get("proc") is proc and not slot["dur"].is_set() and slot.get("durum") != "hata":
             slot["durum"] = "yayinda"
             slot["hata"] = ""
 
@@ -465,6 +496,21 @@ def _stdin_yaz(stdin, paket):
             raise OSError("ffmpeg stdin kapandi")
         kalan = kalan[yazilan:]
     stdin.flush()
+
+
+def _bekleyis_doldu(slot):
+    """RTMPS el sıkışması takılırsa rozet Bekliyor'da kalmasın."""
+    with slot["kilit"]:
+        if slot.get("durum") != "bekliyor" or slot["dur"].is_set():
+            return False
+        proc = slot.get("proc")
+        acilis = slot.get("acilis") or 0
+        if proc is None or proc.poll() is not None or acilis <= 0:
+            return False
+        if time.monotonic() - acilis < _BEKLEME_SN:
+            return False
+    _hata_isaretle(slot, slot.get("son_satir") or "RTMP bağlantısı zaman aşımı")
+    return True
 
 
 def _proc_dustu_mu(slot):
@@ -546,11 +592,7 @@ def _surec_ac(hedef, mime, slot):
         "44100",
         "-b:a",
         "128k",
-        "-f",
-        "flv",
-        "-flvflags",
-        "no_duration_filesize",
-        hedef,
+        *_cikis_bayraklari(hedef),
     ]
     ayar = {}
     if os.name == "nt":
@@ -583,8 +625,13 @@ def _stderr_oku(slot, proc):
             metin = _maske(satir.decode("utf-8", "replace")).strip()
             if not metin:
                 continue
+            olumcul = False
             with slot["kilit"]:
                 slot["son_satir"] = metin[:180]
+                olumcul = slot.get("durum") != "hata" and _olumcul_mu(metin)
+            if olumcul:
+                _hata_isaretle(slot, metin[:120])
+                return
     except Exception:
         return
 
@@ -835,11 +882,7 @@ def _kopya_yenile(ortak, kim, hedef):
         "pipe:0",
         "-c",
         "copy",
-        "-f",
-        "flv",
-        "-flvflags",
-        "no_duration_filesize",
-        hedef,
+        *_cikis_bayraklari(hedef),
     ]
     try:
         proc = _surec_baslat(komut, subprocess.DEVNULL)
@@ -854,8 +897,9 @@ def _kopya_yenile(ortak, kim, hedef):
         "kuyruk": queue.Queue(maxsize=24),
         "dur": threading.Event(),
         "son_satir": "",
+        "acilis": time.monotonic(),
     }
-    threading.Thread(target=_stderr_kopya, args=(kopya, proc), daemon=True).start()
+    threading.Thread(target=_stderr_kopya, args=(ortak, kopya, proc), daemon=True).start()
     threading.Thread(target=_kopya_isci, args=(ortak, kopya), daemon=True).start()
     with ortak["kilit"]:
         if ortak["dur"].is_set() or ortak["hedefler"].get(kim) != hedef:
@@ -874,6 +918,12 @@ def _kopya_isci(ortak, kopya):
             if proc is not None and proc.poll() is not None:
                 _kopya_hata(ortak, kopya, kopya.get("son_satir") or "Yayın koptu")
                 return
+            acilis = kopya.get("acilis") or 0
+            if acilis and time.monotonic() - acilis >= _BEKLEME_SN:
+                slot = _SLOTLAR.get(kopya["id"])
+                if slot is None or slot.get("durum") == "bekliyor":
+                    _kopya_hata(ortak, kopya, kopya.get("son_satir") or "RTMP bağlantısı zaman aşımı")
+                    return
             continue
         if blok is None or kopya["dur"].is_set():
             return
@@ -885,7 +935,9 @@ def _kopya_isci(ortak, kopya):
         except Exception:
             _kopya_hata(ortak, kopya, kopya.get("son_satir") or "Yayın koptu")
             return
-        _slot_durum(kopya["id"], "yayinda", "")
+        slot = _SLOTLAR.get(kopya["id"])
+        if slot is None or slot.get("durum") != "hata":
+            _slot_durum(kopya["id"], "yayinda", "")
 
 
 def _cikis_isci(ortak, proc, nesil):
@@ -1003,7 +1055,7 @@ def _stderr_ortak(ortak, proc):
         return
 
 
-def _stderr_kopya(kopya, proc):
+def _stderr_kopya(ortak, kopya, proc):
     try:
         akis = proc.stderr
         if akis is None:
@@ -1012,10 +1064,23 @@ def _stderr_kopya(kopya, proc):
             if not satir:
                 break
             metin = _maske(satir.decode("utf-8", "replace")).strip()
-            if metin:
-                kopya["son_satir"] = metin[:180]
+            if not metin:
+                continue
+            kopya["son_satir"] = metin[:180]
+            if _olumcul_mu(metin):
+                _kopya_hata(ortak, kopya, metin[:120])
+                return
     except Exception:
         return
+
+
+def _cikis_bayraklari(hedef):
+    """rtmps hedeflerinde sertifika takılması yayın rozetini bekletmesin."""
+    bayrak = ["-f", "flv", "-flvflags", "no_duration_filesize"]
+    if str(hedef).startswith("rtmps://"):
+        bayrak.extend(["-rw_timeout", "15000000", "-tls_verify", "0"])
+    bayrak.append(str(hedef))
+    return bayrak
 
 
 def _surec_baslat(komut, stdout):
