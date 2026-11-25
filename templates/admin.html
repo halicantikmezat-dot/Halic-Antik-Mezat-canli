@@ -94,9 +94,11 @@
             flex-direction: column;
             grid-column: 2;
             grid-row: 1 / span 2;
+            width: 100%;
             height: 100%;
             min-height: 620px;
             align-self: stretch;
+            overflow: hidden;
             border: 1px solid var(--accent-gold);
             background: #0b1220;
         }
@@ -415,7 +417,8 @@
         .studyo-birak.ustunde { background: rgba(212, 175, 55, 0.12); }
         .studyo-onizleme {
             margin-top: 10px;
-            min-height: 180px;
+            width: 100%;
+            height: 280px;
             border-radius: 8px;
             background: #070b12;
             border: 1px solid var(--card-border);
@@ -424,7 +427,7 @@
             justify-content: center;
             overflow: hidden;
         }
-        .studyo-onizleme img, .studyo-onizleme video { max-width: 100%; max-height: 280px; object-fit: contain; }
+        .studyo-onizleme img, .studyo-onizleme video { width: 100%; height: 100%; object-fit: cover; object-position: center; }
         .studyo-mod-serit { display: flex; gap: 6px; margin: 0 0 10px; }
         .studyo-mod-serit button.secili { outline: 1px solid var(--accent-gold); }
         #studyoHavuzAlan[hidden], #studyoTekliAlan[hidden] { display: none !important; }
@@ -483,7 +486,8 @@
         .preview-media-box img, .preview-media-box video {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover;
+            object-position: center;
         }
         .preview-media-box video {
             position: absolute;
@@ -841,7 +845,7 @@
             </div>
 
             <div style="background: #121822; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px;">
-                <img id="aktifUrunGorsel" alt="" style="display:none; width:100%; max-height:180px; object-fit:contain; border-radius:6px; margin-bottom:8px; background:#0b1220;">
+                <img id="aktifUrunGorsel" alt="" style="display:none; width:100%; height:180px; object-fit:cover; object-position:center; border-radius:6px; margin-bottom:8px;">
                 <p><b>Aktif Ürün:</b> <span id="aktifUrunAdi" style="color: var(--accent-blue); font-weight: bold;">Sahnede aktif ürün yok</span></p>
                 <p style="margin-top: 4px;"><b>Anlık Fiyat:</b> <span id="aktifFiyat" style="color: #34d399; font-weight: bold;">0 TL</span></p>
                 <p style="margin-top: 4px;"><b>Son Pey Veren:</b> <span id="aktifKazanan" style="color: var(--accent-gold); font-weight: bold;">Yok</span></p>
@@ -5155,7 +5159,7 @@
         const onizlemeSrc = videoKaynak || ilkGorsel;
         if (onizlemeSrc && (videoKaynak || isVideoUrl(onizlemeSrc))) {
             const src = onizlemeMedyaAdresi(onizlemeSrc);
-            medyaAlani.innerHTML = `<video src="${src}" controls autoplay loop playsinline style="width:100%; max-height:360px; object-fit:contain;"></video>`;
+            medyaAlani.innerHTML = `<video src="${src}" controls autoplay loop playsinline style="width:100%; height:100%; object-fit:cover; object-position:center;"></video>`;
             const v = medyaAlani.querySelector('video');
             if (v) { v.muted = false; v.load(); v.play().catch(()=>{}); }
         } else if (ilkGorsel) {

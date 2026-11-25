@@ -431,7 +431,8 @@
         .stage-media-box img, .stage-media-box video {
             width: 100%;
             height: 100%;
-            object-fit: contain !important;
+            object-fit: cover !important;
+            object-position: center;
             transform: scale(1.0) translate(0%, 0%);
             transform-origin: center center;
             transition: transform 3.5s cubic-bezier(0.25, 1, 0.5, 1) !important;
@@ -1063,7 +1064,10 @@
             z-index: 1;
         }
         .stage-media-box img, .stage-media-box video {
+            width: 100%;
+            height: 100%;
             object-fit: cover !important;
+            object-position: center;
         }
         .yuzer-sohbet {
             position: absolute;
@@ -1263,12 +1267,16 @@
             cursor: pointer;
         }
         .yeni-slayt-kare {
+            position: relative;
             flex: 1;
+            width: 100%;
+            height: 100%;
             min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 46px 56px 8px;
+            padding: 0;
+            overflow: hidden;
         }
         .yeni-slayt-kare.tiklanir,
         .yeni-slayt-alt.tiklanir {
@@ -1306,19 +1314,21 @@
             font-weight: 800;
         }
         .yeni-slayt-sayac[hidden] { display: none !important; }
+        .yeni-slayt-kare {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
         .yeni-slayt-kare img,
         .yeni-slayt-kare video {
+            width: 100%;
+            height: 100%;
             max-width: 100%;
-            max-height: 36vh;
-            object-fit: contain;
+            max-height: 100%;
+            object-fit: cover;
+            object-position: center;
             border-radius: 10px;
             animation: yeniSlaytKay 0.55s ease;
-        }
-        @media (max-width: 720px) {
-            .yeni-slayt-kare img,
-            .yeni-slayt-kare video {
-                max-height: 30vh;
-            }
         }
         @keyframes yeniSlaytKay {
             from { opacity: 0; transform: translateX(28px); }
@@ -1486,7 +1496,7 @@
         .genel-menu a.active, .genel-menu a:hover, .genel-menu button.menu-oge:hover { border-color: var(--accent-gold); }
         .menu-perde { position: absolute; inset: 0; background: rgba(0,0,0,0.35); z-index: 1300; }
         .menu-perde[hidden] { display: none; }
-        .stage-media-box { height: 70vh; max-height: 70vh; overflow: hidden; touch-action: manipulation pinch-zoom; }
+        .stage-media-box { width: 100%; height: 100%; max-height: none; overflow: hidden; touch-action: manipulation pinch-zoom; }
         #medyaKapsayici.pinch-aktif img,
         #medyaKapsayici.pinch-aktif video {
             animation: none !important;
@@ -1505,10 +1515,11 @@
         #medyaKapsayici .kb-sol-alt { transform-origin: 18% 82% !important; }
         #medyaKapsayici .kb-sag-alt { transform-origin: 80% 78% !important; }
         .stage-media-box img, .stage-media-box video {
-            max-height: 70vh !important;
+            max-height: none !important;
             width: 100% !important;
-            height: auto !important;
-            object-fit: contain !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            object-position: center !important;
         }
         .stage-media-box video {
             position: absolute !important;
@@ -1516,7 +1527,8 @@
             height: 100% !important;
             max-height: none !important;
             width: 100% !important;
-            object-fit: contain !important;
+            object-fit: cover !important;
+            object-position: center !important;
             transform: none !important;
             animation: none !important;
             will-change: auto !important;
@@ -1823,8 +1835,10 @@
         #izleyiciModal { background: rgba(0,0,0,0.45); }
         #stageWrapper,
         #medyaKapsayici {
+            width: 100%;
+            height: 100%;
             min-height: 250px;
-            aspect-ratio: 16 / 9;
+            overflow: hidden;
         }
         #medyaKapsayici { position: relative; }
         #canliKameraVideo {
@@ -1836,7 +1850,7 @@
             max-width: none !important;
             max-height: none !important;
             object-fit: cover !important;
-            object-position: center center;
+            object-position: center;
             border-radius: inherit;
             background: transparent !important;
             transform: none !important;
@@ -1894,7 +1908,10 @@
         #yuzerCanliVideo {
             position: relative;
             flex: 1 1 auto;
+            width: 100%;
+            height: 100%;
             min-height: 0;
+            overflow: hidden;
             background: #000;
         }
         #yuzerCanliVideo #canliKameraVideo {
@@ -1905,6 +1922,7 @@
             height: 100% !important;
             max-height: none !important;
             object-fit: cover !important;
+            object-position: center !important;
         }
         .yuzer-canli-serit {
             flex: 0 0 36px;
@@ -1992,7 +2010,9 @@
             .stage-media-box,
             #medyaKapsayici {
                 width: 100% !important;
+                height: 100% !important;
                 max-width: 100% !important;
+                max-height: none !important;
                 aspect-ratio: auto !important;
                 overflow: hidden !important;
                 display: flex !important;
@@ -2002,13 +2022,15 @@
                 box-sizing: border-box;
             }
             .stage-media-box img,
-            #medyaKapsayici > img {
+            .stage-media-box video,
+            #medyaKapsayici > img,
+            #medyaKapsayici > video {
                 width: 100% !important;
                 height: 100% !important;
                 max-width: 100% !important;
                 max-height: 100% !important;
-                object-fit: contain !important;
-                object-position: center center !important;
+                object-fit: cover !important;
+                object-position: center !important;
                 margin: 0 auto !important;
                 min-width: 0 !important;
                 display: block;
@@ -2451,7 +2473,7 @@
             <div class="stage-media-box" id="medyaKapsayici">
                 <video id="canliKameraVideo" autoplay playsinline muted></video>
                 {% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun and ilk_sahne.aktif_urun.fotograflar %}
-                <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;margin:0 auto;">
+                <img src="{{ ilk_sahne.aktif_urun.fotograflar[0] }}" alt="{{ ilk_sahne.aktif_urun.ad }}" style="width:100%;height:100%;object-fit:cover;object-position:center;">
                 {% elif ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}
                 <p style="color: var(--text-muted); font-size: 10px; font-weight:bold;">LOT #{{ ilk_sahne.aktif_urun.lot }} - {{ ilk_sahne.aktif_urun.ad }}</p>
                 {% else %}
@@ -6828,7 +6850,7 @@
             const src = sahneMedyaAdresi(medya.url);
             const tekMedya = aktifUrunMedyalari.length <= 1;
             const sahneKutu = medyaDiv;
-            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls ${tekMedya ? "loop" : ""} playsinline preload="auto" style="width:100%; height:100%; object-fit:contain; display:block; background:#000;"></video>`;
+            sahneKutu.innerHTML = `<video id="stageVideo" src="${src}" autoplay controls ${tekMedya ? "loop" : ""} playsinline preload="auto" style="width:100%; height:100%; object-fit:cover; object-position:center; display:block;"></video>`;
             const v = sahneKutu.querySelector('#stageVideo');
             if (v) { v.load(); sahneVideosunuOynat(v, tekMedya); }
         } else {
@@ -6837,10 +6859,8 @@
             img.alt = "";
             img.style.width = "100%";
             img.style.height = "100%";
-            img.style.maxWidth = "100%";
-            img.style.maxHeight = "100%";
-            img.style.objectFit = "contain";
-            img.style.margin = "0 auto";
+            img.style.objectFit = "cover";
+            img.style.objectPosition = "center";
             const kutu = document.getElementById('medyaKapsayici');
             img.className = (kutu && kutu.classList.contains('tanitim-zoom')) ? '' : 'zoom-genel-plan';
             medyaDiv.appendChild(img);
@@ -8818,7 +8838,7 @@
         if (dukkanRozet) dukkanRozet.textContent = "🏪 " + yeniSlaytDukkanAdi(urun) + " Vitrini";
         var medya = yeniSlaytMedyasi(urun);
         if (medya.tip === "video") {
-            kare.innerHTML = '<video autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:contain;"></video>';
+            kare.innerHTML = '<video autoplay controls loop playsinline preload="auto" style="width:100%; height:100%; object-fit:cover; object-position:center;"></video>';
             var video = kare.querySelector("video");
             if (video) {
                 video.src = sahneMedyaAdresi(medya.url);
