@@ -3665,6 +3665,7 @@
         kayanBantaEkle(`${rozet.ikon} [${rozet.etiket}] ${escapeHtml(kisaIsim(ad))}: ${formatFiyat(tutar)}`);
     }
 
+    let digerCanliMicKapali = false;
     let canliKameraPc = null;
     let canliKameraYayinci = '';
     let canliKameraBuzKuyrugu = [];
@@ -3765,6 +3766,21 @@
     function canliKameraSesiniAc() {
         const video = document.getElementById('canliKameraVideo');
         if (!video || !video.srcObject) return;
+        if (digerCanliMicKapali) {
+            video.muted = true;
+            try { video.volume = 0; } catch (e) {}
+            if (video.srcObject.getAudioTracks) {
+                video.srcObject.getAudioTracks().forEach(function (iz) {
+                    try { iz.enabled = false; } catch (err) {}
+                });
+            }
+            return;
+        }
+        if (video.srcObject.getAudioTracks) {
+            video.srcObject.getAudioTracks().forEach(function (iz) {
+                try { iz.enabled = true; } catch (err) {}
+            });
+        }
         video.muted = false;
         try { video.volume = 1; } catch (e) {}
         const deneme = video.play();
@@ -4018,8 +4034,13 @@
             if (olay.track) olay.track.onended = function () { canliKameraBeklet(); };
             video.srcObject = akis;
             video.muted = true;
+            if (digerCanliMicKapali && akis.getAudioTracks) {
+                akis.getAudioTracks().forEach(function (iz) {
+                    try { iz.enabled = false; } catch (err) {}
+                });
+            }
             canliKameraVideosunuYerlestir(video);
-            if (yuzerCanliAcik) canliKameraSesiniAc();
+            if (yuzerCanliAcik && !digerCanliMicKapali) canliKameraSesiniAc();
             else {
                 const deneme = video.play();
                 if (deneme && deneme.catch) deneme.catch(function () {});
@@ -5243,9 +5264,44 @@
         return true;
     }
 
+    function digerCanliMikrofonuSustur() {
+        const video = document.getElementById('canliKameraVideo');
+        if (video) {
+            video.muted = true;
+            try { video.volume = 0; } catch (e) {}
+            if (video.srcObject && video.srcObject.getAudioTracks) {
+                video.srcObject.getAudioTracks().forEach(function (iz) {
+                    try { iz.enabled = false; } catch (err) {}
+                });
+            }
+        }
+        if (aktifDukkan !== 'diger') return;
+        moderatorParcaKuyrugu = [];
+        if (typeof adminSesKuyruk !== 'undefined') adminSesKuyruk = [];
+        [moderatorAkisSesi, (typeof yoneticiSes !== 'undefined' ? yoneticiSes : null)].forEach(function (ses) {
+            if (!ses) return;
+            try { ses.pause(); } catch (e) {}
+            try { ses.currentTime = 0; } catch (e) {}
+        });
+    }
+
+    function digerCanliMikrofonDurumu(data) {
+        if (!data || data.dukkan !== 'diger') return;
+        const kes = !!(data.sus || data.mic_kapali);
+        digerCanliMicKapali = kes;
+        if (kes) {
+            digerCanliMikrofonuSustur();
+            return;
+        }
+        if (aktifDukkan === 'diger' || yuzerCanliAcik) canliKameraSesiniAc();
+    }
+
+    socket.on("diger_mikrofon_durum", digerCanliMikrofonDurumu);
+
     socket.on("izleyici_moderator_sesi", function (data) {
         if (!data || !data.parca) return;
         if (data.dukkan && data.dukkan !== aktifDukkan) return;
+        if (data.dukkan === 'diger' && digerCanliMicKapali) return;
         const seq = Number(data.seq || data.sira || 0);
         if (seq && seq === moderatorSonSeq) return;
         if (seq) moderatorSonSeq = seq;
@@ -5346,6 +5402,7 @@
     let yoneticiSes = null;
     socket.on("play_admin_audio_blob", function (data) {
         if (data && data.dukkan && data.dukkan !== aktifDukkan) return;
+        if (data && data.dukkan === 'diger' && digerCanliMicKapali) return;
         console.log("[IZLEYICI MIC] Yönetici ses paketi alındı!");
         if (!data || !data.audio) return;
         iosSesKapisiniAc();
@@ -5378,6 +5435,7 @@
     socket.on("play_admin_voice", function (data) {
         if (!data) return;
         if (data.dukkan && data.dukkan !== aktifDukkan) return;
+        if (data.dukkan === 'diger' && digerCanliMicKapali) return;
         if (data.bitti) {
             clearTimeout(moderatorSusma);
             anonsuDevamEt();

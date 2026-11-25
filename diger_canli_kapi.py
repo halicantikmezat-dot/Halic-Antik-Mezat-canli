@@ -16,6 +16,7 @@ _oturumlar = {}
 _sid_oturum = {}
 _spiker_sessiz = False
 _mikrofon_kisik = False
+_mic_kapali = False
 
 
 def _sade(metin):
@@ -73,9 +74,23 @@ def mikrofon_kisik_mi():
     return _mikrofon_kisik
 
 
+def mic_kapat(kapali):
+    """Ses açık/kapalı anahtarı. Yalnız diger odasının canlı mikrofonu."""
+    global _mic_kapali
+    _mic_kapali = bool(kapali)
+
+
+def mic_kapali_mi():
+    return _mic_kapali
+
+
+def canli_ses_kesik_mi():
+    return _mikrofon_kisik or _mic_kapali
+
+
 def hedeflerden_digeri_cikar(hedefler):
-    """Bas-konuş basılıyken yalnız diger odasına giden canlı sesi düşür."""
-    if not _mikrofon_kisik:
+    """Bas-konuş veya ses kapalıyken yalnız diger odasına giden canlı sesi düşür."""
+    if not canli_ses_kesik_mi():
         return list(hedefler or [])
     return [kod for kod in (hedefler or []) if kod != DUKKAN]
 

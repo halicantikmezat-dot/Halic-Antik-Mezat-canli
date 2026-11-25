@@ -1700,6 +1700,8 @@
             socket.emit("join_dukkan", { dukkan: "diger", isim: "Yonetici", dinle: true });
         }
         if (typeof kameraYayininiYenile === "function") kameraYayininiYenile();
+        if (typeof digerMikrofonDurumunuBildir === "function") digerMikrofonDurumunuBildir();
+        if (typeof digerYayinSesIzleriniUygula === "function") digerYayinSesIzleriniUygula();
     }
     socket.on("connect", yoneticiOdayaGir);
     if (socket.io && socket.io.on) socket.io.on("reconnect", yoneticiOdayaGir);
@@ -1754,12 +1756,49 @@
         audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
     }
 
+    function digerMikrofonOdasiMi() {
+        let hedef = "tumu";
+        try { hedef = rejiHedefKodu(); } catch (e) { hedef = "tumu"; }
+        if (hedef === "diger") return true;
+        return typeof seciliDukkan === "string" && seciliDukkan === "diger";
+    }
+
+    function digerMikrofonDurumunuBildir() {
+        if (!digerMikrofonOdasiMi() || !socket) return;
+        socket.emit("diger_mikrofon_durum", {
+            dukkan: "diger",
+            mic_kapali: !adminSesAcik
+        });
+    }
+
+    function digerYayinSesIzleriniUygula() {
+        if (!digerMikrofonOdasiMi()) return;
+        const rejiKapali = typeof digerRejiMute !== "undefined" && !!digerRejiMute;
+        const acik = !!adminSesAcik && !rejiKapali;
+        let patronDahil = false;
+        try { patronDahil = rejiHedefKodu() === "diger"; } catch (e) { patronDahil = false; }
+        function yaz(akis) {
+            if (!akis || !akis.getAudioTracks) return;
+            akis.getAudioTracks().forEach(function (iz) {
+                try { iz.enabled = acik; } catch (err) {}
+            });
+        }
+        if (typeof restreamAkis !== "undefined" && restreamAkis) yaz(restreamAkis);
+        if (patronDahil && typeof patronYayinda !== "undefined" && patronYayinda && typeof moderatorAkis !== "undefined") {
+            yaz(moderatorAkis);
+        }
+    }
+
     const adminSesDugmesi = document.getElementById("adminSesDugmesi");
     if (adminSesDugmesi) {
         adminSesDugmesi.addEventListener("click", function () {
             adminSesAcik = !adminSesAcik;
             adminSesDugmesi.textContent = adminSesAcik ? "Ses açık" : "Ses kapalı";
+            adminSesDugmesi.style.background = adminSesAcik ? "#166534" : "";
             if (!adminSesAcik) calanSesiDurdur();
+            if (!digerMikrofonOdasiMi()) return;
+            digerYayinSesIzleriniUygula();
+            digerMikrofonDurumunuBildir();
         });
     }
 
@@ -3277,6 +3316,7 @@
         }
         restreamKayit = null;
         restreamAkis = akis;
+        if (typeof digerYayinSesIzleriniUygula === "function") digerYayinSesIzleriniUygula();
         iriunIzleriDinle(akis);
         if (deviceId) iriunSecimiYaz(deviceId);
         kameraYayininiAc();
@@ -3714,6 +3754,7 @@
 
     function digerRejiCanliSesiKapat(kapali) {
         digerRejiMute = !!kapali;
+        if (typeof digerYayinSesIzleriniUygula === "function") digerYayinSesIzleriniUygula();
         if (socket) socket.emit('diger_reji_mikrofon_mute', { mute: !!kapali, dukkan: 'diger' });
     }
 
@@ -3772,10 +3813,15 @@
     async function basKonusBaslat(e) {
         if (e) e.preventDefault();
         if (moderatorBasili) return;
-        const diger = rejiHedefKodu() === 'diger';
-        if (patronYayinda && !diger) return;
+        const hedef = rejiHedefKodu();
+        const diger = hedef === 'diger';
+        const digerIzleyici = diger || seciliDukkan === 'diger';
+        if (patronYayinda && !diger) {
+            if (digerIzleyici && adminSesAcik) digerRejiCanliSesiKapat(true);
+            return;
+        }
         moderatorBasili = true;
-        if (diger) digerRejiCanliSesiKapat(true);
+        if (digerIzleyici && (adminSesAcik || diger)) digerRejiCanliSesiKapat(true);
         if (patronYayinda && diger) {
             try {
                 await gizliRejiAyriKayitBaslat();
@@ -3797,7 +3843,7 @@
             if (!moderatorBasili) {
                 moderatorAkis.getTracks().forEach(function (track) { track.stop(); });
                 moderatorAkis = null;
-                if (diger) digerRejiCanliSesiKapat(false);
+                if (digerRejiMute) digerRejiCanliSesiKapat(false);
                 return;
             }
             moderatorDilimiBaslat();
@@ -3807,7 +3853,7 @@
             }
         } catch (err) {
             moderatorBasili = false;
-            if (diger) digerRejiCanliSesiKapat(false);
+            if (digerRejiMute) digerRejiCanliSesiKapat(false);
             console.log("[MIC] Kayıt engeli:", err);
             alert("Mikrofon erişim izni verilmedi: " + err);
         }
@@ -3884,10 +3930,11 @@
         moderatorSira = 0;
         rec.ondataavailable = function (ev) {
             if (!patronYayinda || !ev.data || !ev.data.size) return;
-            const kesildi = digerRejiMute;
-            if (kesildi) return;
+            const hedef = rejiHedefKodu();
+            if (hedef === "diger" && (digerRejiMute || !adminSesAcik)) return;
             blobBase64(ev.data).then(function (b64) {
-                if (kesildi || digerRejiMute) return;
+                const hedefSimdi = rejiHedefKodu();
+                if (hedefSimdi === "diger" && (digerRejiMute || !adminSesAcik)) return;
                 if (!b64 || !patronYayinda) return;
                 moderatorSira += 1;
                 socket.emit("moderator_ses_parcasi", {
@@ -3914,6 +3961,7 @@
                 moderatorAkis = null;
                 return;
             }
+            if (typeof digerYayinSesIzleriniUygula === "function") digerYayinSesIzleriniUygula();
             yayinDilimiBaslat();
             patronTanimaBaslat();
         } catch (err) {

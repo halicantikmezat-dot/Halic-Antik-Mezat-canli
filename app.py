@@ -12691,6 +12691,8 @@ def handle_join_dukkan(data):
             },
         )
         _katilana_sahneyi_ver(dukkan)
+        if dukkan == "diger":
+            emit("diger_mikrofon_durum", _diger_mikrofon_paketi(), to=request.sid)
     finally:
         db.session.remove()
 
@@ -12743,6 +12745,34 @@ def diger_izleyici_ayril_olayi(veri):
         db.session.remove()
 
 
+def _diger_mikrofon_paketi():
+    kapali = bool(diger_kapi.mic_kapali_mi())
+    return {
+        "dukkan": "diger",
+        "mic_kapali": kapali,
+        "sus": bool(diger_kapi.canli_ses_kesik_mi()),
+    }
+
+
+def _diger_mikrofon_duyur():
+    socketio.emit("diger_mikrofon_durum", _diger_mikrofon_paketi(), room="diger")
+
+
+@socketio.on("diger_mikrofon_durum")
+def diger_mikrofon_durum(veri):
+    """Ses açık/kapalı anahtarı. Yalnız diger odasının canlı mikrofonunu keser."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        if str(veri.get("dukkan") or "").strip().lower() != "diger":
+            return
+        diger_kapi.mic_kapat(bool(veri.get("mic_kapali")))
+        _diger_mikrofon_duyur()
+    finally:
+        db.session.remove()
+
+
 @socketio.on("diger_reji_mikrofon_mute")
 def diger_reji_mikrofon_mute(veri):
     """Bas-konuş basılıyken yalnız diger odasına giden patron sesini keser."""
@@ -12753,6 +12783,7 @@ def diger_reji_mikrofon_mute(veri):
         if str(veri.get("dukkan") or "").strip().lower() != "diger":
             return
         diger_kapi.mikrofon_kis(bool(veri.get("mute")))
+        _diger_mikrofon_duyur()
     finally:
         db.session.remove()
 
