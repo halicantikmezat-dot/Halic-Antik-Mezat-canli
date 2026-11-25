@@ -3634,9 +3634,23 @@
         restreamKayit = rec;
     }
 
+    function restreamParcasiBase64(blob) {
+        return new Promise(function (resolve) {
+            const okuyucu = new FileReader();
+            okuyucu.onloadend = function () {
+                const sonuc = String(okuyucu.result || "");
+                const im = sonuc.indexOf(";base64,");
+                resolve(im >= 0 ? sonuc.slice(im + 8) : "");
+            };
+            okuyucu.onerror = function () { resolve(""); };
+            okuyucu.readAsDataURL(blob);
+        });
+    }
+
     function restreamParcaGonder(blob, baslik, mime) {
+        const kodla = CANLI_YAYIN_DUKKANI === "diger" ? restreamParcasiBase64 : blobBase64;
         restreamKuyruk = restreamKuyruk.then(function () {
-            return blobBase64(blob).then(function (b64) {
+            return kodla(blob).then(function (b64) {
                 if (!b64 || !restreamAcik) return null;
                 return fetch('/api/canli-yayin/kontrol', {
                     method: 'POST',

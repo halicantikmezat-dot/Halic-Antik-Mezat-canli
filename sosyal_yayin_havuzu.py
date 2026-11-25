@@ -152,10 +152,12 @@ def parca_yaz(paket, baslik, mime):
             return {"adet": 0, "yeniden": False}
         yeniden = bool(_YENIDEN)
         _YENIDEN = False
-        if bool(baslik) or _ebml_mi(paket) or not _BASLIK:
+        if _ebml_mi(paket):
             baslik = True
             _BASLIK = paket
             _MIME = str(mime or "")
+        elif not _BASLIK:
+            return {"adet": 0, "yeniden": False}
         else:
             baslik = False
         hesaplar = [dict(kayit) for kayit in _oku() if kayit.get("dahil")]
@@ -502,9 +504,12 @@ def _slot_yaz(slot, paket, baslik, mime):
                 _proc_birak(slot)
                 proc = None
             if not atla and proc is None:
-                if not baslik:
+                if baslik and not _ebml_mi(paket):
+                    slot["durum"] = "bekliyor"
+                    atla = True
+                elif not baslik:
                     on_ek, on_mime = _baslik_kopya()
-                    if not on_ek:
+                    if not on_ek or not _ebml_mi(on_ek):
                         slot["durum"] = "bekliyor"
                         atla = True
                     else:
@@ -559,6 +564,8 @@ def _hata_kilit_icinde(slot, metin):
 
 def _baslik_kopya():
     with _KILIT:
+        if _BASLIK and not _ebml_mi(_BASLIK):
+            return b"", ""
         return _BASLIK, _MIME
 
 
@@ -826,6 +833,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     baslik_ek, baslik_mime = (b"", "")
     if not baslik:
         baslik_ek, baslik_mime = _baslik_kopya()
+        if baslik_ek and not _ebml_mi(baslik_ek):
+            baslik_ek, baslik_mime = b"", ""
     kapanan = None
     durdu = False
     nesil = 0
@@ -848,7 +857,9 @@ def _encoder_yaz(ortak, paket, baslik, mime):
             ortak["proc"] = None
             proc = None
         if proc is None and not durdu:
-            if not baslik:
+            if baslik and not _ebml_mi(paket):
+                durdu = "bekliyor"
+            elif not baslik:
                 if not baslik_ek:
                     durdu = "bekliyor"
                 else:
