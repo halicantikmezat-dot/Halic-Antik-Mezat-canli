@@ -5252,8 +5252,13 @@ def chat_mesaj_gonder():
 
     zaman_damgasi = time.strftime("%H:%M:%S")
 
-    # Rakam veya Türkçe yazı tutarı: "7000", "10 bin", "yedi bin", "yedibin".
-    teklif_tutari = turkce_tutar_coz(mesaj)
+    # Rakam veya Türkçe yazı tutarı: "7000", "1.500", "iki bin tl", "beş yüz".
+    try:
+        import canli_yayin_havuzu as _havuz_pey
+
+        teklif_tutari = _havuz_pey.yorumdan_pey_coz(mesaj, turkce_tutar_coz)
+    except Exception:
+        teklif_tutari = turkce_tutar_coz(mesaj)
 
     oda = odalar[dukkan]
     aktif_urun_id = oda.get("aktif_urun_id")
@@ -5269,14 +5274,31 @@ def chat_mesaj_gonder():
         if not olur:
             return jsonify({"success": False, "mesaj": uyari})
 
+    platform_adi = str(platform or "Web").strip() or "Web"
     yorum_verisi = {
-        "platform": platform,
+        "platform": platform_adi,
         "kullanici": kullanici,
         "mesaj": mesaj,
         "zaman": zaman_damgasi,
         "dukkan": dukkan,
+        "havuz": True,
+        "rozet": "[" + platform_adi + "]",
+        "kimlik": hashlib.sha1(
+            (
+                str(dukkan)
+                + "|"
+                + platform_adi
+                + "|"
+                + kullanici
+                + "|"
+                + mesaj
+                + "|"
+                + zaman_damgasi
+            ).encode("utf-8", "replace")
+        ).hexdigest()[:16],
     }
     socketio.emit("yeni_canli_yorum", yorum_verisi, room=dukkan)
+    socketio.emit("yeni_canli_yorum", yorum_verisi, room="admin_room")
     _nabiz_dokun(dukkan)
 
     if teklif_tutari and teklif_tutari > 0 and aktif_urun_id:

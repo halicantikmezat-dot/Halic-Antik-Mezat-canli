@@ -107,6 +107,8 @@ _PLATFORM_AD = {
     "x": "X",
     "twitter": "X",
     "telegram": "Telegram",
+    "web": "Web",
+    "site": "Web",
 }
 _SITE = "https://halicantikcanli.com"
 _SABIT_CANLI_DUKKAN = "diger"
@@ -119,7 +121,19 @@ _PUSH_TABLO = "canli_yayin_push"
 _SOSYAL_DB_ANAHTAR = "sosyal_havuz"
 _SOSYAL_REDIS = "halic:canli_yayin:sosyal_havuz"
 _DINLEYICI_KILIT = threading.RLock()
-_DINLEYICI_ADLAR = ("youtube", "tiktok", "twitch", "kick", "meta", "instagram", "facebook")
+_DINLEYICI_ADLAR = (
+    "youtube",
+    "tiktok",
+    "twitch",
+    "kick",
+    "meta",
+    "instagram",
+    "facebook",
+    "telegram",
+)
+_DINLEYICI_SABIT = "havuz"
+_DURUMLAR = ("bagli", "baglaniyor", "hata", "kapali")
+_GOZCU_BASLADI = False
 _DINLEYICI_DURUM = {ad: "kapali" for ad in _DINLEYICI_ADLAR}
 _DINLEYICI_MESAJ = {ad: "" for ad in _DINLEYICI_ADLAR}
 _DINLEYICI_HEDEF = {ad: "" for ad in _DINLEYICI_ADLAR}
@@ -214,6 +228,10 @@ def bagla(
         _eski_restream_satirini_havuza_al(_kopya())
     except Exception as hata:
         print(f"[SOSYAL HAVUZ] kalici baglanti atlandi: {hata}", flush=True)
+    try:
+        _dinleyici_gozcusunu_ac()
+    except Exception as hata:
+        print(f"[CANLI YAYIN] dinleyici gozcusu atlandi: {hata}", flush=True)
     print(
         "[CANLI YAYIN] pytchat="
         + ("acik" if _PYTCHAT_VAR else "pasif")
@@ -290,6 +308,10 @@ def meta_webhook_yaniti():
     govdeler = [{anahtar: deger for anahtar, deger in oge.items() if anahtar != "kod"} for oge in sonuclar]
     if kabul:
         _meta_not("Son yorum alındı", True)
+        for satir in satirlar[:20]:
+            platform = _meta_platform(satir.get("platform") or satir.get("kaynak") or "")
+            if platform in ("facebook", "instagram"):
+                _dinleyici_durum_yaz(platform, "bagli", "Son yorum alındı")
         return jsonify({"success": True, "adet": len(kabul), "sonuclar": govdeler})
     kodlar = [int(oge.get("kod") or 400) for oge in sonuclar]
     kod = 409 if 409 in kodlar else (429 if 429 in kodlar else 400)
@@ -408,8 +430,80 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False, say
     }
 
 
+_PEY_BIR = {
+    "bir": 1, "iki": 2, "üç": 3, "uc": 3, "dört": 4, "dort": 4,
+    "beş": 5, "bes": 5, "altı": 6, "alti": 6, "yedi": 7, "sekiz": 8, "dokuz": 9,
+}
+_PEY_ON = {
+    "on": 10, "yirmi": 20, "otuz": 30, "kırk": 40, "kirk": 40, "elli": 50,
+    "altmış": 60, "altmis": 60, "yetmiş": 70, "yetmis": 70, "seksen": 80, "doksan": 90,
+}
+_PEY_SOZ = set(_PEY_BIR) | set(_PEY_ON) | {"yüz", "yuz", "bin", "milyon"}
+_PEY_BIRIM = {"tl", "lira", "peydir", "pey"}
+
+
+def _soz_tutar(parcalar):
+    toplam, gecici = 0, 0
+    for k in parcalar:
+        if k.isdigit():
+            gecici += int(k)
+        elif k in _PEY_BIR:
+            gecici += _PEY_BIR[k]
+        elif k in _PEY_ON:
+            gecici += _PEY_ON[k]
+        elif k in ("yüz", "yuz"):
+            gecici = (gecici or 1) * 100
+        elif k == "bin":
+            toplam += (gecici or 1) * 1000
+            gecici = 0
+        elif k == "milyon":
+            toplam += (gecici or 1) * 1_000_000
+            gecici = 0
+        else:
+            return None
+    sonuc = toplam + gecici
+    return float(sonuc) if sonuc > 0 else None
+
+
+def _pey_ifadeleri(metin):
+    """Cümle içinden son sayısal veya Türkçe yazılı teklifi ayıklar."""
+    ham = str(metin or "").lower().replace("₺", " tl ")
+    ham = re.sub(r"(\d)\s*(tl|lira)\b", r"\1 \2", ham)
+    ham = re.sub(r"(\d)[.](\d{3})\b", r"\1\2", ham)
+    ham = re.sub(r"(\d)[,](\d{3})\b", r"\1\2", ham)
+    ham = re.sub(r"(\d)\s+(\d{3})\b", r"\1\2", ham)
+    ham = re.sub(r"[^0-9a-zçğıöşü\s]", " ", ham)
+    ham = re.sub(r"\s+", " ", ham).strip()
+    token = ham.split()
+    if not token:
+        return None
+    son = None
+    n = len(token)
+    i = 0
+    while i < n:
+        if token[i] in _PEY_SOZ or token[i].isdigit():
+            j = i
+            while j < n and j - i < 6 and (token[j] in _PEY_SOZ or token[j].isdigit()):
+                j += 1
+            pencere = token[i:j]
+            yaninda = j < n and token[j] in _PEY_BIRIM
+            buyukluk = any(k in ("yüz", "yuz", "bin", "milyon") for k in pencere)
+            rakamlar = [k for k in pencere if k.isdigit()]
+            rakam_yeter = any(len(k) >= 3 for k in rakamlar) or (
+                yaninda and any(int(k) > 0 for k in rakamlar)
+            )
+            if buyukluk or yaninda or rakam_yeter:
+                deger = _soz_tutar(pencere)
+                if deger and deger > 0:
+                    son = deger
+            i = max(j, i + 1)
+            continue
+        i += 1
+    return son
+
+
 def yorumdan_pey_coz(mesaj, tutar_coz=None):
-    """Yorumdaki geçerli sayısal teklifi ayıklar. Cümle içindeki saat gibi kısa sayıları geçmez."""
+    """Yorumdaki geçerli teklifi ayıklar. Saat gibi kısa sayıları geçmez."""
     metin = str(mesaj or "").strip()
     if not metin:
         return None
@@ -421,6 +515,9 @@ def yorumdan_pey_coz(mesaj, tutar_coz=None):
         deger = _sayiya(tam)
         if deger and deger > 0:
             return deger
+    ifade = _pey_ifadeleri(metin)
+    if ifade and ifade > 0:
+        return ifade
     tl_aday = re.findall(
         r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{2,7})\s*(?:tl|lira|₺)\b",
         metin,
@@ -762,10 +859,28 @@ def _yorum_yayinla(dukkan, platform, kullanici, mesaj, reji_ek=None, sayfa=""):
     sayfa_adi = str(sayfa or "").strip()[:80]
     if dukkan == _SABIT_CANLI_DUKKAN and sayfa_adi:
         paket["sayfa"] = sayfa_adi
+    paket["kimlik"] = hashlib.sha1(
+        (
+            str(dukkan)
+            + "|"
+            + str(platform)
+            + "|"
+            + str(kullanici)
+            + "|"
+            + str(mesaj)
+            + "|"
+            + paket["zaman"]
+        ).encode("utf-8", "replace")
+    ).hexdigest()[:16]
     _socketio.emit(
         "yeni_canli_yorum",
         paket,
         room=dukkan,
+    )
+    _socketio.emit(
+        "yeni_canli_yorum",
+        paket,
+        room="admin_room",
     )
     try:
         _reji_duvar_satiri_yayinla(dukkan, platform, kullanici, mesaj, reji_ek)
@@ -1029,8 +1144,42 @@ def _webhook_adresi(kayit):
     return _guvenli_url(os.environ.get("MAKE_N8N_WEBHOOK_URL") or "")
 
 
+def _odada_urun_var(kod):
+    odalar = _odalar if isinstance(_odalar, dict) else {}
+    oda = odalar.get(kod)
+    return bool(isinstance(oda, dict) and oda.get("aktif_urun_id"))
+
+
+def _sahne_dukkani():
+    """Peyin işleneceği oda: sayacı dönen sahne, yoksa ürünü açık olan oda."""
+    odalar = _odalar if isinstance(_odalar, dict) else {}
+    canli = []
+    dolu = []
+    for kod, oda in odalar.items():
+        if kod not in _dukkanlar or not isinstance(oda, dict) or not oda.get("aktif_urun_id"):
+            continue
+        dolu.append(kod)
+        if oda.get("sayac_aktif"):
+            canli.append(kod)
+    aktif = str(_kopya().get("aktif_dukkan") or "")
+    if len(canli) == 1:
+        return canli[0]
+    if canli:
+        return aktif if aktif in canli else canli[0]
+    if aktif in dolu:
+        return aktif
+    if len(dolu) == 1:
+        return dolu[0]
+    return aktif if aktif in _dukkanlar else ""
+
+
 def _hedef_dukkan(istenen):
     kod = _dukkan_kodu(istenen) if str(istenen or "").strip() else ""
+    if kod and (_odada_urun_var(kod) or not _sahne_dukkani()):
+        return kod
+    sahne = _sahne_dukkani()
+    if sahne:
+        return sahne
     if kod:
         return kod
     return str(_kopya().get("aktif_dukkan") or "")
@@ -1077,6 +1226,8 @@ def _kanallari_temizle(ham):
             temiz[anahtar] = _kick_kaynak(deger)
         elif anahtar in ("instagram", "facebook"):
             temiz[anahtar] = _profil_kaynak(deger)
+        elif anahtar == "telegram":
+            temiz[anahtar] = _telegram_kaynak(deger)
         else:
             temiz[anahtar] = _guvenli_url(deger or "")
     return temiz
@@ -1533,43 +1684,445 @@ def push_abone_yaniti():
     return jsonify({"success": True, "abone": _push_sayisi()})
 
 
+_YT_CANLI_ONBELLEK = {}
+
+
+def _render_ortami():
+    return bool(
+        os.environ.get("RENDER")
+        or os.environ.get("RENDER_SERVICE_ID")
+        or os.environ.get("RENDER_EXTERNAL_URL")
+    )
+
+
+def _meta_token():
+    for ad in (
+        "META_PAGE_ACCESS_TOKEN",
+        "FACEBOOK_PAGE_ACCESS_TOKEN",
+        "FB_PAGE_ACCESS_TOKEN",
+        "INSTAGRAM_ACCESS_TOKEN",
+    ):
+        deger = (os.environ.get(ad) or "").strip()
+        if deger:
+            return deger
+    return ""
+
+
+def _telegram_token():
+    return (os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN") or "").strip()
+
+
+def _telegram_kaynak(deger):
+    metin = str(deger or "").strip()
+    if not metin:
+        return ""
+    if metin.lower().startswith("http://") or metin.lower().startswith("https://"):
+        return _guvenli_url(metin)
+    return metin[:160]
+
+
+def _telegram_sohbet(ham):
+    metin = unquote(str(ham or "").strip())
+    if not metin:
+        return ""
+    eslesen = re.search(r"t\.me/([A-Za-z0-9_]{3,64})", metin, flags=re.IGNORECASE)
+    if eslesen:
+        return eslesen.group(1).lower()
+    if re.fullmatch(r"-?\d{4,20}", metin):
+        return metin
+    if re.fullmatch(r"@?[A-Za-z0-9_]{3,64}", metin):
+        return metin.lstrip("@").lower()
+    return ""
+
+
+def _telegram_uyuyor(sohbet, beklenen):
+    if not beklenen or beklenen == "bot":
+        return True
+    sohbet = sohbet if isinstance(sohbet, dict) else {}
+    kullanici = str(sohbet.get("username") or "").lower()
+    kim = str(sohbet.get("id") or "")
+    hedef = str(beklenen).lstrip("@").lower()
+    return hedef in (kullanici, kim, kim.lstrip("-"))
+
+
+def _youtube_canli_coz(ham):
+    """Kanal veya /live adresinden video kimliğini çözer. Sonuç kısa süre önbellekte kalır."""
+    import time
+
+    metin = str(ham or "").strip()
+    vid = _youtube_video_id(metin)
+    if vid:
+        return vid
+    if not metin:
+        return ""
+    anahtar = metin.lower()
+    simdi = time.time()
+    on = _YT_CANLI_ONBELLEK.get(anahtar)
+    if on and simdi - on[0] < on[2]:
+        return on[1]
+    adres = metin
+    if adres.startswith("@"):
+        adres = "https://www.youtube.com/" + adres + "/live"
+    elif "youtube.com" in adres.lower() or "youtu.be" in adres.lower():
+        if not adres.lower().startswith("http"):
+            adres = "https://" + adres
+        if "/watch" not in adres.lower() and not adres.rstrip("/").lower().endswith("/live"):
+            adres = adres.rstrip("/") + "/live"
+    else:
+        return ""
+    bulunan = ""
+    try:
+        import requests
+
+        yanit = requests.get(
+            adres,
+            timeout=12,
+            allow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
+        bulunan = _youtube_video_id(
+            getattr(yanit, "url", ""),
+            (getattr(yanit, "text", "") or "")[:20000],
+        )
+    except Exception as hata:
+        print(f"[CANLI YAYIN] youtube canli cozum: {hata}", flush=True)
+        bulunan = ""
+    _YT_CANLI_ONBELLEK[anahtar] = (simdi, bulunan, 90 if bulunan else 20)
+    return bulunan
+
+
+def _youtube_aday(ham, yayin):
+    vid = _youtube_video_id(ham, yayin)
+    if vid:
+        return vid
+    coz = _youtube_canli_coz(ham or yayin)
+    if coz:
+        return coz
+    for aday in (ham, yayin):
+        metin = str(aday or "").strip()
+        dusuk = metin.lower()
+        if "youtube.com" in dusuk or "youtu.be" in dusuk or metin.startswith("@"):
+            return metin[:240]
+    return ""
+
+
+def _graph_istek(yol, params, token):
+    import requests
+
+    sorgu = dict(params or {})
+    sorgu["access_token"] = token
+    yanit = requests.get(
+        "https://graph.facebook.com/v21.0/" + str(yol).lstrip("/"),
+        params=sorgu,
+        timeout=20,
+    )
+    try:
+        veri = yanit.json()
+    except Exception:
+        veri = {}
+    if not isinstance(veri, dict):
+        veri = {}
+    if int(getattr(yanit, "status_code", 0) or 0) >= 400 or veri.get("error"):
+        hata = ""
+        if isinstance(veri.get("error"), dict):
+            hata = str(veri["error"].get("message") or "")
+        raise RuntimeError(hata or ("Graph HTTP " + str(getattr(yanit, "status_code", 0))))
+    return veri
+
+
+def _yorum_kayitlari(comments):
+    data = comments.get("data") if isinstance(comments, dict) else None
+    if data is None and isinstance(comments, dict) and comments.get("id"):
+        data = [comments]
+    satirlar = []
+    for oge in data or []:
+        if not isinstance(oge, dict):
+            continue
+        metin = str(oge.get("message") or oge.get("text") or "").strip()
+        if not metin:
+            continue
+        frm = oge.get("from") if isinstance(oge.get("from"), dict) else {}
+        ad = frm.get("username") or frm.get("name") or oge.get("username") or "İzleyici"
+        kim = str(oge.get("id") or (str(ad) + "|" + metin))
+        satirlar.append(
+            {
+                "id": kim,
+                "kullanici": str(ad)[:80],
+                "mesaj": metin[:500],
+                "zaman": str(oge.get("created_time") or oge.get("timestamp") or ""),
+            }
+        )
+    return satirlar
+
+
+def _yorum_taze_mi(ham, bas):
+    metin = str(ham or "").strip()
+    if not metin:
+        return None
+    try:
+        an = datetime.fromisoformat(metin.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+    return an >= bas - 20
+
+
+def _meta_video_kimligi(hedef):
+    eslesen = re.search(r"/(?:videos|live)/(\d{6,20})", str(hedef or ""))
+    return eslesen.group(1) if eslesen else ""
+
+
+def _meta_sayfa_id(hedef, token):
+    env = (os.environ.get("FACEBOOK_PAGE_ID") or os.environ.get("META_PAGE_ID") or "").strip()
+    metin = str(hedef or "").strip()
+    if re.fullmatch(r"\d{6,20}", metin):
+        return metin
+    if re.fullmatch(r"\d{6,20}", env):
+        return env
+    if not token:
+        return ""
+    try:
+        veri = _graph_istek("me", {"fields": "id"}, token)
+    except Exception:
+        return ""
+    return str(veri.get("id") or "")
+
+
+def _ig_hesap_id(hedef, token):
+    env = (os.environ.get("INSTAGRAM_BUSINESS_ID") or os.environ.get("IG_USER_ID") or "").strip()
+    metin = str(hedef or "").strip().lstrip("@")
+    if re.fullmatch(r"\d{6,20}", metin):
+        return metin
+    if re.fullmatch(r"\d{6,20}", env):
+        return env
+    sayfa = _meta_sayfa_id("", token)
+    if not sayfa:
+        return ""
+    veri = _graph_istek(sayfa, {"fields": "instagram_business_account"}, token)
+    hesap = veri.get("instagram_business_account")
+    if not isinstance(hesap, dict):
+        return ""
+    return str(hesap.get("id") or "")
+
+
+def _meta_graph_satirlari(platform, hedef, token):
+    if platform == "instagram":
+        ig = _ig_hesap_id(hedef, token)
+        if not ig:
+            raise RuntimeError("Instagram işletme hesabı bulunamadı")
+        veri = _graph_istek(
+            ig + "/live_media",
+            {"fields": "id,comments.limit(25){id,text,username,timestamp}"},
+            token,
+        )
+        satirlar = []
+        for media in veri.get("data") or []:
+            if isinstance(media, dict):
+                satirlar.extend(_yorum_kayitlari(media.get("comments") or {}))
+        return satirlar
+    video = _meta_video_kimligi(hedef)
+    if video:
+        veri = _graph_istek(
+            video + "/comments",
+            {"fields": "id,message,from,created_time", "limit": 25, "order": "reverse_chronological"},
+            token,
+        )
+        return _yorum_kayitlari(veri)
+    sayfa = _meta_sayfa_id(hedef, token)
+    if not sayfa:
+        raise RuntimeError("Facebook sayfa kimliği yok")
+    veri = _graph_istek(
+        sayfa + "/live_videos",
+        {
+            "fields": "id,status,comments.limit(25){id,message,from,created_time}",
+            "broadcast_status": "LIVE",
+        },
+        token,
+    )
+    satirlar = []
+    for video_kayit in veri.get("data") or []:
+        if isinstance(video_kayit, dict):
+            satirlar.extend(_yorum_kayitlari(video_kayit.get("comments") or {}))
+    return satirlar
+
+
+def _meta_graph_dongu(platform, hedef, dukkan, dur):
+    import time
+
+    token = _meta_token()
+    if not token:
+        _dinleyici_mesaj_yaz(platform, "Sayfa tokeni yok", hedef, durum="hata")
+        if dur is not None:
+            dur.wait(45)
+        return
+    gorulen = set()
+    ilk = True
+    bas = time.time()
+    while dur is None or not dur.is_set():
+        try:
+            satirlar = _meta_graph_satirlari(platform, hedef, token)
+            _dinleyici_durum_yaz(platform, "bagli", "Graph bağlı")
+        except Exception as hata:
+            _dinleyici_mesaj_yaz(platform, "Graph: " + _hata_ozeti(hata), hedef, durum="hata")
+            if dur is not None and dur.wait(12):
+                return
+            continue
+        for satir in satirlar:
+            kim = str(satir.get("id") or "")
+            if not kim or kim in gorulen:
+                continue
+            taze = _yorum_taze_mi(satir.get("zaman"), bas)
+            gorulen.add(kim)
+            if taze is False or (taze is None and ilk):
+                continue
+            _dinleyici_yorum_isle(
+                dukkan,
+                platform,
+                satir.get("kullanici") or platform,
+                satir.get("mesaj") or "",
+            )
+        ilk = False
+        if len(gorulen) > 800:
+            gorulen = set(list(gorulen)[-400:])
+        if dur is not None and dur.wait(4):
+            return
+
+
+def _telegram_dongu(hedef, dukkan, dur):
+    import time
+
+    import requests
+
+    token = _telegram_token()
+    if not token:
+        _dinleyici_mesaj_yaz("telegram", "TELEGRAM_BOT_TOKEN tanımlı değil", hedef, durum="hata")
+        if dur is not None:
+            dur.wait(45)
+        return
+    beklenen = _telegram_sohbet(hedef)
+    ofset = 0
+    bas = int(time.time()) - 5
+    while dur is None or not dur.is_set():
+        try:
+            yanit = requests.get(
+                "https://api.telegram.org/bot" + token + "/getUpdates",
+                params={"timeout": 20, "offset": ofset},
+                timeout=30,
+            )
+            try:
+                veri = yanit.json()
+            except Exception:
+                veri = {}
+            if not isinstance(veri, dict) or not veri.get("ok"):
+                aciklama = str(veri.get("description") or "") if isinstance(veri, dict) else ""
+                raise RuntimeError(aciklama or ("Telegram HTTP " + str(getattr(yanit, "status_code", 0))))
+            _dinleyici_durum_yaz("telegram", "bagli", "Bot bağlı")
+            for guncelleme in veri.get("result") or []:
+                if not isinstance(guncelleme, dict):
+                    continue
+                ofset = int(guncelleme.get("update_id") or 0) + 1
+                mesaj = guncelleme.get("message") or guncelleme.get("channel_post") or {}
+                if not isinstance(mesaj, dict):
+                    continue
+                if int(mesaj.get("date") or 0) < bas:
+                    continue
+                if not _telegram_uyuyor(mesaj.get("chat") or {}, beklenen):
+                    continue
+                metin = mesaj.get("text") or mesaj.get("caption") or ""
+                gonderen = mesaj.get("from") if isinstance(mesaj.get("from"), dict) else {}
+                sohbet = mesaj.get("chat") if isinstance(mesaj.get("chat"), dict) else {}
+                ad = (
+                    gonderen.get("username")
+                    or gonderen.get("first_name")
+                    or sohbet.get("title")
+                    or "Telegram"
+                )
+                if str(metin).strip():
+                    _dinleyici_yorum_isle(dukkan, "telegram", ad, metin)
+        except Exception as hata:
+            _dinleyici_mesaj_yaz("telegram", "Telegram: " + _hata_ozeti(hata), hedef, durum="hata")
+            if dur is not None and dur.wait(8):
+                return
+
+
+def _dinleyici_gozcu():
+    import time
+
+    while True:
+        time.sleep(20)
+        try:
+            if str(_kopya().get("aktif_dukkan") or "") or _sahne_dukkani():
+                platform_dinleyici_baslat()
+            else:
+                platform_dinleyici_durdur()
+        except Exception as hata:
+            print(f"[CANLI YAYIN] gozcu: {hata}", flush=True)
+
+
+def _dinleyici_gozcusunu_ac():
+    global _GOZCU_BASLADI
+    if _GOZCU_BASLADI:
+        return
+    _GOZCU_BASLADI = True
+    threading.Thread(target=_dinleyici_gozcu, name="canli-dinleyici-gozcu", daemon=True).start()
+
+
 def platform_dinleyici_baslat(kayit=None):
-    """YouTube, TikTok, Twitch ve Kick sohbetini mezat döngüsünden ayrı işçide açar."""
+    """Tüm platform sohbetlerini mezat döngüsünden ayrı işçide açar.
+
+    Hedef dükkan yorum anında çözülür; dükkan sırası değişince soket yeniden açılmaz.
+    """
     kayit = kayit or _kopya()
     kod = str(kayit.get("aktif_dukkan") or "")
-    if not kod:
+    if not kod and not _sahne_dukkani():
         platform_dinleyici_durdur()
         return _dinleyici_ozet(kayit)
     kanallar = kayit.get("kanallar") or {}
     yt_ham = str(kanallar.get("youtube") or "")
-    yt = _youtube_video_id(yt_ham, kayit.get("yayin_url") or "")
+    yt = _youtube_aday(yt_ham, kayit.get("yayin_url") or "")
     tt_ham = str(kanallar.get("tiktok") or "")
     tt = _tiktok_kullanici(tt_ham)
     tw_ham = str(kanallar.get("twitch") or "")
     tw = _twitch_kanal(tw_ham)
     kk_ham = str(kanallar.get("kick") or "")
     kk = _kick_kanal(kk_ham)
-    _dinleyici_yenile("youtube", yt, kod, _youtube_dongu)
-    _dinleyici_yenile("tiktok", tt, kod, _tiktok_dongu)
-    _dinleyici_yenile("twitch", tw, kod, _twitch_dongu)
-    _dinleyici_yenile("kick", kk, kod, _kick_dongu)
-    _meta_not("Yorum ucu açık", True)
+    fb = _profil_kaynak(kanallar.get("facebook") or "")
+    ig = _profil_kaynak(kanallar.get("instagram") or "")
+    tg = str(kanallar.get("telegram") or "").strip()
+    sabit = _DINLEYICI_SABIT
+    _dinleyici_yenile("youtube", yt, sabit, _youtube_dongu if yt else None)
+    _dinleyici_yenile("tiktok", tt, sabit, _tiktok_dongu if tt else None)
+    _dinleyici_yenile("twitch", tw, sabit, _twitch_dongu if tw else None)
+    _dinleyici_yenile("kick", kk, sabit, _kick_dongu if kk else None)
+    if fb or _meta_token():
+        _dinleyici_yenile("facebook", fb or "me", sabit, _facebook_kopru_dongu)
+    else:
+        _dinleyici_yenile("facebook", "", "", None)
+    if ig or _meta_token():
+        _dinleyici_yenile("instagram", ig or "me", sabit, _instagram_kopru_dongu)
+    else:
+        _dinleyici_yenile("instagram", "", "", None)
+    if tg or _telegram_token():
+        _dinleyici_yenile("telegram", tg or "bot", sabit, _telegram_dongu)
+    else:
+        _dinleyici_yenile("telegram", "", "", None)
+    if fb or ig or _meta_token():
+        _dinleyici_durum_yaz("meta", "baglaniyor", "Webhook bekleniyor")
+    else:
+        _meta_not("", False)
     if (yt_ham.strip() or str(kayit.get("yayin_url") or "").strip()) and not yt:
-        _dinleyici_mesaj_yaz("youtube", "YouTube video kimliği ayıklanamadı")
+        _dinleyici_mesaj_yaz("youtube", "YouTube video kimliği ayıklanamadı", durum="hata")
     if tt_ham.strip() and not tt:
-        _dinleyici_mesaj_yaz("tiktok", "TikTok kullanıcı adı ayıklanamadı")
+        _dinleyici_mesaj_yaz("tiktok", "TikTok kullanıcı adı ayıklanamadı", durum="hata")
     if tw_ham.strip() and not tw:
-        _dinleyici_mesaj_yaz("twitch", "Twitch kullanıcı adı ayıklanamadı")
+        _dinleyici_mesaj_yaz("twitch", "Twitch kullanıcı adı ayıklanamadı", durum="hata")
     if kk_ham.strip() and not kk:
-        _dinleyici_mesaj_yaz("kick", "Kick kullanıcı adı ayıklanamadı")
+        _dinleyici_mesaj_yaz("kick", "Kick kullanıcı adı ayıklanamadı", durum="hata")
     return _dinleyici_ozet(kayit)
 
 
 def platform_dinleyici_durdur():
-    _dinleyici_yenile("youtube", "", "", None)
-    _dinleyici_yenile("tiktok", "", "", None)
-    _dinleyici_yenile("twitch", "", "", None)
-    _dinleyici_yenile("kick", "", "", None)
+    for ad in ("youtube", "tiktok", "twitch", "kick", "facebook", "instagram", "telegram"):
+        _dinleyici_yenile(ad, "", "", None)
     _meta_not("", False)
 
 
@@ -1601,28 +2154,38 @@ def _dinleyici_yenile(ad, hedef, dukkan, fn):
         else:
             dur = threading.Event()
             _DINLEYICI_DUR[ad] = dur
-            _DINLEYICI_DURUM[ad] = "kapali"
+            _DINLEYICI_DURUM[ad] = "baglaniyor"
             _DINLEYICI_MESAJ[ad] = "Bağlanıyor"
 
             def govde(hedef=hedef, dukkan=dukkan, dur=dur, fn=fn, ad=ad):
-                try:
-                    fn(hedef, dukkan, dur)
-                except Exception as hata:
-                    _dinleyici_mesaj_yaz(ad, _hata_ozeti(hata), hedef)
-                finally:
-                    yayinla = False
+                while not dur.is_set():
+                    _dinleyici_durum_yaz(ad, "baglaniyor", "Bağlanıyor")
+                    try:
+                        fn(hedef, dukkan, dur)
+                    except Exception as hata:
+                        if not dur.is_set():
+                            _dinleyici_mesaj_yaz(ad, _hata_ozeti(hata), hedef, durum="hata")
+                    if dur.is_set():
+                        break
                     with _DINLEYICI_KILIT:
-                        if _DINLEYICI_HEDEF.get(ad) == hedef and _DINLEYICI_DUR.get(ad) is dur:
-                            if _DINLEYICI_DURUM.get(ad) == "bagli":
-                                _DINLEYICI_DURUM[ad] = "kapali"
-                                if (_DINLEYICI_MESAJ.get(ad) or "") == "Sohbet bağlı":
-                                    _DINLEYICI_MESAJ[ad] = "Dinleyici kapandı"
-                                yayinla = True
-                            else:
-                                _DINLEYICI_DURUM[ad] = "kapali"
-                    _dinleyici_kalici()
-                    if yayinla:
-                        _olcum_yayinla(zorla=True)
+                        if _DINLEYICI_HEDEF.get(ad) != hedef or _DINLEYICI_DUR.get(ad) is not dur:
+                            return
+                        durum = _DINLEYICI_DURUM.get(ad)
+                        mesaj = _DINLEYICI_MESAJ.get(ad) or ""
+                    if durum == "hata" and mesaj:
+                        if dur.wait(8):
+                            break
+                        continue
+                    _dinleyici_durum_yaz(ad, "baglaniyor", "Bağlantı koptu, yeniden bağlanıyor")
+                    if dur.wait(8):
+                        break
+                with _DINLEYICI_KILIT:
+                    if _DINLEYICI_HEDEF.get(ad) == hedef and _DINLEYICI_DUR.get(ad) is dur:
+                        _DINLEYICI_DURUM[ad] = "kapali"
+                        if dur.is_set():
+                            _DINLEYICI_MESAJ[ad] = ""
+                _dinleyici_kalici()
+                _olcum_yayinla(zorla=True)
 
             isci = threading.Thread(target=govde, name="canli-" + ad, daemon=True)
             _DINLEYICI_IS[ad] = isci
@@ -1635,21 +2198,31 @@ def _dinleyici_yenile(ad, hedef, dukkan, fn):
 
 
 def _youtube_dongu(video_id, dukkan, dur):
+    ham = video_id
+    cozulen = _youtube_canli_coz(ham) or _youtube_video_id(ham)
+    video_id = _youtube_video_id(cozulen or ham)
+    if not video_id:
+        _dinleyici_mesaj_yaz("youtube", "YouTube canlı video kimliği çözülemedi", ham, durum="hata")
+        if dur is not None:
+            dur.wait(20)
+        return
     if not _PYTCHAT_VAR or pytchat is None:
         _pasif_uyar("youtube", "[CANLI YAYIN] pytchat kurulu degil, YouTube dinleyici pasif")
-        _dinleyici_mesaj_yaz("youtube", "pytchat kurulu değil", video_id)
+        _dinleyici_mesaj_yaz("youtube", "pytchat kurulu değil", ham)
+        if dur is not None:
+            dur.wait(30)
         return
     try:
         chat = pytchat.create(video_id=video_id)
     except Exception as hata:
-        _dinleyici_mesaj_yaz("youtube", "YouTube bağlanamadı: " + _hata_ozeti(hata), video_id)
+        _dinleyici_mesaj_yaz("youtube", "YouTube bağlanamadı: " + _hata_ozeti(hata), ham)
         return
     _dinleyici_durum_yaz("youtube", "bagli")
     try:
         while not dur.is_set():
             try:
                 if hasattr(chat, "is_alive") and not chat.is_alive():
-                    _dinleyici_mesaj_yaz("youtube", "YouTube yayını veya sohbeti şu an kapalı", video_id)
+                    _dinleyici_mesaj_yaz("youtube", "YouTube yayını veya sohbeti şu an kapalı", ham)
                     break
                 demet = chat.get()
                 ogeler = demet.sync_items() if hasattr(demet, "sync_items") else []
@@ -1660,7 +2233,7 @@ def _youtube_dongu(video_id, dukkan, dur):
                     ad = getattr(yazar, "name", None) or "YouTube"
                     _dinleyici_yorum_isle(dukkan, "youtube", ad, getattr(satir, "message", "") or "")
             except Exception as hata:
-                _dinleyici_mesaj_yaz("youtube", "YouTube okuma hatası: " + _hata_ozeti(hata), video_id)
+                _dinleyici_mesaj_yaz("youtube", "YouTube okuma hatası: " + _hata_ozeti(hata), ham)
                 break
             if dur.wait(1.0):
                 break
@@ -1681,6 +2254,8 @@ def _tiktok_dongu(kullanici, dukkan, dur):
     if not _TIKTOK_VAR or TikTokLiveClient is None:
         _pasif_uyar("tiktok", "[CANLI YAYIN] TikTokLive kurulu degil, TikTok dinleyici pasif")
         _dinleyici_mesaj_yaz("tiktok", "TikTokLive kurulu değil", unique)
+        if dur is not None:
+            dur.wait(30)
         return
     try:
         client = TikTokLiveClient(unique_id=unique)
@@ -1754,10 +2329,36 @@ def _tarayici_kopru_dongu(ad, modul_adi, hedef, _dukkan, dur):
 
 
 def _instagram_kopru_dongu(hedef, dukkan, dur):
+    if _meta_token():
+        _meta_graph_dongu("instagram", hedef, dukkan, dur)
+        return
+    if _render_ortami():
+        _dinleyici_mesaj_yaz(
+            "instagram",
+            "Render ortamında Chrome yok. META_PAGE_ACCESS_TOKEN veya webhook gerekli.",
+            hedef,
+            durum="hata",
+        )
+        if dur is not None:
+            dur.wait(45)
+        return
     _tarayici_kopru_dongu("instagram", "instagram_bridge", hedef, dukkan, dur)
 
 
 def _facebook_kopru_dongu(hedef, dukkan, dur):
+    if _meta_token():
+        _meta_graph_dongu("facebook", hedef, dukkan, dur)
+        return
+    if _render_ortami():
+        _dinleyici_mesaj_yaz(
+            "facebook",
+            "Render ortamında Chrome yok. META_PAGE_ACCESS_TOKEN veya webhook gerekli.",
+            hedef,
+            durum="hata",
+        )
+        if dur is not None:
+            dur.wait(45)
+        return
     _tarayici_kopru_dongu("facebook", "facebook_bridge", hedef, dukkan, dur)
 
 
@@ -1827,12 +2428,15 @@ def _pasif_uyar(ad, metin):
 
 
 def _dinleyici_yorum_isle(dukkan, platform, kullanici, mesaj):
+    kod = str(dukkan or "")
+    if kod not in (_dukkanlar or {}):
+        kod = ""
     try:
         if _app is not None:
             with _app.app_context():
-                havuz_yorumu_isle(dukkan, platform, kullanici, mesaj)
+                havuz_yorumu_isle(kod, platform, kullanici, mesaj)
         else:
-            havuz_yorumu_isle(dukkan, platform, kullanici, mesaj)
+            havuz_yorumu_isle(kod, platform, kullanici, mesaj)
     except Exception as hata:
         print(f"[CANLI YAYIN] {platform} yorum: {hata}", flush=True)
         try:
@@ -1876,24 +2480,32 @@ def _istemci_kapat(client):
         return
 
 
-def _dinleyici_durum_yaz(ad, durum):
+def _dinleyici_durum_yaz(ad, durum, mesaj=None):
+    if durum not in _DURUMLAR:
+        durum = "kapali"
     with _DINLEYICI_KILIT:
-        bagli = durum == "bagli"
-        _DINLEYICI_DURUM[ad] = "bagli" if bagli else "kapali"
-        if bagli:
+        _DINLEYICI_DURUM[ad] = durum
+        if mesaj is not None:
+            _DINLEYICI_MESAJ[ad] = _kisa_durum(mesaj)
+        elif durum == "bagli":
             _DINLEYICI_MESAJ[ad] = "Sohbet bağlı"
+        elif durum == "baglaniyor" and not (_DINLEYICI_MESAJ.get(ad) or ""):
+            _DINLEYICI_MESAJ[ad] = "Bağlanıyor"
     _dinleyici_kalici()
     _olcum_yayinla(zorla=True)
 
 
-def _dinleyici_mesaj_yaz(ad, metin, hedef=None):
+def _dinleyici_mesaj_yaz(ad, metin, hedef=None, durum="hata"):
     kisa = _kisa_durum(metin)
+    if durum not in _DURUMLAR:
+        durum = "hata"
     with _DINLEYICI_KILIT:
         if hedef is not None and (_DINLEYICI_HEDEF.get(ad) or "") != hedef:
             return
+        onceki = _DINLEYICI_MESAJ.get(ad) or ""
         _DINLEYICI_MESAJ[ad] = kisa
-        _DINLEYICI_DURUM[ad] = "kapali"
-    if kisa:
+        _DINLEYICI_DURUM[ad] = durum
+    if kisa and kisa != onceki:
         print(f"[CANLI YAYIN] {ad}: {kisa}", flush=True)
     _dinleyici_kalici()
     _olcum_yayinla(zorla=True)
@@ -1926,6 +2538,7 @@ def _dinleyici_anlik():
             "meta": _DINLEYICI_DURUM.get("meta") or "kapali",
             "instagram": _DINLEYICI_DURUM.get("instagram") or "kapali",
             "facebook": _DINLEYICI_DURUM.get("facebook") or "kapali",
+            "telegram": _DINLEYICI_DURUM.get("telegram") or "kapali",
             "youtube_mesaj": _DINLEYICI_MESAJ.get("youtube") or "",
             "tiktok_mesaj": _DINLEYICI_MESAJ.get("tiktok") or "",
             "twitch_mesaj": _DINLEYICI_MESAJ.get("twitch") or "",
@@ -1933,6 +2546,7 @@ def _dinleyici_anlik():
             "meta_mesaj": _DINLEYICI_MESAJ.get("meta") or "",
             "instagram_mesaj": _DINLEYICI_MESAJ.get("instagram") or "",
             "facebook_mesaj": _DINLEYICI_MESAJ.get("facebook") or "",
+            "telegram_mesaj": _DINLEYICI_MESAJ.get("telegram") or "",
             "toplam_yorum": int(_OLCUM.get("toplam_yorum") or 0),
             "otomatik_pey": int(_OLCUM.get("otomatik_pey") or 0),
         }
@@ -1945,7 +2559,7 @@ def _dinleyici_ozet(kayit=None):
 
     def _durum(ad):
         deger = anlik.get(ad) or "kapali"
-        return deger if deger in ("bagli", "kapali") else "kapali"
+        return deger if deger in _DURUMLAR else "kapali"
 
     return {
         "pytchat": _PYTCHAT_VAR,
@@ -1957,6 +2571,7 @@ def _dinleyici_ozet(kayit=None):
         "meta": _durum("meta"),
         "instagram": _durum("instagram"),
         "facebook": _durum("facebook"),
+        "telegram": _durum("telegram"),
         "youtube_mesaj": anlik.get("youtube_mesaj") or "",
         "tiktok_mesaj": anlik.get("tiktok_mesaj") or "",
         "twitch_mesaj": anlik.get("twitch_mesaj") or "",
@@ -1964,6 +2579,7 @@ def _dinleyici_ozet(kayit=None):
         "meta_mesaj": anlik.get("meta_mesaj") or "",
         "instagram_mesaj": anlik.get("instagram_mesaj") or "",
         "facebook_mesaj": anlik.get("facebook_mesaj") or "",
+        "telegram_mesaj": anlik.get("telegram_mesaj") or "",
         "webhook": _webhook_rozet(kayit),
         "push_abone": _push_sayisi(),
         "toplam_yorum": anlik["toplam_yorum"],
@@ -2413,30 +3029,53 @@ def _twitch_dongu(kanal, dukkan, dur):
 
 
 def _kick_sohbet_id(slug):
+    """(oda kimliği, hata). Cloudflare 403 Render IP'sinde ayrıca yazılır."""
     try:
         import requests
-
-        yanit = requests.get(
-            "https://kick.com/api/v2/channels/" + str(slug),
-            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
-            timeout=12,
-        )
-        if int(getattr(yanit, "status_code", 0) or 0) >= 400:
-            return ""
-        veri = yanit.json() if hasattr(yanit, "json") else {}
-    except Exception as hata:
-        print(f"[CANLI YAYIN] kick oda: {hata}", flush=True)
-        return ""
-    oda = veri.get("chatroom") if isinstance(veri, dict) else None
-    if isinstance(oda, dict) and oda.get("id"):
-        return str(oda.get("id"))
-    return ""
+    except Exception:
+        return "", "requests kurulu değil"
+    baslik = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+        "Referer": "https://kick.com/" + str(slug),
+    }
+    son_hata = "Kick sohbet odası bulunamadı"
+    for yol in (
+        "https://kick.com/api/v2/channels/" + str(slug),
+        "https://kick.com/api/v1/channels/" + str(slug),
+    ):
+        try:
+            yanit = requests.get(yol, headers=baslik, timeout=12)
+        except Exception as hata:
+            son_hata = "Kick: " + _hata_ozeti(hata)
+            continue
+        kod = int(getattr(yanit, "status_code", 0) or 0)
+        if kod == 403:
+            son_hata = "Kick Cloudflare engeli (Render IP)"
+            continue
+        if kod >= 400:
+            son_hata = "Kick HTTP " + str(kod)
+            continue
+        try:
+            veri = yanit.json()
+        except Exception:
+            son_hata = "Kick yanıtı okunamadı"
+            continue
+        oda = veri.get("chatroom") if isinstance(veri, dict) else None
+        if isinstance(oda, dict) and oda.get("id"):
+            return str(oda.get("id")), ""
+    return "", son_hata
 
 
 def _kick_dongu(slug, dukkan, dur):
-    chat_id = _kick_sohbet_id(slug)
+    chat_id, neden = _kick_sohbet_id(slug)
     if not chat_id:
-        _dinleyici_mesaj_yaz("kick", "Kick sohbet odası bulunamadı", slug)
+        _dinleyici_mesaj_yaz("kick", neden or "Kick sohbet odası bulunamadı", slug)
+        if dur is not None:
+            dur.wait(12)
         return
     yol = "/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false"
     try:

@@ -585,6 +585,9 @@
                 <span id="cyRozetTiktok" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">TikTok: kapalı</span>
                 <span id="cyRozetTwitch" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Twitch: kapalı</span>
                 <span id="cyRozetKick" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Kick: kapalı</span>
+                <span id="cyRozetFacebook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Facebook: kapalı</span>
+                <span id="cyRozetInstagram" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Instagram: kapalı</span>
+                <span id="cyRozetTelegram" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Telegram: kapalı</span>
                 <span id="cyRozetMeta" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Meta: kapalı</span>
                 <span id="cyRozetWebhook" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1; font-size:12px;">Webhook: kapalı</span>
                 <span id="cyRozetPush" style="padding:3px 8px; border-radius:999px; background:#1e293b; color:#e2e8f0; font-size:12px;">Web Push Abone: 0</span>
@@ -601,7 +604,7 @@
                 <input type="text" id="cyKick" placeholder="Kick kullanıcı adı veya link">
                 <input type="text" id="cyTwitch" placeholder="Twitch kullanıcı adı veya link">
                 <input type="url" id="cyX" placeholder="X">
-                <input type="url" id="cyTelegram" placeholder="Telegram">
+                <input type="text" id="cyTelegram" placeholder="Telegram @kanal, sohbet no veya t.me linki">
             </div>
             <input type="url" id="cyWebhook" hidden placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
             <div id="sosyalKopruKutu" style="display:flex; flex-direction:column; gap:6px; padding:8px; border:1px dashed var(--card-border); border-radius:6px;">
@@ -2250,9 +2253,40 @@
     }
 
     function canliRozetBoyasi(el, acik) {
+        canliRozetDurumu(el, acik ? 'bagli' : 'kapali');
+    }
+
+    function canliDurumSoz(durum) {
+        if (durum === 'bagli') return 'bağlı';
+        if (durum === 'baglaniyor') return 'bağlanıyor';
+        if (durum === 'hata') return 'hata';
+        return 'kapalı';
+    }
+
+    function canliRozetDurumu(el, durum) {
         if (!el) return;
-        el.style.background = acik ? '#14532d' : '#1e293b';
-        el.style.color = acik ? '#86efac' : '#cbd5e1';
+        if (durum === 'bagli') {
+            el.style.background = '#14532d';
+            el.style.color = '#86efac';
+        } else if (durum === 'baglaniyor') {
+            el.style.background = '#713f12';
+            el.style.color = '#fde68a';
+        } else if (durum === 'hata') {
+            el.style.background = '#7f1d1d';
+            el.style.color = '#fecaca';
+        } else {
+            el.style.background = '#1e293b';
+            el.style.color = '#cbd5e1';
+        }
+    }
+
+    function canliRozetYaz(el, etiket, durum, mesaj) {
+        if (!el) return;
+        const notu = String(mesaj || '').trim();
+        const soz = canliDurumSoz(durum);
+        el.textContent = etiket + ': ' + soz + (notu && durum !== 'bagli' ? ' · ' + notu : '');
+        el.title = notu || (etiket + ' ' + soz);
+        canliRozetDurumu(el, durum);
     }
 
     function canliDinleyiciRozetleri(din) {
@@ -2260,46 +2294,25 @@
         const tiktok = document.getElementById('cyRozetTiktok');
         const twitch = document.getElementById('cyRozetTwitch');
         const kick = document.getElementById('cyRozetKick');
+        const facebook = document.getElementById('cyRozetFacebook');
+        const instagram = document.getElementById('cyRozetInstagram');
+        const telegram = document.getElementById('cyRozetTelegram');
         const meta = document.getElementById('cyRozetMeta');
         const webhook = document.getElementById('cyRozetWebhook');
         const push = document.getElementById('cyRozetPush');
         const sayac = document.getElementById('cyHavuzSayac');
         const ek = document.getElementById('cyEkKaynakDurum');
-        if (youtube) {
-            const ytBagli = din.youtube === 'bagli';
-            const ytMesaj = String(din.youtube_mesaj || '').trim();
-            youtube.textContent = 'YouTube: ' + (ytBagli ? 'bağlı' : 'kapalı');
-            youtube.title = ytMesaj || (ytBagli ? 'YouTube sohbeti bağlı' : 'YouTube dinleyici kapalı');
-        }
-        if (tiktok) {
-            const ttBagli = din.tiktok === 'bagli';
-            const ttMesaj = String(din.tiktok_mesaj || '').trim();
-            tiktok.textContent = 'TikTok: ' + (ttBagli ? 'bağlı' : 'kapalı');
-            tiktok.title = ttMesaj || (ttBagli ? 'TikTok sohbeti bağlı' : 'TikTok dinleyici kapalı');
-        }
-        if (twitch) {
-            const twBagli = din.twitch === 'bagli';
-            twitch.textContent = 'Twitch: ' + (twBagli ? 'bağlı' : 'kapalı');
-            twitch.title = String(din.twitch_mesaj || '').trim() || (twBagli ? 'Twitch sohbeti bağlı' : 'Twitch dinleyici kapalı');
-        }
-        if (kick) {
-            const kkBagli = din.kick === 'bagli';
-            kick.textContent = 'Kick: ' + (kkBagli ? 'bağlı' : 'kapalı');
-            kick.title = String(din.kick_mesaj || '').trim() || (kkBagli ? 'Kick sohbeti bağlı' : 'Kick dinleyici kapalı');
-        }
-        if (meta) {
-            const metaBagli = din.meta === 'bagli';
-            meta.textContent = 'Meta: ' + (metaBagli ? 'bağlı' : 'kapalı');
-            meta.title = String(din.meta_mesaj || '').trim() || (metaBagli ? 'Meta yorum ucu açık' : 'Meta yorum ucu kapalı');
-        }
+        canliRozetYaz(youtube, 'YouTube', din.youtube, din.youtube_mesaj);
+        canliRozetYaz(tiktok, 'TikTok', din.tiktok, din.tiktok_mesaj);
+        canliRozetYaz(twitch, 'Twitch', din.twitch, din.twitch_mesaj);
+        canliRozetYaz(kick, 'Kick', din.kick, din.kick_mesaj);
+        canliRozetYaz(facebook, 'Facebook', din.facebook, din.facebook_mesaj);
+        canliRozetYaz(instagram, 'Instagram', din.instagram, din.instagram_mesaj);
+        canliRozetYaz(telegram, 'Telegram', din.telegram, din.telegram_mesaj);
+        canliRozetYaz(meta, 'Meta', din.meta, din.meta_mesaj);
         const webhookAktif = din.webhook === 'aktif';
         if (webhook) webhook.textContent = 'Webhook: ' + (webhookAktif ? 'aktif' : 'kapalı');
-        canliRozetBoyasi(youtube, din.youtube === 'bagli');
-        canliRozetBoyasi(tiktok, din.tiktok === 'bagli');
-        canliRozetBoyasi(twitch, din.twitch === 'bagli');
-        canliRozetBoyasi(kick, din.kick === 'bagli');
-        canliRozetBoyasi(meta, din.meta === 'bagli');
-        canliRozetBoyasi(webhook, webhookAktif);
+        canliRozetDurumu(webhook, webhookAktif ? 'bagli' : 'kapali');
         if (ek) {
             const bagli = [];
             if (din.twitch === 'bagli') bagli.push('Twitch');
@@ -2323,19 +2336,20 @@
             ['facebook', 'kopruFacebookDurum', 'Facebook', '']
         ];
         satirlar.forEach(function (satir) {
-            const acik = kaynak[satir[0]] === 'bagli';
+            const durum = kaynak[satir[0]] || 'kapali';
+            const acik = durum === 'bagli';
             const notu = String(kaynak[satir[0] + '_mesaj'] || '').trim();
-            const yazi = satir[2] + ': ' + (acik ? 'bağlı' : 'kapalı') + (notu && !acik ? ' · ' + notu : '');
+            const yazi = satir[2] + ': ' + canliDurumSoz(durum) + (notu && durum !== 'bagli' ? ' · ' + notu : '');
             const kutu = document.getElementById(satir[1]);
             if (kutu) {
                 kutu.textContent = yazi;
-                kutu.style.color = acik ? '#86efac' : '#cbd5e1';
+                kutu.style.color = durum === 'bagli' ? '#86efac' : (durum === 'hata' ? '#fecaca' : (durum === 'baglaniyor' ? '#fde68a' : '#cbd5e1'));
                 kutu.title = notu;
             }
             if (satir[3]) {
                 const eski = document.getElementById(satir[3]);
                 if (eski) {
-                    eski.textContent = 'Durum: ' + (acik ? 'Bağlı' : (notu || 'Bağlantı Yok'));
+                    eski.textContent = 'Durum: ' + canliDurumSoz(durum) + (notu && durum !== 'bagli' ? ' · ' + notu : '');
                     eski.style.color = acik ? '#34d399' : '#aaa';
                 }
             }
@@ -4091,7 +4105,14 @@
     if (btnPatronYayin) btnPatronYayin.addEventListener("click", patronModuAcKapa);
 
     // CANLI SOHBET VE MEZAT SUNUCUSU AKIŞI
+    const havuzYorumKimlik = {};
     socket.on("yeni_canli_yorum", function(data) {
+        const kimlik = String((data && data.kimlik) || "");
+        if (kimlik) {
+            const simdi = Date.now();
+            if (havuzYorumKimlik[kimlik] && simdi - havuzYorumKimlik[kimlik] < 4000) return;
+            havuzYorumKimlik[kimlik] = simdi;
+        }
         const bosUyari = document.getElementById("sohbetBosUyarisi");
         if (bosUyari) bosUyari.remove();
 
@@ -4486,6 +4507,18 @@
             etiket = "YouTube";
             bg = "#ef4444";
             kenar = "#ef4444";
+        } else if (k.indexOf("twitch") >= 0) {
+            etiket = "Twitch";
+            bg = "#9146ff";
+            kenar = "#9146ff";
+        } else if (k.indexOf("kick") >= 0) {
+            etiket = "Kick";
+            bg = "#53fc18";
+            kenar = "#53fc18";
+        } else if (k.indexOf("telegram") >= 0) {
+            etiket = "Telegram";
+            bg = "#0ea5e9";
+            kenar = "#0ea5e9";
         } else if (k.indexOf("web") >= 0) {
             etiket = "Web";
             bg = "#16a34a";
