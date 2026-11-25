@@ -2593,6 +2593,18 @@
         }).join('\u001e');
     }
 
+    function sosyalHavuzAltNot(kayit) {
+        if (!kayit) return { metin: '', renk: '#fecaca' };
+        if (kayit.durum === 'hata' && kayit.hata) return { metin: kayit.hata, renk: '#fecaca' };
+        if (CANLI_YAYIN_DUKKANI === 'diger' && kayit.parca_notu) {
+            return {
+                metin: kayit.parca_notu,
+                renk: kayit.parca_notu === 'Parça geldi' ? '#86efac' : '#fde68a'
+            };
+        }
+        return { metin: '', renk: '#fecaca' };
+    }
+
     function sosyalHavuzRozetleriGuncelle(hesaplar) {
         (hesaplar || []).forEach(function (kayit) {
             const rozet = document.querySelector('[data-syh-rozet="' + kayit.id + '"]');
@@ -2603,7 +2615,11 @@
             rozet.style.color = boya[2];
             rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
             const not = document.querySelector('[data-syh-hata="' + kayit.id + '"]');
-            if (not) not.textContent = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+            if (not) {
+                const alt = sosyalHavuzAltNot(kayit);
+                not.textContent = alt.metin;
+                not.style.color = alt.renk;
+            }
         });
     }
 
@@ -2632,8 +2648,9 @@
         rozet.style.cssText = 'padding:3px 8px; border-radius:999px; font-size:12px; background:' + boya[1] + '; color:' + boya[2] + ';';
         const hata = document.createElement('span');
         hata.setAttribute('data-syh-hata', kayit.id);
-        hata.style.cssText = 'font-size:11px; color:#fecaca; flex:1; min-width:140px;';
-        hata.textContent = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+        const altNot = sosyalHavuzAltNot(kayit);
+        hata.style.cssText = 'font-size:11px; color:' + altNot.renk + '; flex:1; min-width:140px;';
+        hata.textContent = altNot.metin;
         ust.appendChild(sol);
         ust.appendChild(rozet);
         ust.appendChild(hata);
@@ -3275,7 +3292,6 @@
     let restreamImza = '';
     let restreamKuyruk = Promise.resolve();
     let restreamYeniden = 0;
-    let restreamBaslikGitti = false;
 
     function restreamDurumYaz(metin) {
         const kutu = document.getElementById('cyRestreamDurum');
@@ -3588,16 +3604,7 @@
         iriunBeklemeyiBaslat();
     }
 
-    function restreamEbmlMu(blob) {
-        if (!blob || !blob.size || blob.size < 4 || !blob.slice) return Promise.resolve(false);
-        return blob.slice(0, 4).arrayBuffer().then(function (buf) {
-            const bayt = new Uint8Array(buf);
-            return bayt.length >= 4 && bayt[0] === 0x1A && bayt[1] === 0x45 && bayt[2] === 0xDF && bayt[3] === 0xA3;
-        }).catch(function () { return false; });
-    }
-
     function restreamKaydiBaslat() {
-        if (CANLI_YAYIN_DUKKANI === 'diger') restreamBaslikGitti = false;
         if (!restreamAkis || !window.MediaRecorder) return;
         const mime = restreamMime(restreamAkis);
         let rec;
@@ -3611,11 +3618,8 @@
         const digerKopru = CANLI_YAYIN_DUKKANI === 'diger';
         rec.ondataavailable = function (olay) {
             if (!olay.data || !olay.data.size || !restreamAcik) return;
-            if (digerKopru) {
-                restreamParcaGonder(olay.data, false, rec.mimeType || '', true);
-                return;
-            }
-            restreamParcaGonder(olay.data, ilk, mime, false);
+            const gonderMime = digerKopru ? (rec.mimeType || '') : mime;
+            restreamParcaGonder(olay.data, ilk, gonderMime);
             ilk = false;
         };
         rec.onerror = function () {
@@ -3630,25 +3634,10 @@
         restreamKayit = rec;
     }
 
-    function restreamParcaGonder(blob, baslik, mime, ebmlKontrol) {
+    function restreamParcaGonder(blob, baslik, mime) {
         restreamKuyruk = restreamKuyruk.then(function () {
-            const ebmlSoz = ebmlKontrol ? restreamEbmlMu(blob) : Promise.resolve(false);
-            return Promise.all([ebmlSoz, blobBase64(blob)]).then(function (sonuc) {
-                const ebml = !!sonuc[0];
-                const b64 = sonuc[1];
+            return blobBase64(blob).then(function (b64) {
                 if (!b64 || !restreamAcik) return null;
-                let gonderBaslik = !!baslik;
-                let gonderMime = mime || '';
-                if (ebmlKontrol && CANLI_YAYIN_DUKKANI === 'diger') {
-                    if (ebml) {
-                        restreamBaslikGitti = true;
-                        gonderBaslik = true;
-                    } else if (!restreamBaslikGitti) {
-                        return null;
-                    } else {
-                        gonderBaslik = false;
-                    }
-                }
                 return fetch('/api/canli-yayin/kontrol', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -3656,8 +3645,8 @@
                     body: JSON.stringify({
                         islem: 'restream_parca',
                         parca: b64,
-                        baslik: gonderBaslik,
-                        mime: gonderMime
+                        baslik: !!baslik,
+                        mime: mime || ''
                     })
                 }).then(function (yanit) { return yanit.json(); }).then(function (veri) {
                     if (!restreamAcik || !veri) return null;
@@ -3781,7 +3770,6 @@
 
     function restreamKopruKapat() {
         restreamAcik = false;
-        restreamBaslikGitti = false;
         restreamImza = '';
         iriunBeklemeyiDurdur();
         kameraYayininiKapat();

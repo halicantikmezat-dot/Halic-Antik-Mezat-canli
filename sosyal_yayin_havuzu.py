@@ -23,6 +23,7 @@ _FFMPEG = ""
 _BASLIK = b""
 _MIME = ""
 _YENIDEN = False
+_PARCA_SAYISI = 0
 _UST_SINIR = 100
 _KALICI_OKU = None
 _KALICI_YAZ = None
@@ -87,12 +88,13 @@ def kalici_bagla(oku, yaz):
 
 def yayin_kapisi(acik):
     """Diğer yayını açılınca havuzu beklemeye alır, kapanınca süreçleri sonlandırır."""
-    global _YAYIN, _BASLIK, _MIME, _YENIDEN
+    global _YAYIN, _BASLIK, _MIME, _YENIDEN, _PARCA_SAYISI
     acik = bool(acik)
     _ortak_kapat()
     with _KILIT:
         _YAYIN = acik
         _YENIDEN = False
+        _PARCA_SAYISI = 0
         if not acik:
             _BASLIK = b""
             _MIME = ""
@@ -114,15 +116,20 @@ def _gecersiz_girdi_mi(metin):
 
 
 def _yeniden_iste(metin):
-    """Demuxer pipe girdisini reddederse tarayıcıdan bir kez yeni EBML istenir."""
-    global _YENIDEN, _BASLIK, _MIME
+    """Demuxer pipe girdisini reddederse tarayıcıdan bir kez yeni kayıt istenir."""
+    global _YENIDEN
     if not _gecersiz_girdi_mi(metin):
         return
     with _KILIT:
         _YENIDEN = True
-        if _BASLIK and not _ebml_mi(_BASLIK):
-            _BASLIK = b""
-            _MIME = ""
+
+
+def _parca_say(adet):
+    global _PARCA_SAYISI
+    if not adet:
+        return
+    with _KILIT:
+        _PARCA_SAYISI += 1
 
 
 def _yeniden_yanit(adet, yeniden, hedef_var):
@@ -143,12 +150,9 @@ def parca_yaz(paket, baslik, mime):
     with _KILIT:
         if not _YAYIN:
             return {"adet": 0, "yeniden": False}
-        if _BASLIK and not _ebml_mi(_BASLIK):
-            _BASLIK = b""
-            _MIME = ""
         yeniden = bool(_YENIDEN)
         _YENIDEN = False
-        if _ebml_mi(paket):
+        if bool(baslik) or _ebml_mi(paket) or not _BASLIK:
             baslik = True
             _BASLIK = paket
             _MIME = str(mime or "")
@@ -162,10 +166,10 @@ def parca_yaz(paket, baslik, mime):
             hedefler.append({"id": hesap["id"], "hedef": hedef})
     if yeniden and not baslik:
         return _yeniden_yanit(0, True, bool(hedefler))
-    if not baslik and not _BASLIK:
-        return _yeniden_yanit(0, False, False)
     if len(hedefler) >= 2:
-        return _ortak_dagit(hedefler, paket, baslik, mime)
+        sonuc = _ortak_dagit(hedefler, paket, baslik, mime)
+        _parca_say(sonuc.get("adet") if isinstance(sonuc, dict) else 0)
+        return sonuc
     _ortak_kapat()
     _ortak_bayrak([], False)
     adet = 0
@@ -191,6 +195,7 @@ def parca_yaz(paket, baslik, mime):
                 slot["durum"] = "hata"
                 slot["hata"] = "Hedef yanıt vermedi"
                 _proc_birak(slot)
+    _parca_say(adet)
     return _yeniden_yanit(adet, False, bool(hedefler))
 
 
@@ -212,6 +217,7 @@ def api(islem, veri):
 def liste():
     with _KILIT:
         yayin = _YAYIN
+        parca_sayisi = _PARCA_SAYISI
         hesaplar = _oku()
         slotlar = {
             kim: {
@@ -224,7 +230,9 @@ def liste():
     for kayit in hesaplar:
         durum = "pasif"
         hata = ""
+        parca_notu = ""
         if kayit.get("dahil") and yayin:
+            parca_notu = "Parça geldi" if parca_sayisi else "Parça bekleniyor"
             slot = slotlar.get(kayit["id"])
             if slot is None or slot["durum"] == "pasif":
                 durum = "bekliyor"
@@ -245,6 +253,7 @@ def liste():
                 "dahil": bool(kayit.get("dahil")),
                 "durum": durum,
                 "hata": hata,
+                "parca_notu": parca_notu,
             }
         )
     return cikti
@@ -495,14 +504,11 @@ def _slot_yaz(slot, paket, baslik, mime):
             if not atla and proc is None:
                 if not baslik:
                     on_ek, on_mime = _baslik_kopya()
-                    if not on_ek or not _ebml_mi(on_ek):
+                    if not on_ek:
                         slot["durum"] = "bekliyor"
                         atla = True
                     else:
                         mime = mime or on_mime
-                elif not _ebml_mi(paket):
-                    slot["durum"] = "bekliyor"
-                    atla = True
                 if not atla:
                     proc = _surec_ac(slot.get("hedef") or "", mime, slot)
                     if proc is None:
@@ -552,12 +558,7 @@ def _hata_kilit_icinde(slot, metin):
 
 
 def _baslik_kopya():
-    global _BASLIK, _MIME
     with _KILIT:
-        if _BASLIK and not _ebml_mi(_BASLIK):
-            _BASLIK = b""
-            _MIME = ""
-            return b"", ""
         return _BASLIK, _MIME
 
 
@@ -825,8 +826,6 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     baslik_ek, baslik_mime = (b"", "")
     if not baslik:
         baslik_ek, baslik_mime = _baslik_kopya()
-        if baslik_ek and not _ebml_mi(baslik_ek):
-            baslik_ek, baslik_mime = b"", ""
     kapanan = None
     durdu = False
     nesil = 0
@@ -855,8 +854,6 @@ def _encoder_yaz(ortak, paket, baslik, mime):
                 else:
                     on_ek = baslik_ek
                     mime = mime or baslik_mime
-            elif not _ebml_mi(paket):
-                durdu = "bekliyor"
             if proc is None and durdu is not True and durdu != "bekliyor":
                 proc = _encoder_ac(mime)
                 if proc is None:
