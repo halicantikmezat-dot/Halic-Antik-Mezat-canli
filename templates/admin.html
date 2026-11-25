@@ -4110,6 +4110,12 @@
         const sol = document.createElement("span");
         sol.style.cssText = "font-weight:bold; color:#f8fafc; display:flex; align-items:center; gap:4px; flex-wrap:wrap;";
         sol.appendChild(rozet.rozet);
+        if (data.sayfa) {
+            const sayfa = document.createElement("span");
+            sayfa.textContent = data.sayfa;
+            sayfa.style.color = "#93c5fd";
+            sol.appendChild(sayfa);
+        }
         if (data.dukkan) {
             const dukkan = document.createElement("span");
             dukkan.textContent = dukkanEtiketi(data.dukkan);

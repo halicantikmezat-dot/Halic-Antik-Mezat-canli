@@ -354,8 +354,11 @@ def _otonom_pas_uygula(pas):
         print(f"[CANLI YAYIN] otonom pas atlandi: {hata}", flush=True)
 
 
-def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
-    """Dış yorumu sohbete düşürür, kalp yollar ve uygunsa mevcut pey kapısını çağırır."""
+def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False, sayfa="", sayfa_id=""):
+    """Dış yorumu sohbete düşürür, kalp yollar ve uygunsa mevcut pey kapısını çağırır.
+
+    sayfa ve sayfa_id yalnız Diğer odasında pakete yazılır. Diğer dükkanlarda yok sayılır.
+    """
     platform_adi = _platform_coz(platform)
     if not platform_adi:
         return {"success": False, "kod": 400, "mesaj": "Platform tanınmadı."}
@@ -368,7 +371,12 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
         kod = _SABIT_CANLI_DUKKAN
     if not kod:
         return {"success": False, "kod": 409, "mesaj": "Aktif canlı yayın yok."}
-    if mukerrer_kapisi(platform_adi, ad, metin):
+    sayfa_adi = str(sayfa or "").strip()[:80]
+    sayfa_kim = str(sayfa_id or "").strip().lower()[:40]
+    if kod != _SABIT_CANLI_DUKKAN:
+        sayfa_adi = ""
+        sayfa_kim = ""
+    if mukerrer_kapisi(platform_adi, ad, metin, sayfa_kim):
         return {
             "success": True,
             "tip": "mukerrer",
@@ -379,7 +387,7 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
     if not _yorum_hizi_uygun(platform_adi, ad):
         return {"success": False, "kod": 429, "mesaj": "Yorumlar çok hızlı geliyor."}
 
-    _yorum_yayinla(kod, platform_adi, ad, metin)
+    _yorum_yayinla(kod, platform_adi, ad, metin, sayfa=sayfa_adi)
     _kalp_yayinla(kod, platform_adi)
 
     tutar = yorumdan_pey_coz(metin, _tutar_coz)
@@ -387,7 +395,7 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
         _olcum_artir(False)
         return {"success": True, "tip": "yorum", "pey": False, "dukkan": kod}
 
-    pey = _pey_karsilastir_ve_uygula(kod, platform_adi, ad, float(tutar))
+    pey = _pey_karsilastir_ve_uygula(kod, platform_adi, ad, float(tutar), sayfa=sayfa_adi)
     uygulandi = bool(pey.get("uygulandi"))
     _olcum_artir(uygulandi)
     return {
@@ -424,6 +432,16 @@ def yorumdan_pey_coz(mesaj, tutar_coz=None):
     if not adaylar:
         return None
     return _sayiya(adaylar[-1])
+
+
+def _diger_yorum_kapisi(acik):
+    """Çoklu sayfa yorumu yalnız Diğer yayını açıkken çalışır. Hata ana yayını durdurmaz."""
+    try:
+        import diger_coklu_yorum as coklu
+
+        coklu.yayin_kapisi(bool(acik) and str(_kopya().get("aktif_dukkan") or "") == _SABIT_CANLI_DUKKAN)
+    except Exception as hata:
+        print(f"[DIGER YORUM] kapisi atlandi: {hata}", flush=True)
 
 
 def _baslat(veri):
@@ -470,6 +488,7 @@ def _baslat(veri):
         _restream_istek_guncelle()
     except Exception as hata:
         print(f"[RESTREAM] baslangic atlandi: {hata}", flush=True)
+    _diger_yorum_kapisi(True)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -510,6 +529,7 @@ def _durdur(veri):
         _restream_kopru_durdur()
     except Exception as hata:
         print(f"[RESTREAM] kapanis atlandi: {hata}", flush=True)
+    _diger_yorum_kapisi(False)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -552,6 +572,7 @@ def _ayar_kaydet(veri):
         _restream_istek_guncelle()
     except Exception as hata:
         print(f"[RESTREAM] ayar atlandi: {hata}", flush=True)
+    _diger_yorum_kapisi(str(anlik.get("aktif_dukkan") or "") == _SABIT_CANLI_DUKKAN)
     paket = herkese_acik_durum()
     paket["success"] = True
     paket["ayarlar"] = _ayarlar_paketi()
@@ -587,7 +608,7 @@ def _alanlari_isle(kayit, veri, kod):
             kayit["yayin_url"] = taslak.get("yayin_url") or ""
 
 
-def _pey_karsilastir_ve_uygula(dukkan, platform, kullanici, tutar):
+def _pey_karsilastir_ve_uygula(dukkan, platform, kullanici, tutar, sayfa=""):
     if _odalar is None or _pey_kabul is None or _oda_kilitleri is None:
         return {"uygulandi": False, "neden": "Pey kapısı bağlı değil."}
     oda = _odalar.get(dukkan) or {}
@@ -602,7 +623,7 @@ def _pey_karsilastir_ve_uygula(dukkan, platform, kullanici, tutar):
         olur, uyari = _pey_kabul(oda, urun, tutar, mevcut)
         if not olur:
             return {"uygulandi": False, "neden": uyari or "Teklif mevcut fiyata uymuyor."}
-        return _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id)
+        return _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id, sayfa=sayfa)
     except Exception as hata:
         print(f"[CANLI YAYIN] pey kapisi: {hata}", flush=True)
         try:
@@ -619,8 +640,12 @@ def _pey_karsilastir_ve_uygula(dukkan, platform, kullanici, tutar):
             pass
 
 
-def _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id):
-    etiket = f"[{platform}] {kullanici}"[:100]
+def _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id, sayfa=""):
+    sayfa_adi = str(sayfa or "").strip()
+    if dukkan == _SABIT_CANLI_DUKKAN and sayfa_adi:
+        etiket = f"[{platform} · {sayfa_adi}] {kullanici}"[:100]
+    else:
+        etiket = f"[{platform}] {kullanici}"[:100]
     with _oda_kilitleri[dukkan]:
         guncel_id = oda.get("aktif_urun_id")
         if guncel_id != urun_id:
@@ -720,22 +745,26 @@ def _pey_yaz(dukkan, oda, urun, platform, kullanici, tutar, urun_id):
     return {"uygulandi": True, "neden": ""}
 
 
-def _yorum_yayinla(dukkan, platform, kullanici, mesaj, reji_ek=None):
+def _yorum_yayinla(dukkan, platform, kullanici, mesaj, reji_ek=None, sayfa=""):
     if _socketio is None:
         return
     import time
 
+    paket = {
+        "platform": platform,
+        "kullanici": kullanici,
+        "mesaj": mesaj,
+        "zaman": time.strftime("%H:%M:%S"),
+        "dukkan": dukkan,
+        "havuz": True,
+        "rozet": "[" + platform + "]",
+    }
+    sayfa_adi = str(sayfa or "").strip()[:80]
+    if dukkan == _SABIT_CANLI_DUKKAN and sayfa_adi:
+        paket["sayfa"] = sayfa_adi
     _socketio.emit(
         "yeni_canli_yorum",
-        {
-            "platform": platform,
-            "kullanici": kullanici,
-            "mesaj": mesaj,
-            "zaman": time.strftime("%H:%M:%S"),
-            "dukkan": dukkan,
-            "havuz": True,
-            "rozet": "[" + platform + "]",
-        },
+        paket,
         room=dukkan,
     )
     try:
@@ -1086,8 +1115,11 @@ _yorum_zamanlari = {}
 _MUKERRER_YORUM = {}
 
 
-def mukerrer_kapisi(platform, kullanici, mesaj):
-    """Son 10 saniyede aynı platform + kullanıcı + mesajı ikinci kez içeri almaz."""
+def mukerrer_kapisi(platform, kullanici, mesaj, sayfa_id=""):
+    """Son 10 saniyede aynı platform + kullanıcı + mesajı ikinci kez içeri almaz.
+
+    sayfa_id doluysa anahtara eklenir. Boşsa mevcut anahtar aynı kalır.
+    """
     import time
 
     platform_adi = _platform_coz(platform) or str(platform or "").strip()
@@ -1096,6 +1128,9 @@ def mukerrer_kapisi(platform, kullanici, mesaj):
     if not platform_adi or not metin:
         return False
     anahtar = platform_adi.casefold() + "\n" + ad + "\n" + metin
+    ek = str(sayfa_id or "").strip().lower()[:40]
+    if ek:
+        anahtar += "\n" + ek
     simdi = time.time()
     with _KILIT:
         eski = [k for k, an in _MUKERRER_YORUM.items() if simdi - an >= 10]
