@@ -808,7 +808,12 @@ def ahmet_ses_akisi(dukkan, metin, tur="anons", kesinti=False, gizli=False, sust
                 if oge.get("tur") not in ("anons", "pey")
             ]
         kayit["ogeler"].append({
-            "metin": temiz, "tur": tur, "nesil": nesil, "zorunlu": zorunlu, "gizli": bool(gizli),
+            "metin": temiz,
+            "tur": tur,
+            "nesil": nesil,
+            "zorunlu": zorunlu,
+            "gizli": bool(gizli),
+            "susturma_as": bool(susturma_as),
         })
         baslat = not kayit.get("calisiyor")
         if baslat:
@@ -845,6 +850,8 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
             if not veri:
                 print("[SES] Ses üretilemedi; güncel anonsa geçiliyor.", flush=True)
                 continue
+            if not oge.get("susturma_as") and diger_kapi.ses_kesilsin_mi(dukkan, oge.get("tur")):
+                continue
         adres = _mp3_kaydet(veri, oge["nesil"])
         _iki_odayi(
             "ses_oynat",
@@ -853,6 +860,7 @@ def _ses_kuyrugunu_bosalt(dukkan, benim):
                 "nesil": oge["nesil"],
                 "tur": oge["tur"],
                 "zorunlu": bool(oge.get("zorunlu")),
+                "susturma_as": bool(oge.get("susturma_as")),
                 "audio_url": adres,
                 "metin": "" if oge.get("gizli") else oge["metin"],
                 "gizli": bool(oge.get("gizli")),
@@ -12693,6 +12701,7 @@ def handle_join_dukkan(data):
         _katilana_sahneyi_ver(dukkan)
         if dukkan == "diger":
             emit("diger_mikrofon_durum", _diger_mikrofon_paketi(), to=request.sid)
+            emit("diger_spiker_durum", _diger_spiker_paketi(), to=request.sid)
     finally:
         db.session.remove()
 
@@ -12756,6 +12765,24 @@ def _diger_mikrofon_paketi():
 
 def _diger_mikrofon_duyur():
     socketio.emit("diger_mikrofon_durum", _diger_mikrofon_paketi(), room="diger")
+
+
+@socketio.on("diger_spiker_anahtar")
+def diger_spiker_anahtar(veri):
+    """Yalnız diger odasının spikerini elle açar veya kapatır."""
+    try:
+        if not session.get("is_admin"):
+            return
+        veri = veri or {}
+        if str(veri.get("dukkan") or "").strip().lower() != "diger":
+            return
+        if bool(veri.get("kapali")):
+            _diger_spiker_sessizlestir()
+        else:
+            diger_kapi.ac()
+        _diger_spiker_durumunu_duyur()
+    finally:
+        db.session.remove()
 
 
 @socketio.on("diger_mikrofon_durum")
@@ -13173,6 +13200,16 @@ def _diger_izleyici_duyur():
     )
 
 
+def _diger_spiker_paketi():
+    return {"dukkan": "diger", "sessiz": bool(diger_kapi.sessiz_mi())}
+
+
+def _diger_spiker_durumunu_duyur():
+    paket = _diger_spiker_paketi()
+    socketio.emit("diger_spiker_durum", paket, room="diger")
+    socketio.emit("diger_spiker_durum", paket, room="admin_room")
+
+
 def _diger_spiker_sessizlestir():
     """Kuyruktaki yorum/pey anonslarını bırakır. Sayaç, satış ve sahne olayına ses_kes göndermez."""
     diger_kapi.sustur()
@@ -13182,7 +13219,7 @@ def _diger_spiker_sessizlestir():
             return
         kayit["ogeler"] = [
             oge for oge in (kayit.get("ogeler") or [])
-            if str(oge.get("tur") or "") in ("satis", "zafer", "sahne", "yeni_urun")
+            if str(oge.get("tur") or "") in ("satis", "zafer", "sahne", "yeni_urun") or oge.get("susturma_as")
         ]
 
 
@@ -13202,11 +13239,13 @@ def _diger_reji_emri_varsa_uygula(dukkan, metin, sid=None, bildir=False):
         )
         if bildir:
             _reji_admin_yaz(sid, "[Gizli Reji] Spiker durdu: " + diger_kapi.ONAY_CUMLESI)
+        _diger_spiker_durumunu_duyur()
         return True
     if karar == "devam":
         diger_kapi.ac()
         if bildir:
             _reji_admin_yaz(sid, "[Gizli Reji] Spiker devam ediyor.")
+        _diger_spiker_durumunu_duyur()
         return True
     if diger_kapi.sessiz_mi():
         if bildir:

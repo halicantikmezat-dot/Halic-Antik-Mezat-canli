@@ -3666,6 +3666,8 @@
     }
 
     let digerCanliMicKapali = false;
+    let digerSpikerSessiz = false;
+    let digerSecereSesi = null;
     let canliKameraPc = null;
     let canliKameraYayinci = '';
     let canliKameraBuzKuyrugu = [];
@@ -5471,9 +5473,44 @@
         }, 1200);
     });
 
+    function digerSpikerKorunanTur(tur) {
+        return tur === "satis" || tur === "zafer" || tur === "sahne" || tur === "yeni_urun";
+    }
+
+    function digerSpikerSesiniKes() {
+        if (aktifDukkan !== "diger") return;
+        if (window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch (e) {}
+            try { window.speechSynthesis.onvoiceschanged = null; } catch (e) {}
+        }
+        if (digerSecereSesi) {
+            try {
+                digerSecereSesi.pause();
+                digerSecereSesi.src = "";
+            } catch (e) {}
+            digerSecereSesi = null;
+        }
+        anonsKuyrugu = anonsKuyrugu.filter(function (oge) {
+            return oge && (digerSpikerKorunanTur(oge.tur) || oge.susturma_as);
+        });
+        const tur = currentAudio && currentAudio.dataset ? currentAudio.dataset.tur : "";
+        if (currentAudio && !digerSpikerKorunanTur(tur)) {
+            calanSesiDurdur();
+            anonsMesgul = false;
+            if (anonsKuyrugu.length) anonsSiradaki();
+        }
+    }
+
+    socket.on("diger_spiker_durum", function (data) {
+        if (!data || data.dukkan !== "diger") return;
+        digerSpikerSessiz = !!data.sessiz;
+        if (digerSpikerSessiz) digerSpikerSesiniKes();
+    });
+
     socket.on("ses_oynat", function (data) {
         const dukkan = data && (data.dukkan || data.dukkan_kodu);
         if (dukkan && dukkan !== aktifDukkan) return;
+        if (dukkan === "diger" && digerSpikerSessiz && !(data && data.susturma_as) && !digerSpikerKorunanTur(String((data && data.tur) || "anons"))) return;
         anonsuCal(data);
     });
 
@@ -7166,6 +7203,7 @@
     }
 
     function digerYerelOku(yazi) {
+        if (digerSpikerSessiz || aktifDukkan !== "diger") return;
         if (!yazi || !window.speechSynthesis || typeof SpeechSynthesisUtterance !== 'function') return;
         const soyle = function () {
             const u = new SpeechSynthesisUtterance(yazi);
@@ -7187,7 +7225,7 @@
     function digerSecereyiDinle() {
         playUserClickSound();
         const yazi = String(digerSecere || '').trim();
-        if (aktifDukkan !== 'diger' || !digerCanliPey || !yazi) return;
+        if (aktifDukkan !== 'diger' || digerSpikerSessiz || !digerCanliPey || !yazi) return;
         const kart = document.getElementById('digerDinleKart');
         const metin = document.getElementById('digerDinleMetin');
         if (metin) metin.textContent = yazi;
@@ -7201,7 +7239,9 @@
             return r.blob();
         }).then(function (blob) {
             if (!blob || !blob.size) throw new Error('bos');
+            if (digerSpikerSessiz || aktifDukkan !== "diger") return;
             const ses = new Audio(URL.createObjectURL(blob));
+            digerSecereSesi = ses;
             ses.setAttribute('playsinline', '');
             ses.play().catch(function () { digerYerelOku(yazi); });
         }).catch(function () { digerYerelOku(yazi); });

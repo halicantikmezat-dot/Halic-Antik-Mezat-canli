@@ -832,6 +832,7 @@
                     </button>
                     <button type="button" id="btnPatronYayin" class="btn-bas-konus" title="Patronun sesi yayına düşer, sunucu dinler">Patron Yayında (Sürekli Canlı Dinleme)</button>
                     <button type="button" id="adminSesDugmesi" class="btn-bas-konus" title="Yönetici ekranında anons sesi">Ses kapalı</button>
+                    <button type="button" id="btnDigerSpiker" class="btn-bas-konus" hidden disabled title="Yalnız Diğer - Her Şey spikeri">Spiker: ON</button>
                     <span id="yorumSayaci" style="background:#334155; color:#f8fafc; font-size: 11px; padding: 2px 8px; border-radius: 4px;">0 Mesaj</span>
                 </div>
             </div>
@@ -1753,7 +1754,54 @@
         const audio = new Audio(kaynak);
         currentAudio = audio;
         window.aktifSes = audio;
+        audio.dataset.tur = (data && data.tur) || "";
         audio.play().catch(function (e) { console.log("Ses oynatma engeli:", e); });
+    }
+
+    let digerSpikerSessiz = false;
+
+    function digerSpikerOdasiMi() {
+        let hedef = "tumu";
+        try { hedef = rejiHedefKodu(); } catch (e) { hedef = "tumu"; }
+        if (hedef === "diger") return true;
+        return typeof seciliDukkan === "string" && seciliDukkan === "diger";
+    }
+
+    function digerSpikerKorunanTur(tur) {
+        return tur === "satis" || tur === "zafer" || tur === "sahne" || tur === "yeni_urun";
+    }
+
+    function digerSpikerDugmesiniCiz() {
+        const btn = document.getElementById("btnDigerSpiker");
+        if (!btn) return;
+        const gorunur = digerSpikerOdasiMi();
+        btn.hidden = !gorunur;
+        btn.disabled = !gorunur;
+        if (digerSpikerSessiz) {
+            btn.textContent = "Spiker: OFF";
+            btn.style.background = "#7f1d1d";
+            btn.style.color = "#fecaca";
+        } else {
+            btn.textContent = "Spiker: ON";
+            btn.style.background = "#166534";
+            btn.style.color = "#dcfce7";
+        }
+    }
+
+    function digerSpikerAdminSesiniKes() {
+        if (typeof seciliDukkan !== "string" || seciliDukkan !== "diger") return;
+        const tur = currentAudio && currentAudio.dataset ? currentAudio.dataset.tur : "";
+        if (!digerSpikerKorunanTur(tur)) calanSesiDurdur();
+        if (window.speechSynthesis) {
+            try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+    }
+
+    function digerSpikerDurumunuUygula(data) {
+        if (!data || data.dukkan !== "diger") return;
+        digerSpikerSessiz = !!data.sessiz;
+        digerSpikerDugmesiniCiz();
+        if (digerSpikerSessiz) digerSpikerAdminSesiniKes();
     }
 
     function digerMikrofonOdasiMi() {
@@ -1802,9 +1850,19 @@
         });
     }
 
+    const btnDigerSpiker = document.getElementById("btnDigerSpiker");
+    if (btnDigerSpiker) {
+        btnDigerSpiker.addEventListener("click", function () {
+            if (!digerSpikerOdasiMi() || !socket) return;
+            socket.emit("diger_spiker_anahtar", { dukkan: "diger", kapali: !digerSpikerSessiz });
+        });
+    }
+    socket.on("diger_spiker_durum", digerSpikerDurumunuUygula);
+
     socket.on("ses_oynat", function (data) {
         if (!adminSesAcik) return;
         if (data && data.dukkan && data.dukkan !== seciliDukkan) return;
+        if (data && data.dukkan === "diger" && digerSpikerSessiz && !data.susturma_as && !digerSpikerKorunanTur(String(data.tur || "anons"))) return;
         anonsuCal(data);
     });
 
@@ -1854,6 +1912,12 @@
                     rejiBekleyenHedef = null;
                 } else {
                     rejiSecim.value = [...rejiSecim.options].some(function (o) { return o.value === onceki; }) ? onceki : 'tumu';
+                }
+                if (!rejiSecim.dataset.spikerBagli) {
+                    rejiSecim.dataset.spikerBagli = "1";
+                    rejiSecim.addEventListener("change", function () {
+                        if (typeof digerSpikerDugmesiniCiz === "function") digerSpikerDugmesiniCiz();
+                    });
                 }
             }
 
@@ -1907,6 +1971,7 @@
         const cyTaraSatiri = document.getElementById('cyTaraSatiri');
         if (cyTaraSatiri) cyTaraSatiri.style.display = kod === 'diger' ? 'flex' : 'none';
         if (typeof digerHavuzPaneliniGuncelle === "function") digerHavuzPaneliniGuncelle();
+        if (typeof digerSpikerDugmesiniCiz === "function") digerSpikerDugmesiniCiz();
 
         if (Object.prototype.hasOwnProperty.call(otonomDurumlari, kod)) {
             otonomButonlariniCiz(!!otonomDurumlari[kod]);
@@ -2025,6 +2090,7 @@
             }
         }
         rejiIzgarayiCiz(simdi);
+        if (typeof digerSpikerDugmesiniCiz === "function") digerSpikerDugmesiniCiz();
     }
 
     function rejiCerceveyiSessizlestir() {
