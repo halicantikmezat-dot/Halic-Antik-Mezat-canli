@@ -22,6 +22,7 @@ _SLOTLAR = {}
 _FFMPEG = ""
 _BASLIK = b""
 _MIME = ""
+_YENIDEN = False
 _UST_SINIR = 100
 _KALICI_OKU = None
 _KALICI_YAZ = None
@@ -86,11 +87,12 @@ def kalici_bagla(oku, yaz):
 
 def yayin_kapisi(acik):
     """Diğer yayını açılınca havuzu beklemeye alır, kapanınca süreçleri sonlandırır."""
-    global _YAYIN, _BASLIK, _MIME
+    global _YAYIN, _BASLIK, _MIME, _YENIDEN
     acik = bool(acik)
     _ortak_kapat()
     with _KILIT:
         _YAYIN = acik
+        _YENIDEN = False
         if not acik:
             _BASLIK = b""
             _MIME = ""
@@ -102,25 +104,66 @@ def yayin_kapisi(acik):
         _slot_sonlandir(slot)
 
 
+def _ebml_mi(paket):
+    veri = bytes(paket or b"")
+    return len(veri) >= 4 and veri[:4] == b"\x1a\x45\xdf\xa3"
+
+
+def _gecersiz_girdi_mi(metin):
+    return "invalid data" in str(metin or "").lower()
+
+
+def _yeniden_iste(metin):
+    """Demuxer pipe girdisini reddederse tarayıcıdan bir kez yeni EBML istenir."""
+    global _YENIDEN, _BASLIK, _MIME
+    if not _gecersiz_girdi_mi(metin):
+        return
+    with _KILIT:
+        _YENIDEN = True
+        if _BASLIK and not _ebml_mi(_BASLIK):
+            _BASLIK = b""
+            _MIME = ""
+
+
+def _yeniden_yanit(adet, yeniden, hedef_var):
+    if yeniden and hedef_var and not adet:
+        adet = 1
+    return {"adet": adet, "yeniden": bool(yeniden and hedef_var)}
+
+
 def parca_yaz(paket, baslik, mime):
-    """Aynı medya parçasını işaretli her hesaba ayrı süreçle dağıtır."""
-    global _BASLIK, _MIME
+    """Aynı medya parçasını işaretli her hesaba ayrı süreçle dağıtır.
+
+    Girdi düzeltmesi yalnız Diğer kapısı (_YAYIN) açıkken çalışır.
+    """
+    global _BASLIK, _MIME, _YENIDEN
     if not paket:
         return {"adet": 0, "yeniden": False}
+    paket = bytes(paket)
     with _KILIT:
         if not _YAYIN:
             return {"adet": 0, "yeniden": False}
-        if not _BASLIK:
+        if _BASLIK and not _ebml_mi(_BASLIK):
+            _BASLIK = b""
+            _MIME = ""
+        yeniden = bool(_YENIDEN)
+        _YENIDEN = False
+        if _ebml_mi(paket):
             baslik = True
-        if baslik:
-            _BASLIK = bytes(paket)
+            _BASLIK = paket
             _MIME = str(mime or "")
+        else:
+            baslik = False
         hesaplar = [dict(kayit) for kayit in _oku() if kayit.get("dahil")]
     hedefler = []
     for hesap in hesaplar:
         hedef = _hedef_url(hesap)
         if hedef:
             hedefler.append({"id": hesap["id"], "hedef": hedef})
+    if yeniden and not baslik:
+        return _yeniden_yanit(0, True, bool(hedefler))
+    if not baslik and not _BASLIK:
+        return _yeniden_yanit(0, False, False)
     if len(hedefler) >= 2:
         return _ortak_dagit(hedefler, paket, baslik, mime)
     _ortak_kapat()
@@ -141,14 +184,14 @@ def parca_yaz(paket, baslik, mime):
                 slot["durum"] = "bekliyor"
                 slot["hata"] = ""
         try:
-            slot["kuyruk"].put_nowait((bytes(paket), bool(baslik), str(mime or "")))
+            slot["kuyruk"].put_nowait((paket, bool(baslik), str(mime or "")))
             adet += 1
         except queue.Full:
             with slot["kilit"]:
                 slot["durum"] = "hata"
                 slot["hata"] = "Hedef yanıt vermedi"
                 _proc_birak(slot)
-    return {"adet": adet, "yeniden": False}
+    return _yeniden_yanit(adet, False, bool(hedefler))
 
 
 def api(islem, veri):
@@ -425,46 +468,71 @@ def _isci(slot):
 def _slot_yaz(slot, paket, baslik, mime):
     if slot.get("ortak"):
         return
+    if _ebml_mi(paket):
+        baslik = True
     nesil = 0
+    on_ek = b""
+    stdin = None
+    proc = None
+    yeniden_metin = ""
+    atla = False
     with slot["kilit"]:
         if slot.get("ortak") or slot["dur"].is_set():
-            return
-        nesil = slot.get("nesil", 0)
-        proc = slot.get("proc")
-        if proc is not None and proc.poll() is not None:
-            _proc_birak(slot)
-            proc = None
-            if not baslik:
-                _hata_kilit_icinde(slot, slot.get("son_satir") or "Yayın koptu")
-                return
-        if proc is None:
-            on_ek = b""
-            if not baslik:
-                on_ek, on_mime = _baslik_kopya()
-                if not on_ek:
-                    slot["durum"] = "bekliyor"
-                    return
-                mime = mime or on_mime
-            proc = _surec_ac(slot.get("hedef") or "", mime, slot)
-            if proc is None:
-                _hata_kilit_icinde(slot, "FFmpeg açılamadı")
-                return
-            slot["proc"] = proc
-            slot["acilis"] = time.monotonic()
+            atla = True
         else:
-            on_ek = b""
-        stdin = proc.stdin
+            nesil = slot.get("nesil", 0)
+            proc = slot.get("proc")
+            if proc is not None and proc.poll() is not None:
+                yeniden_metin = slot.get("son_satir") or ""
+                _proc_birak(slot)
+                proc = None
+                if not baslik:
+                    _hata_kilit_icinde(slot, yeniden_metin or "Yayın koptu")
+                    atla = True
+            if not atla and proc is not None and baslik:
+                _proc_birak(slot)
+                proc = None
+            if not atla and proc is None:
+                if not baslik:
+                    on_ek, on_mime = _baslik_kopya()
+                    if not on_ek or not _ebml_mi(on_ek):
+                        slot["durum"] = "bekliyor"
+                        atla = True
+                    else:
+                        mime = mime or on_mime
+                elif not _ebml_mi(paket):
+                    slot["durum"] = "bekliyor"
+                    atla = True
+                if not atla:
+                    proc = _surec_ac(slot.get("hedef") or "", mime, slot)
+                    if proc is None:
+                        _hata_kilit_icinde(slot, "FFmpeg açılamadı")
+                        atla = True
+                    else:
+                        slot["proc"] = proc
+                        slot["acilis"] = time.monotonic()
+            elif not atla:
+                on_ek = b""
+            if not atla and proc is not None:
+                stdin = proc.stdin
+    if yeniden_metin:
+        _yeniden_iste(yeniden_metin)
+    if atla or stdin is None:
+        return
     try:
         if on_ek:
             _stdin_yaz(stdin, on_ek)
         _stdin_yaz(stdin, paket)
     except Exception:
-        _hata_isaretle(slot, "Yayın koptu", nesil)
+        metin = slot.get("son_satir") or "Yayın koptu"
+        _hata_isaretle(slot, metin, nesil)
+        _yeniden_iste(metin)
         return
     with slot["kilit"]:
-        if slot.get("proc") is proc and not slot["dur"].is_set() and slot.get("durum") != "hata":
-            slot["durum"] = "yayinda"
-            slot["hata"] = ""
+        if slot.get("proc") is proc and not slot["dur"].is_set():
+            if baslik or slot.get("durum") != "hata":
+                slot["durum"] = "yayinda"
+                slot["hata"] = ""
 
 
 def _hata_isaretle(slot, metin, nesil=None):
@@ -484,7 +552,12 @@ def _hata_kilit_icinde(slot, metin):
 
 
 def _baslik_kopya():
+    global _BASLIK, _MIME
     with _KILIT:
+        if _BASLIK and not _ebml_mi(_BASLIK):
+            _BASLIK = b""
+            _MIME = ""
+            return b"", ""
         return _BASLIK, _MIME
 
 
@@ -514,12 +587,15 @@ def _bekleyis_doldu(slot):
 
 
 def _proc_dustu_mu(slot):
+    metin = ""
     with slot["kilit"]:
         proc = slot.get("proc")
         if proc is None or proc.poll() is None:
             return
+        metin = slot.get("son_satir") or "Yayın koptu"
         _proc_birak(slot)
-        _hata_kilit_icinde(slot, slot.get("son_satir") or "Yayın koptu")
+        _hata_kilit_icinde(slot, metin)
+    _yeniden_iste(metin)
 
 
 def _proc_birak(slot):
@@ -547,23 +623,43 @@ def _proc_kapat(proc):
             pass
 
 
-def _surec_ac(hedef, mime, slot):
-    if not (str(hedef).startswith("rtmp://") or str(hedef).startswith("rtmps://")):
-        return None
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
-    komut = [
-        _ffmpeg_yolu(),
+def _giris_bicimi(mime):
+    """Boş MIME WebM sayılmaz. WebM canlı akış matroska olarak okunur."""
+    metin = str(mime or "").strip().lower()
+    if not metin:
+        return ""
+    if "mp4" in metin:
+        return "mp4"
+    if "webm" in metin or "matroska" in metin:
+        return "matroska"
+    return ""
+
+
+def _giris_argumanlari(mime):
+    arg = [
         "-hide_banner",
         "-loglevel",
         "warning",
         "-fflags",
-        "+genpts+discardcorrupt",
-        "-seekable",
-        "0",
-        "-f",
-        bicim,
-        "-i",
-        "pipe:0",
+        "+genpts",
+        "-probesize",
+        "5000000",
+        "-analyzeduration",
+        "5000000",
+    ]
+    bicim = _giris_bicimi(mime)
+    if bicim:
+        arg.extend(["-f", bicim])
+    arg.extend(["-i", "pipe:0"])
+    return arg
+
+
+def _surec_ac(hedef, mime, slot):
+    if not (str(hedef).startswith("rtmp://") or str(hedef).startswith("rtmps://")):
+        return None
+    komut = [
+        _ffmpeg_yolu(),
+        *_giris_argumanlari(mime),
         "-c:v",
         "libx264",
         "-preset",
@@ -629,6 +725,7 @@ def _stderr_oku(slot, proc):
             with slot["kilit"]:
                 slot["son_satir"] = metin[:180]
                 olumcul = slot.get("durum") != "hata" and _olumcul_mu(metin)
+            _yeniden_iste(metin)
             if olumcul:
                 _hata_isaretle(slot, metin[:120])
                 return
@@ -720,16 +817,21 @@ def _ortak_giris_isci(ortak):
 
 
 def _encoder_yaz(ortak, paket, baslik, mime):
+    if _ebml_mi(paket):
+        baslik = True
     if baslik:
         _ortak_hatalari_sil(ortak)
     on_ek = b""
     baslik_ek, baslik_mime = (b"", "")
     if not baslik:
         baslik_ek, baslik_mime = _baslik_kopya()
+        if baslik_ek and not _ebml_mi(baslik_ek):
+            baslik_ek, baslik_mime = b"", ""
     kapanan = None
     durdu = False
     nesil = 0
     metin = "Kodlayıcı koptu"
+    yeniden_metin = ""
     with ortak["kilit"]:
         if ortak["dur"].is_set():
             return
@@ -741,6 +843,11 @@ def _encoder_yaz(ortak, paket, baslik, mime):
             durdu = not baslik
             if durdu:
                 metin = ortak.get("son_satir") or "Kodlayıcı koptu"
+                yeniden_metin = ortak.get("son_satir") or ""
+        if proc is not None and baslik:
+            kapanan = proc
+            ortak["proc"] = None
+            proc = None
         if proc is None and not durdu:
             if not baslik:
                 if not baslik_ek:
@@ -748,6 +855,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
                 else:
                     on_ek = baslik_ek
                     mime = mime or baslik_mime
+            elif not _ebml_mi(paket):
+                durdu = "bekliyor"
             if proc is None and durdu is not True and durdu != "bekliyor":
                 proc = _encoder_ac(mime)
                 if proc is None:
@@ -763,6 +872,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
         stdin = proc.stdin if proc is not None else None
     if kapanan is not None:
         _proc_kapat(kapanan)
+    if yeniden_metin:
+        _yeniden_iste(yeniden_metin)
     if durdu is True:
         _ortak_hedef_durumu(ortak, "hata", metin)
         return
@@ -778,24 +889,16 @@ def _encoder_yaz(ortak, paket, baslik, mime):
             _stdin_yaz(stdin, on_ek)
         _stdin_yaz(stdin, paket)
     except Exception:
-        _encoder_hata(ortak, "Kodlayıcı koptu", nesil)
+        with ortak["kilit"]:
+            metin = ortak.get("son_satir") or "Kodlayıcı koptu"
+        _yeniden_iste(metin)
+        _encoder_hata(ortak, metin if _gecersiz_girdi_mi(metin) else "Kodlayıcı koptu", nesil)
 
 
 def _encoder_ac(mime):
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
     komut = [
         _ffmpeg_yolu(),
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-fflags",
-        "+genpts+discardcorrupt",
-        "-seekable",
-        "0",
-        "-f",
-        bicim,
-        "-i",
-        "pipe:0",
+        *_giris_argumanlari(mime),
         "-c:v",
         "libx264",
         "-preset",
@@ -1051,6 +1154,7 @@ def _stderr_ortak(ortak, proc):
             if metin:
                 with ortak["kilit"]:
                     ortak["son_satir"] = metin[:180]
+                _yeniden_iste(metin)
     except Exception:
         return
 
