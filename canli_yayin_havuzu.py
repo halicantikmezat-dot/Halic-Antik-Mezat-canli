@@ -15,6 +15,7 @@ import socket
 import ssl
 import subprocess
 import threading
+import time
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -110,6 +111,20 @@ _PLATFORM_AD = {
 }
 _SITE = "https://halicantikcanli.com"
 _SABIT_CANLI_DUKKAN = "diger"
+_KOPRU_PLATFORMLARI = {"youtube", "tiktok", "twitch", "kick", "facebook", "instagram"}
+_YENIDEN_BAGLAN_SANIYE = 8
+_YAZI_TUTAR_PARCA = (
+    r"(?:bir|iki|üç|uc|dört|dort|beş|bes|altı|alti|yedi|sekiz|dokuz|"
+    r"on|yirmi|otuz|kırk|kirk|elli|altmış|altmis|yetmiş|yetmis|seksen|doksan|"
+    r"yüz|yuz|bin|milyon|\d{1,3}(?:\.\d{3})+|\d+)"
+)
+_YAZI_TUTAR_KALIP = re.compile(
+    r"(?i)(?<![0-9a-zçğıöşü])("
+    + _YAZI_TUTAR_PARCA
+    + r"(?:\s+"
+    + _YAZI_TUTAR_PARCA
+    + r")*(?:\s*(?:tl|lira|₺))?)(?![0-9a-zçğıöşü])"
+)
 _REDIS_ANAHTAR = "halic:canli_yayin:durum"
 _DINLEYICI_ANAHTAR = "halic:canli_yayin:dinleyici"
 _VAPID_ANAHTAR = "halic:canli_yayin:vapid"
@@ -353,6 +368,44 @@ def _otonom_pas_uygula(pas):
         print(f"[CANLI YAYIN] otonom pas atlandi: {hata}", flush=True)
 
 
+def _kopru_platformu_mu(platform):
+    temiz = str(platform or "").strip().strip("[]").strip().lower()
+    return temiz in _KOPRU_PLATFORMLARI
+
+
+def _aktif_sayac_odasi():
+    """Önce sayacı açık ürün odası, yoksa ürünü olan oda, o da yoksa diger."""
+    odalar = _odalar if isinstance(_odalar, dict) else {}
+    urunlu = ""
+    for kod, oda in list(odalar.items()):
+        if not isinstance(oda, dict):
+            continue
+        anahtar = str(kod or "").strip().lower()
+        if _dukkanlar and anahtar not in _dukkanlar:
+            continue
+        if not oda.get("aktif_urun_id"):
+            continue
+        if oda.get("sayac_aktif"):
+            return anahtar
+        if not urunlu:
+            urunlu = anahtar
+    return urunlu or _SABIT_CANLI_DUKKAN
+
+
+def _yayin_dinleniyor_mu(dur):
+    if dur is not None and dur.is_set():
+        return False
+    return bool(str(_kopya().get("aktif_dukkan") or "").strip())
+
+
+def _yeniden_baglan_bekle(dur):
+    """Yayın sürüyorsa 8 saniye bekler. Dur işareti veya yayın kapanışı False döner."""
+    if not _yayin_dinleniyor_mu(dur):
+        return False
+    time.sleep(_YENIDEN_BAGLAN_SANIYE)
+    return _yayin_dinleniyor_mu(dur)
+
+
 def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
     """Dış yorumu sohbete düşürür, kalp yollar ve uygunsa mevcut pey kapısını çağırır."""
     platform_adi = _platform_coz(platform)
@@ -362,9 +415,12 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
     metin = str(mesaj or "").strip()[:500]
     if not metin:
         return {"success": False, "kod": 400, "mesaj": "Boş yorum işlenmez."}
-    kod = _hedef_dukkan(dukkan)
-    if not kod and yerel_kopru:
-        kod = _SABIT_CANLI_DUKKAN
+    if _kopru_platformu_mu(platform):
+        kod = _aktif_sayac_odasi()
+    else:
+        kod = _hedef_dukkan(dukkan)
+        if not kod and yerel_kopru:
+            kod = _SABIT_CANLI_DUKKAN
     if not kod:
         return {"success": False, "kod": 409, "mesaj": "Aktif canlı yayın yok."}
     if mukerrer_kapisi(platform_adi, ad, metin):
@@ -399,6 +455,36 @@ def havuz_yorumu_isle(dukkan, platform, kullanici, mesaj, yerel_kopru=False):
     }
 
 
+def _tutar_parcasi_yeterli(parca):
+    """Saat gibi kısa tek kelimeyi geçmez. Yüz, bin veya en az üç haneli tutarı alır."""
+    kucuk = str(parca or "").casefold()
+    if re.search(r"(?:tl|lira|₺|yüz|yuz|bin|milyon)", kucuk):
+        return True
+    if re.search(r"\d{1,3}(?:\.\d{3})+", parca or ""):
+        return True
+    if re.search(r"\d{3,}", parca or ""):
+        return True
+    return False
+
+
+def _cumle_ici_tutar(metin, tutar_coz):
+    """Cümle içindeki yazılı veya rakamlı tutar parçasını mevcut çözücüye verir."""
+    if tutar_coz is None:
+        return None
+    son = None
+    for eslesen in _YAZI_TUTAR_KALIP.finditer(str(metin or "")):
+        parca = str(eslesen.group(1) or "").strip()
+        if not _tutar_parcasi_yeterli(parca):
+            continue
+        try:
+            deger = _sayiya(tutar_coz(parca))
+        except Exception:
+            deger = None
+        if deger and deger > 0:
+            son = deger
+    return son
+
+
 def yorumdan_pey_coz(mesaj, tutar_coz=None):
     """Yorumdaki geçerli sayısal teklifi ayıklar. Cümle içindeki saat gibi kısa sayıları geçmez."""
     metin = str(mesaj or "").strip()
@@ -420,9 +506,9 @@ def yorumdan_pey_coz(mesaj, tutar_coz=None):
     if tl_aday:
         return _sayiya(tl_aday[-1])
     adaylar = re.findall(r"(?<!\d)(\d{1,3}(?:[.\s]\d{3})+|\d{3,7})(?!\d)", metin)
-    if not adaylar:
-        return None
-    return _sayiya(adaylar[-1])
+    if adaylar:
+        return _sayiya(adaylar[-1])
+    return _cumle_ici_tutar(metin, tutar_coz)
 
 
 def _baslat(veri):
@@ -1598,46 +1684,63 @@ def _dinleyici_yenile(ad, hedef, dukkan, fn):
     _dinleyici_kalici()
 
 
+def _youtube_sohbeti_kapat(chat):
+    if chat is None:
+        return
+    for metod in ("terminate", "stop"):
+        fn = getattr(chat, metod, None)
+        if not callable(fn):
+            continue
+        try:
+            fn()
+            break
+        except Exception:
+            pass
+
+
 def _youtube_dongu(video_id, dukkan, dur):
     if not _PYTCHAT_VAR or pytchat is None:
         _pasif_uyar("youtube", "[CANLI YAYIN] pytchat kurulu degil, YouTube dinleyici pasif")
         _dinleyici_mesaj_yaz("youtube", "pytchat kurulu değil", video_id)
         return
-    try:
-        chat = pytchat.create(video_id=video_id)
-    except Exception as hata:
-        _dinleyici_mesaj_yaz("youtube", "YouTube bağlanamadı: " + _hata_ozeti(hata), video_id)
-        return
-    _dinleyici_durum_yaz("youtube", "bagli")
-    try:
-        while not dur.is_set():
+    while _yayin_dinleniyor_mu(dur):
+        chat = None
+        kopma = False
+        try:
+            chat = pytchat.create(video_id=video_id)
+        except Exception as hata:
+            _dinleyici_mesaj_yaz("youtube", "YouTube bağlanamadı: " + _hata_ozeti(hata), video_id)
+            kopma = True
+        if chat is not None:
+            _dinleyici_durum_yaz("youtube", "bagli")
             try:
-                if hasattr(chat, "is_alive") and not chat.is_alive():
-                    _dinleyici_mesaj_yaz("youtube", "YouTube yayını veya sohbeti şu an kapalı", video_id)
-                    break
-                demet = chat.get()
-                ogeler = demet.sync_items() if hasattr(demet, "sync_items") else []
-                for satir in ogeler:
-                    if dur.is_set():
+                while _yayin_dinleniyor_mu(dur):
+                    try:
+                        if hasattr(chat, "is_alive") and not chat.is_alive():
+                            _dinleyici_mesaj_yaz("youtube", "YouTube yayını veya sohbeti şu an kapalı", video_id)
+                            kopma = True
+                            break
+                        demet = chat.get()
+                        ogeler = demet.sync_items() if hasattr(demet, "sync_items") else []
+                        for satir in ogeler:
+                            if dur is not None and dur.is_set():
+                                break
+                            yazar = getattr(satir, "author", None)
+                            ad = getattr(yazar, "name", None) or "YouTube"
+                            _dinleyici_yorum_isle(dukkan, "youtube", ad, getattr(satir, "message", "") or "")
+                    except Exception as hata:
+                        _dinleyici_mesaj_yaz("youtube", "YouTube okuma hatası: " + _hata_ozeti(hata), video_id)
+                        kopma = True
                         break
-                    yazar = getattr(satir, "author", None)
-                    ad = getattr(yazar, "name", None) or "YouTube"
-                    _dinleyici_yorum_isle(dukkan, "youtube", ad, getattr(satir, "message", "") or "")
-            except Exception as hata:
-                _dinleyici_mesaj_yaz("youtube", "YouTube okuma hatası: " + _hata_ozeti(hata), video_id)
-                break
-            if dur.wait(1.0):
-                break
-    finally:
-        for metod in ("terminate", "stop"):
-            fn = getattr(chat, metod, None)
-            if not callable(fn):
-                continue
-            try:
-                fn()
-                break
-            except Exception:
-                pass
+                    if dur is not None and dur.wait(1.0):
+                        break
+            finally:
+                _youtube_sohbeti_kapat(chat)
+        if not _yayin_dinleniyor_mu(dur) or not kopma:
+            break
+        _dinleyici_mesaj_yaz("youtube", "8 saniye sonra yeniden bağlanılıyor", video_id)
+        if not _yeniden_baglan_bekle(dur):
+            break
 
 
 def _tiktok_dongu(kullanici, dukkan, dur):
@@ -2336,44 +2439,58 @@ def _meta_duz_satir(veri):
 
 
 def _twitch_dongu(kanal, dukkan, dur):
-    try:
-        bag = _ws_baglan("irc-ws.chat.twitch.tv", 443, "/")
-    except Exception as hata:
-        _dinleyici_mesaj_yaz("twitch", "Twitch bağlanamadı: " + _hata_ozeti(hata), kanal)
-        return
-    with _DINLEYICI_KILIT:
-        _DINLEYICI_ISTEMCI["twitch"] = bag
     parmak = int(hashlib.sha1(str(kanal).encode("utf-8")).hexdigest()[:6], 16)
     nick = "justinfan" + str(10000 + (parmak % 80000))
-    try:
-        bag.yazi("PASS SCHMOOPIIE\r\nNICK " + nick + "\r\nJOIN #" + kanal + "\r\n")
-        while not dur.is_set():
+    while _yayin_dinleniyor_mu(dur):
+        bag = None
+        kopma = False
+        try:
+            bag = _ws_baglan("irc-ws.chat.twitch.tv", 443, "/")
+        except Exception as hata:
+            _dinleyici_mesaj_yaz("twitch", "Twitch bağlanamadı: " + _hata_ozeti(hata), kanal)
+            kopma = True
+        if bag is not None:
+            with _DINLEYICI_KILIT:
+                _DINLEYICI_ISTEMCI["twitch"] = bag
             try:
-                metin = bag.oku(1.0)
-            except TimeoutError:
-                continue
+                bag.yazi("PASS SCHMOOPIIE\r\nNICK " + nick + "\r\nJOIN #" + kanal + "\r\n")
+                while _yayin_dinleniyor_mu(dur):
+                    try:
+                        metin = bag.oku(1.0)
+                    except TimeoutError:
+                        continue
+                    except Exception as hata:
+                        _dinleyici_mesaj_yaz("twitch", "Twitch bağlantı hatası: " + _hata_ozeti(hata), kanal)
+                        kopma = True
+                        break
+                    if metin is None:
+                        _dinleyici_mesaj_yaz("twitch", "Twitch sohbeti kapandı", kanal)
+                        kopma = True
+                        break
+                    for satir in str(metin).split("\r\n"):
+                        if not satir:
+                            continue
+                        if satir.startswith("PING"):
+                            bag.yazi("PONG :tmi.twitch.tv\r\n")
+                            continue
+                        if " 001 " in satir or (" join #" + kanal) in satir.lower():
+                            _dinleyici_durum_yaz("twitch", "bagli")
+                        eslesen = re.match(r":([^! ]+)![^\r\n]* PRIVMSG #[^\s]+ :(.*)$", satir)
+                        if eslesen:
+                            _dinleyici_yorum_isle(dukkan, "twitch", eslesen.group(1), eslesen.group(2))
             except Exception as hata:
                 _dinleyici_mesaj_yaz("twitch", "Twitch bağlantı hatası: " + _hata_ozeti(hata), kanal)
-                break
-            if metin is None:
-                _dinleyici_mesaj_yaz("twitch", "Twitch sohbeti kapandı", kanal)
-                break
-            for satir in str(metin).split("\r\n"):
-                if not satir:
-                    continue
-                if satir.startswith("PING"):
-                    bag.yazi("PONG :tmi.twitch.tv\r\n")
-                    continue
-                if " 001 " in satir or (" join #" + kanal) in satir.lower():
-                    _dinleyici_durum_yaz("twitch", "bagli")
-                eslesen = re.match(r":([^! ]+)![^\r\n]* PRIVMSG #[^\s]+ :(.*)$", satir)
-                if eslesen:
-                    _dinleyici_yorum_isle(dukkan, "twitch", eslesen.group(1), eslesen.group(2))
-    finally:
-        with _DINLEYICI_KILIT:
-            if _DINLEYICI_ISTEMCI.get("twitch") is bag:
-                _DINLEYICI_ISTEMCI["twitch"] = None
-        bag.kapat()
+                kopma = True
+            finally:
+                with _DINLEYICI_KILIT:
+                    if _DINLEYICI_ISTEMCI.get("twitch") is bag:
+                        _DINLEYICI_ISTEMCI["twitch"] = None
+                bag.kapat()
+        if not _yayin_dinleniyor_mu(dur) or not kopma:
+            break
+        _dinleyici_mesaj_yaz("twitch", "8 saniye sonra yeniden bağlanılıyor", kanal)
+        if not _yeniden_baglan_bekle(dur):
+            break
 
 
 def _kick_sohbet_id(slug):
@@ -2398,73 +2515,88 @@ def _kick_sohbet_id(slug):
 
 
 def _kick_dongu(slug, dukkan, dur):
-    chat_id = _kick_sohbet_id(slug)
-    if not chat_id:
-        _dinleyici_mesaj_yaz("kick", "Kick sohbet odası bulunamadı", slug)
-        return
     yol = "/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false"
-    try:
-        bag = _ws_baglan("ws-us2.pusher.com", 443, yol)
-    except Exception as hata:
-        _dinleyici_mesaj_yaz("kick", "Kick bağlanamadı: " + _hata_ozeti(hata), slug)
-        return
-    with _DINLEYICI_KILIT:
-        _DINLEYICI_ISTEMCI["kick"] = bag
-    abone = False
-    abonelik = json.dumps(
-        {
-            "event": "pusher:subscribe",
-            "data": {"auth": "", "channel": "chatrooms." + chat_id + ".v2"},
-        }
-    )
-    try:
-        while not dur.is_set():
+    while _yayin_dinleniyor_mu(dur):
+        bag = None
+        kopma = False
+        chat_id = _kick_sohbet_id(slug)
+        if not chat_id:
+            _dinleyici_mesaj_yaz("kick", "Kick sohbet odası bulunamadı", slug)
+            kopma = True
+        else:
             try:
-                metin = bag.oku(1.0)
-            except TimeoutError:
-                continue
+                bag = _ws_baglan("ws-us2.pusher.com", 443, yol)
+            except Exception as hata:
+                _dinleyici_mesaj_yaz("kick", "Kick bağlanamadı: " + _hata_ozeti(hata), slug)
+                kopma = True
+        if bag is not None:
+            with _DINLEYICI_KILIT:
+                _DINLEYICI_ISTEMCI["kick"] = bag
+            abone = False
+            abonelik = json.dumps(
+                {
+                    "event": "pusher:subscribe",
+                    "data": {"auth": "", "channel": "chatrooms." + chat_id + ".v2"},
+                }
+            )
+            try:
+                while _yayin_dinleniyor_mu(dur):
+                    try:
+                        metin = bag.oku(1.0)
+                    except TimeoutError:
+                        continue
+                    except Exception as hata:
+                        _dinleyici_mesaj_yaz("kick", "Kick bağlantı hatası: " + _hata_ozeti(hata), slug)
+                        kopma = True
+                        break
+                    if metin is None:
+                        _dinleyici_mesaj_yaz("kick", "Kick sohbeti kapandı", slug)
+                        kopma = True
+                        break
+                    if not metin:
+                        continue
+                    try:
+                        paket = json.loads(metin)
+                    except ValueError:
+                        continue
+                    if not isinstance(paket, dict):
+                        continue
+                    olay = str(paket.get("event") or "")
+                    if olay == "pusher:ping":
+                        bag.yazi(json.dumps({"event": "pusher:pong", "data": {}}))
+                        continue
+                    if not abone and olay == "pusher:connection_established":
+                        bag.yazi(abonelik)
+                        abone = True
+                        _dinleyici_durum_yaz("kick", "bagli")
+                        continue
+                    if "ChatMessage" not in olay:
+                        continue
+                    ham = paket.get("data")
+                    if isinstance(ham, str):
+                        try:
+                            ham = json.loads(ham)
+                        except ValueError:
+                            continue
+                    if not isinstance(ham, dict):
+                        continue
+                    gonderen = ham.get("sender") if isinstance(ham.get("sender"), dict) else {}
+                    ad = gonderen.get("username") or gonderen.get("slug") or "Kick"
+                    icerik = ham.get("content") or ham.get("message") or ""
+                    _dinleyici_yorum_isle(dukkan, "kick", ad, icerik)
             except Exception as hata:
                 _dinleyici_mesaj_yaz("kick", "Kick bağlantı hatası: " + _hata_ozeti(hata), slug)
-                break
-            if metin is None:
-                _dinleyici_mesaj_yaz("kick", "Kick sohbeti kapandı", slug)
-                break
-            if not metin:
-                continue
-            try:
-                paket = json.loads(metin)
-            except ValueError:
-                continue
-            if not isinstance(paket, dict):
-                continue
-            olay = str(paket.get("event") or "")
-            if olay == "pusher:ping":
-                bag.yazi(json.dumps({"event": "pusher:pong", "data": {}}))
-                continue
-            if not abone and olay == "pusher:connection_established":
-                bag.yazi(abonelik)
-                abone = True
-                _dinleyici_durum_yaz("kick", "bagli")
-                continue
-            if "ChatMessage" not in olay:
-                continue
-            ham = paket.get("data")
-            if isinstance(ham, str):
-                try:
-                    ham = json.loads(ham)
-                except ValueError:
-                    continue
-            if not isinstance(ham, dict):
-                continue
-            gonderen = ham.get("sender") if isinstance(ham.get("sender"), dict) else {}
-            ad = gonderen.get("username") or gonderen.get("slug") or "Kick"
-            icerik = ham.get("content") or ham.get("message") or ""
-            _dinleyici_yorum_isle(dukkan, "kick", ad, icerik)
-    finally:
-        with _DINLEYICI_KILIT:
-            if _DINLEYICI_ISTEMCI.get("kick") is bag:
-                _DINLEYICI_ISTEMCI["kick"] = None
-        bag.kapat()
+                kopma = True
+            finally:
+                with _DINLEYICI_KILIT:
+                    if _DINLEYICI_ISTEMCI.get("kick") is bag:
+                        _DINLEYICI_ISTEMCI["kick"] = None
+                bag.kapat()
+        if not _yayin_dinleniyor_mu(dur) or not kopma:
+            break
+        _dinleyici_mesaj_yaz("kick", "8 saniye sonra yeniden bağlanılıyor", slug)
+        if not _yeniden_baglan_bekle(dur):
+            break
 
 
 class _WsBag:
