@@ -603,8 +603,7 @@
                 <input type="url" id="cyX" placeholder="X">
                 <input type="url" id="cyTelegram" placeholder="Telegram">
             </div>
-            <input type="url" id="cyWebhook" placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
-            <div style="font-size:11px; color:#94a3b8;">Facebook ve Instagram yorumları POST /api/canli-havuz/meta-webhook adresine gelir. Alanlar: platform, kullanici, mesaj. Webhook doğrulama anahtarı veya ilgili kanal açıkken yönetici oturumu aranmaz.</div>
+            <input type="url" id="cyWebhook" hidden placeholder="Make / n8n Webhook URL (boşsa MAKE_N8N_WEBHOOK_URL)">
             <div id="sosyalKopruKutu" style="display:flex; flex-direction:column; gap:6px; padding:8px; border:1px dashed var(--card-border); border-radius:6px;">
                 <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Yorum köprüleri</div>
                 <div style="font-size:11px; color:#94a3b8;">TikTok, Instagram ve Facebook başlat/durdur aynı durumdan okunur. Aynı yorum son 10 saniyede bir kez sohbete düşer.</div>
@@ -627,18 +626,16 @@
             <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
-                <button type="button" class="btn btn-sm" style="background:#14532d; color:#86efac;" onclick="canliWebhookTest()">Test Webhook Gönder</button>
+                <button type="button" hidden class="btn btn-sm" style="background:#14532d; color:#86efac;" onclick="canliWebhookTest()">Test Webhook Gönder</button>
                 <button type="button" class="btn btn-blue btn-sm" onclick="canliSosyalKopyala()">Sosyal Linkleri Kopyala</button>
                 <button type="button" class="btn btn-sm" style="background:#0d9488; color:#fff;" onclick="canliDuyuruKopyala()">Duyuruyu Kopyala</button>
             </div>
             <div id="restreamKopruKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
-                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Restream RTMP Köprüsü (opsiyonel)</div>
-                <div style="font-size:11px; color:#94a3b8;">Boş bırakılırsa mevcut web yayını eskisi gibi sürer. Yalnızca Diğer - Her Şey canlı yayını açıkken ve iki alan da doluyken köprü kurulur.</div>
-                <input type="text" id="cyRestreamUrl" value="rtmp://live.restream.io/live" placeholder="Restream RTMP URL" autocomplete="off" spellcheck="false">
-                <div style="display:flex; gap:6px; align-items:center;">
-                    <input type="password" id="cyRestreamKey" placeholder="Restream Akış Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
-                    <button type="button" id="cyRestreamKeyGoster" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Göster</button>
-                </div>
+                <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Kamera ve Mikrofon</div>
+                <div style="font-size:11px; color:#94a3b8;">Iriun Webcam burada seçilir. Yayın, aşağıdaki listede Aktif olan platformların RTMP adreslerine basılır.</div>
+                <input type="text" id="cyRestreamUrl" hidden value="rtmp://live.restream.io/live" autocomplete="off" spellcheck="false">
+                <input type="password" id="cyRestreamKey" hidden autocomplete="new-password" data-lpignore="true" spellcheck="false">
+                <button type="button" id="cyRestreamKeyGoster" hidden>Göster</button>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
                     <select id="cyRestreamKamera" style="margin:0;"><option value="">Kamera seçin</option></select>
                     <select id="cyRestreamMikrofon" style="margin:0;"><option value="">Mikrofon seçin</option></select>
@@ -647,16 +644,24 @@
                     <button type="button" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;" onclick="restreamCihazIzni()">Kamera ve Mikrofonu Listele</button>
                 </div>
                 <div id="cyRestreamDurum" style="font-size:12px; color:#94a3b8; min-height:16px;"></div>
-                <div style="font-size:11px; color:#cbd5e1; line-height:1.45;">
-                    OBS ile göndermek için: Ayarlar → Yayın → Servis: Özel.
-                    Sunucu <b>rtmp://live.restream.io/live</b>, yayın anahtarı yukarıdaki Stream Key.
-                    OBS’te Yayını Başlat deyince Restream çevrimiçi olur. Tarayıcı köprüsü ancak sunucu “aktarılıyor” derse aynı işi görür.
-                </div>
             </div>
             <div id="sosyalHavuzKutu" style="margin-top:4px; padding-top:8px; border-top:1px dashed var(--card-border); display:flex; flex-direction:column; gap:8px;">
                 <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">Çoklu Sosyal Medya Yayın Havuzu (Instagram / Facebook / TikTok)</div>
-                <div style="font-size:11px; color:#94a3b8;">Üstteki Restream köprüsü olduğu gibi kalır. Diğer - Her Şey yayını açılınca yalnızca “Yayına Dahil Et” işaretli hesaplara, her biri ayrı FFmpeg süreciyle, ana Restream hedefiyle birlikte yayın gider. Bir hesabın hatası diğerlerini kesmez.</div>
-                <input type="text" id="syhAd" maxlength="80" placeholder="Hesap / Sayfa Adı (örn. Instagram 1, FB Grup 2)" autocomplete="off">
+                <div style="font-size:11px; color:#94a3b8;">Diğer - Her Şey yayını açılınca yalnızca Aktif satırlara, her biri ayrı FFmpeg süreciyle basılır. Bir hesabın hatası diğerlerini kesmez. Durdurunca süreçler kapanır.</div>
+                <select id="syhTur" style="margin:0;">
+                    <option value="instagram">Instagram</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="kick">Kick</option>
+                    <option value="twitch">Twitch</option>
+                    <option value="x">X</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="restream">Restream</option>
+                    <option value="ozel">Özel</option>
+                </select>
+                <input type="text" id="syhAd" maxlength="80" placeholder="Sayfa Adı (örn. Instagram 1, FB Grup 2)" autocomplete="off">
+                <input type="url" id="syhLink" maxlength="500" placeholder="Sayfa Linki (https://...)" autocomplete="off" spellcheck="false">
                 <input type="text" id="syhUrl" maxlength="500" placeholder="RTMP Sunucu URL (rtmp:// veya rtmps://)" autocomplete="off" spellcheck="false">
                 <div style="display:flex; gap:6px; align-items:center;">
                     <input type="password" id="syhKey" maxlength="400" placeholder="Yayın Anahtarı (Stream Key)" autocomplete="new-password" data-lpignore="true" spellcheck="false" style="flex:1; margin:0;">
@@ -2548,6 +2553,10 @@
         yayinda: ['Yayında', '#14532d', '#86efac'],
         hata: ['Hata', '#7f1d1d', '#fecaca']
     };
+    const SYH_TUR = {
+        instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', youtube: 'YouTube',
+        kick: 'Kick', twitch: 'Twitch', x: 'X', telegram: 'Telegram', restream: 'Restream', ozel: 'Özel'
+    };
     let sosyalHavuzImza = '';
     let sosyalHavuzZamanlayici = null;
 
@@ -2581,7 +2590,7 @@
 
     function sosyalHavuzImzaHesapla(hesaplar) {
         return (hesaplar || []).map(function (kayit) {
-            return [kayit.id, kayit.ad, kayit.rtmp_url, kayit.dahil ? '1' : '0', kayit.stream_key].join('\u001f');
+            return [kayit.id, kayit.ad, kayit.tur || '', kayit.sayfa_linki || '', kayit.rtmp_url, kayit.dahil ? '1' : '0', kayit.stream_key].join('\u001f');
         }).join('\u001e');
     }
 
@@ -2611,7 +2620,7 @@
         kutu.setAttribute('data-syh-dahil', kayit.id);
         kutu.checked = !!kayit.dahil;
         const yazi = document.createElement('span');
-        yazi.textContent = 'Yayına Dahil Et';
+        yazi.textContent = 'Aktif';
         sol.appendChild(kutu);
         sol.appendChild(yazi);
         const boya = sosyalHavuzRozet(kayit.durum);
@@ -2624,7 +2633,26 @@
         ust.appendChild(rozet);
         const ad = document.createElement('div');
         ad.style.cssText = 'font-size:13px; color:#f8fafc; font-weight:bold;';
-        ad.textContent = kayit.ad || '';
+        ad.textContent = (SYH_TUR[kayit.tur] || 'Özel') + ' · ' + (kayit.ad || '');
+        const link = document.createElement('input');
+        link.type = 'url';
+        link.maxLength = 500;
+        link.placeholder = 'Sayfa Linki (https://...)';
+        link.setAttribute('data-syh-link', kayit.id);
+        link.value = kayit.sayfa_linki || '';
+        link.autocomplete = 'off';
+        link.spellcheck = false;
+        link.style.cssText = 'margin:0;';
+        const tur = document.createElement('select');
+        tur.setAttribute('data-syh-tur', kayit.id);
+        tur.style.margin = '0';
+        Object.keys(SYH_TUR).forEach(function (kod) {
+            const secenek = document.createElement('option');
+            secenek.value = kod;
+            secenek.textContent = SYH_TUR[kod];
+            if ((kayit.tur || 'ozel') === kod) secenek.selected = true;
+            tur.appendChild(secenek);
+        });
         const url = document.createElement('div');
         url.style.cssText = 'font-size:11px; color:#94a3b8; word-break:break-all;';
         url.textContent = kayit.rtmp_url || '';
@@ -2655,6 +2683,8 @@
         alt.appendChild(sil);
         satir.appendChild(ust);
         satir.appendChild(ad);
+        satir.appendChild(tur);
+        satir.appendChild(link);
         satir.appendChild(url);
         satir.appendChild(alt);
         return satir;
@@ -2725,17 +2755,22 @@
         const liste = document.getElementById('syhListe');
         if (ekle) {
             ekle.addEventListener('click', function () {
+                const tur = document.getElementById('syhTur');
                 const ad = document.getElementById('syhAd');
+                const sayfa = document.getElementById('syhLink');
                 const url = document.getElementById('syhUrl');
                 const anahtar = document.getElementById('syhKey');
                 sosyalHavuzGonder('sosyal_havuz_ekle', {
+                    tur: tur ? tur.value : 'ozel',
                     ad: ad ? ad.value : '',
+                    sayfa_linki: sayfa ? sayfa.value : '',
                     rtmp_url: url ? url.value : '',
                     stream_key: anahtar ? anahtar.value : ''
                 }).then(function (veri) {
                     sosyalHavuzUygula(veri, false);
                     if (veri && veri.success !== false) {
                         if (ad) ad.value = '';
+                        if (sayfa) sayfa.value = '';
                         if (url) url.value = '';
                         if (anahtar) anahtar.value = '';
                     }
@@ -2765,9 +2800,13 @@
                 const sil = hedef.getAttribute('data-syh-sil');
                 if (guncelle) {
                     const alan = liste.querySelector('[data-syh-key="' + guncelle + '"]');
+                    const turAlan = liste.querySelector('[data-syh-tur="' + guncelle + '"]');
+                    const linkAlan = liste.querySelector('[data-syh-link="' + guncelle + '"]');
                     const kutu = liste.querySelector('[data-syh-dahil="' + guncelle + '"]');
                     sosyalHavuzGonder('sosyal_havuz_guncelle', {
                         id: guncelle,
+                        tur: turAlan ? turAlan.value : 'ozel',
+                        sayfa_linki: linkAlan ? linkAlan.value : '',
                         stream_key: alan ? alan.value : ''
                     }).then(function (veri) {
                         sosyalHavuzUygula(veri, false);

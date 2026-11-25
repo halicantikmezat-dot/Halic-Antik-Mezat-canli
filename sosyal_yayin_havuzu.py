@@ -31,6 +31,19 @@ _URL = re.compile(
     r"^(rtmps?)://([A-Za-z0-9._-]{1,253})(?::\d{2,5})?(/[^\s\"'\\]{0,420})?$",
     re.IGNORECASE,
 )
+_LINK = re.compile(r"^https?://[^\s\"'\\]{4,490}$", re.IGNORECASE)
+_TURLER = (
+    "youtube",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "kick",
+    "twitch",
+    "x",
+    "telegram",
+    "restream",
+    "ozel",
+)
 
 
 def kalici_bagla(oku, yaz):
@@ -120,9 +133,9 @@ def api(islem, veri):
     if islem == "sosyal_havuz_liste":
         return {"success": True, "hesaplar": liste()}
     if islem == "sosyal_havuz_ekle":
-        return _ekle(veri.get("ad"), veri.get("rtmp_url"), veri.get("stream_key"))
+        return _ekle(veri)
     if islem == "sosyal_havuz_guncelle":
-        return _guncelle(veri.get("id"), veri.get("stream_key"))
+        return _guncelle(veri)
     if islem == "sosyal_havuz_sil":
         return _sil(veri.get("id"))
     if islem == "sosyal_havuz_dahil":
@@ -153,6 +166,8 @@ def liste():
             {
                 "id": kayit["id"],
                 "ad": kayit["ad"],
+                "tur": kayit.get("tur") or "ozel",
+                "sayfa_linki": kayit.get("sayfa_linki") or "",
                 "rtmp_url": kayit["rtmp_url"],
                 "stream_key": kayit["stream_key"],
                 "dahil": bool(kayit.get("dahil")),
@@ -163,16 +178,49 @@ def liste():
     return cikti
 
 
-def _ekle(ad, url, anahtar):
-    temiz_ad = _ad_temizle(ad)
+def restream_satiri_emin_ol(url, anahtar):
+    """Eski tek Restream hedefini havuza bir kez taşır. Aynı adres varsa eklemez."""
     temiz_url = _url_temizle(url)
     temiz_anahtar = _anahtar_temizle(anahtar)
+    if not temiz_url or not temiz_anahtar:
+        return False
+    with _KILIT:
+        hesaplar = _oku()
+        for kayit in hesaplar:
+            if kayit.get("rtmp_url") == temiz_url and kayit.get("stream_key") == temiz_anahtar:
+                return False
+        if len(hesaplar) >= _UST_SINIR:
+            return False
+        hesaplar.append(
+            {
+                "id": _yeni_id(hesaplar),
+                "ad": "Restream",
+                "tur": "restream",
+                "sayfa_linki": "",
+                "rtmp_url": temiz_url,
+                "stream_key": temiz_anahtar,
+                "dahil": True,
+            }
+        )
+        _yaz(hesaplar)
+    return True
+
+
+def _ekle(veri):
+    veri = veri if isinstance(veri, dict) else {}
+    temiz_ad = _ad_temizle(veri.get("ad"))
+    temiz_url = _url_temizle(veri.get("rtmp_url"))
+    temiz_anahtar = _anahtar_temizle(veri.get("stream_key"))
+    link_ham = str(veri.get("sayfa_linki") or "").strip()
+    temiz_link = _link_temizle(link_ham)
     if not temiz_ad:
-        return {"success": False, "mesaj": "Hesap adı gerekli."}
+        return {"success": False, "mesaj": "Sayfa adı gerekli."}
     if not temiz_url:
         return {"success": False, "mesaj": "Geçerli bir RTMP sunucu URL'si girin."}
     if not temiz_anahtar:
         return {"success": False, "mesaj": "Yayın anahtarı geçersiz."}
+    if link_ham and not temiz_link:
+        return {"success": False, "mesaj": "Sayfa linki https ile başlamalı."}
     with _KILIT:
         hesaplar = _oku()
         if len(hesaplar) >= _UST_SINIR:
@@ -181,42 +229,66 @@ def _ekle(ad, url, anahtar):
             {
                 "id": _yeni_id(hesaplar),
                 "ad": temiz_ad,
+                "tur": _tur_temizle(veri.get("tur")),
+                "sayfa_linki": temiz_link,
                 "rtmp_url": temiz_url,
                 "stream_key": temiz_anahtar,
                 "dahil": False,
             }
         )
         _yaz(hesaplar)
-    return {"success": True, "mesaj": "Hesap listeye eklendi.", "hesaplar": liste()}
+    return {"success": True, "mesaj": "Platform listeye eklendi.", "hesaplar": liste()}
 
 
-def _guncelle(kim, anahtar):
-    kim = _kimlik(kim)
-    temiz = _anahtar_temizle(anahtar)
+def _guncelle(veri):
+    veri = veri if isinstance(veri, dict) else {}
+    kim = _kimlik(veri.get("id"))
     if not kim:
         return {"success": False, "mesaj": "Hesap bulunamadı."}
-    if not temiz:
+    if "stream_key" in veri and not _anahtar_temizle(veri.get("stream_key")):
         return {"success": False, "mesaj": "Yayın anahtarı geçersiz."}
+    link_ham = str(veri.get("sayfa_linki") or "").strip() if "sayfa_linki" in veri else ""
+    if "sayfa_linki" in veri and link_ham and not _link_temizle(link_ham):
+        return {"success": False, "mesaj": "Sayfa linki https ile başlamalı."}
     with _KILIT:
         hesaplar = _oku()
         bulunan = None
+        eski_hedef = ""
         for kayit in hesaplar:
-            if kayit["id"] == kim:
-                kayit["stream_key"] = temiz
-                bulunan = kayit
-                break
+            if kayit["id"] != kim:
+                continue
+            eski_hedef = _hedef_url(kayit)
+            if "stream_key" in veri:
+                kayit["stream_key"] = _anahtar_temizle(veri.get("stream_key"))
+            if "tur" in veri:
+                kayit["tur"] = _tur_temizle(veri.get("tur"))
+            if "sayfa_linki" in veri:
+                kayit["sayfa_linki"] = _link_temizle(link_ham)
+            if "ad" in veri:
+                ad = _ad_temizle(veri.get("ad"))
+                if not ad:
+                    return {"success": False, "mesaj": "Sayfa adı gerekli."}
+                kayit["ad"] = ad
+            if "rtmp_url" in veri:
+                url = _url_temizle(veri.get("rtmp_url"))
+                if not url:
+                    return {"success": False, "mesaj": "Geçerli bir RTMP sunucu URL'si girin."}
+                kayit["rtmp_url"] = url
+            bulunan = kayit
+            break
         if bulunan is None:
             return {"success": False, "mesaj": "Hesap bulunamadı."}
+        yeni_hedef = _hedef_url(bulunan)
         _yaz(hesaplar)
         slot = _SLOTLAR.get(kim)
-    if slot is not None:
+    if slot is not None and yeni_hedef != eski_hedef:
         with slot["kilit"]:
-            slot["hedef"] = _hedef_url(bulunan)
+            slot["hedef"] = yeni_hedef
             slot["nesil"] = slot.get("nesil", 0) + 1
             slot["durum"] = "bekliyor" if _YAYIN and bulunan.get("dahil") else "pasif"
             slot["hata"] = ""
             _proc_birak(slot)
-    return {"success": True, "mesaj": "Yayın anahtarı güncellendi.", "hesaplar": liste()}
+    return {"success": True, "mesaj": "Platform güncellendi.", "hesaplar": liste()}
 
 
 def _sil(kim):
@@ -1073,6 +1145,8 @@ def _kayit_temizle(ham):
     return {
         "id": kim,
         "ad": ad,
+        "tur": _tur_temizle(ham.get("tur")),
+        "sayfa_linki": _link_temizle(ham.get("sayfa_linki")),
         "rtmp_url": url,
         "stream_key": anahtar,
         "dahil": bool(ham.get("dahil")),
@@ -1087,6 +1161,22 @@ def _hedef_url(hesap):
     if url.endswith("/" + anahtar):
         return url
     return url + "/" + anahtar
+
+
+def _tur_temizle(deger):
+    tur = str(deger or "").strip().lower()
+    if tur == "twitter":
+        tur = "x"
+    if tur in _TURLER:
+        return tur
+    return "ozel"
+
+
+def _link_temizle(deger):
+    adres = str(deger or "").strip()
+    if not adres or not _LINK.fullmatch(adres):
+        return ""
+    return adres[:500]
 
 
 def _ad_temizle(deger):
