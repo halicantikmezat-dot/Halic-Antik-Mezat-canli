@@ -2537,15 +2537,31 @@
         }).join('\u001e');
     }
 
+    function sosyalHavuzHataMetni(kayit) {
+        if (!kayit || kayit.durum !== 'hata') return '';
+        return String(kayit.son_hata || kayit.hata || '').trim();
+    }
+
+    function sosyalHavuzHataYaz(kayit) {
+        const satir = document.querySelector('[data-syh-hata="' + kayit.id + '"]');
+        if (!satir) return;
+        const metin = sosyalHavuzHataMetni(kayit);
+        satir.textContent = metin;
+        satir.style.display = metin ? 'block' : 'none';
+    }
+
     function sosyalHavuzRozetleriGuncelle(hesaplar) {
         (hesaplar || []).forEach(function (kayit) {
             const rozet = document.querySelector('[data-syh-rozet="' + kayit.id + '"]');
-            if (!rozet) return;
-            const boya = sosyalHavuzRozet(kayit.durum);
-            rozet.textContent = boya[0];
-            rozet.style.background = boya[1];
-            rozet.style.color = boya[2];
-            rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+            if (rozet) {
+                const boya = sosyalHavuzRozet(kayit.durum);
+                rozet.textContent = boya[0];
+                rozet.style.background = boya[1];
+                rozet.style.color = boya[2];
+                const metin = sosyalHavuzHataMetni(kayit);
+                rozet.title = metin;
+            }
+            sosyalHavuzHataYaz(kayit);
         });
     }
 
@@ -2567,13 +2583,19 @@
         sol.appendChild(kutu);
         sol.appendChild(yazi);
         const boya = sosyalHavuzRozet(kayit.durum);
+        const hataMetni = sosyalHavuzHataMetni(kayit);
         const rozet = document.createElement('span');
         rozet.setAttribute('data-syh-rozet', kayit.id);
         rozet.textContent = boya[0];
-        rozet.title = kayit.durum === 'hata' && kayit.hata ? kayit.hata : '';
+        rozet.title = hataMetni;
         rozet.style.cssText = 'padding:3px 8px; border-radius:999px; font-size:12px; background:' + boya[1] + '; color:' + boya[2] + ';';
+        const hata = document.createElement('div');
+        hata.setAttribute('data-syh-hata', kayit.id);
+        hata.textContent = hataMetni;
+        hata.style.cssText = 'display:' + (hataMetni ? 'block' : 'none') + '; flex:1 1 100%; margin:0; font-size:11px; line-height:1.35; color:#fecaca; background:#450a0a; border:1px solid #7f1d1d; border-radius:6px; padding:4px 6px; white-space:pre-wrap; word-break:break-word;';
         ust.appendChild(sol);
         ust.appendChild(rozet);
+        ust.appendChild(hata);
         const ad = document.createElement('div');
         ad.style.cssText = 'font-size:13px; color:#f8fafc; font-weight:bold;';
         ad.textContent = kayit.ad || '';

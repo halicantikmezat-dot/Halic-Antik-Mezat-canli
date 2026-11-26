@@ -126,6 +126,15 @@ def _flv_bayraklari(hedef):
     return bayrak
 
 
+def _kopya_cikis_bayraklari(hedef):
+    """Her hedefin kendi RTMP zaman aşımı. Ortak kodlayıcıyı düşürmez."""
+    bayrak = ["-f", "flv", "-flvflags", "no_duration_filesize", "-rw_timeout", "15000000"]
+    if str(hedef).startswith("rtmps://"):
+        bayrak.extend(["-tls_verify", "0"])
+    bayrak.append(str(hedef))
+    return bayrak
+
+
 def _onemli_satir(metin):
     satir = str(metin or "").lower()
     return any(
@@ -275,6 +284,7 @@ def liste():
                 "dahil": bool(kayit.get("dahil")),
                 "durum": durum,
                 "hata": hata,
+                "son_hata": hata,
             }
         )
     return cikti
@@ -775,7 +785,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     for kopya in eski_kopyalar:
         _kopya_sonlandir(kopya)
     if durdu is True:
-        _ortak_hedef_durumu(ortak, "hata", metin)
+        print(f"[SOSYAL HAVUZ] kodlayici kapandi: {metin}", flush=True)
+        _ortak_hedef_durumu(ortak, "hata", "")
         return
     if durdu == "bekliyor":
         _ortak_hedef_durumu(ortak, "bekliyor", "")
@@ -783,7 +794,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     if durdu == "acilamadi":
         _ortak_hedef_durumu(ortak, "hata", "FFmpeg açılamadı")
         return
-    _kopyalari_ac(ortak, yeni)
+    if not yeni:
+        _kopyalari_ac(ortak, False)
     try:
         if on_ek:
             _stdin_yaz(stdin, on_ek)
@@ -848,18 +860,18 @@ def _kopya_yenile(ortak, kim, hedef):
         "-loglevel",
         "warning",
         "-fflags",
-        "+genpts+nobuffer",
-        "-probesize",
-        "1048576",
-        "-analyzeduration",
-        "3000000",
+        "+genpts+igndts",
         "-f",
         "mpegts",
+        "-probesize",
+        "32768",
+        "-analyzeduration",
+        "15000000",
         "-i",
         "pipe:0",
         "-c",
         "copy",
-        *_flv_bayraklari(hedef),
+        *_kopya_cikis_bayraklari(hedef),
     ]
     try:
         proc = _surec_baslat(komut, subprocess.DEVNULL)
@@ -874,6 +886,7 @@ def _kopya_yenile(ortak, kim, hedef):
         "kuyruk": queue.Queue(maxsize=24),
         "dur": threading.Event(),
         "son_satir": "",
+        "stderr_bitti": threading.Event(),
     }
     threading.Thread(target=_stderr_kopya, args=(kopya, proc), daemon=True).start()
     threading.Thread(target=_kopya_isci, args=(ortak, kopya), daemon=True).start()
@@ -920,6 +933,16 @@ def _cikis_isci(ortak, proc, nesil):
             with ortak["kilit"]:
                 if ortak.get("nesil") != nesil:
                     return
+                ilk_paket = ortak.get("beslenen_nesil") != nesil
+            if ilk_paket:
+                _kopyalari_ac(ortak, True)
+                with ortak["kilit"]:
+                    if ortak.get("nesil") != nesil:
+                        return
+                    ortak["beslenen_nesil"] = nesil
+            with ortak["kilit"]:
+                if ortak.get("nesil") != nesil:
+                    return
                 kopyalar = [kopya for kopya in ortak["kopyalar"].values() if not kopya["dur"].is_set()]
             for kopya in kopyalar:
                 try:
@@ -944,9 +967,34 @@ def _kopya_hata(ortak, kopya, metin):
     with ortak["kilit"]:
         if ortak["kopyalar"].get(kopya["id"]) is kopya:
             ortak["kopyalar"].pop(kopya["id"], None)
-    goster = (kopya.get("son_hata") or kopya.get("son_satir") or metin or "Yayın koptu")
-    print(f"[SOSYAL HAVUZ] hedef koptu: {goster}", flush=True)
     _kopya_sonlandir(kopya)
+    _kopya_sonucu_yaz(kopya, metin)
+
+
+def _kopya_satiri(kopya):
+    if kopya is None:
+        return ""
+    olay = kopya.get("stderr_bitti")
+    proc = kopya.get("proc")
+    if olay is not None and (proc is None or proc.poll() is not None):
+        olay.wait(timeout=0.8)
+    return (kopya.get("son_hata") or kopya.get("son_satir") or "").strip()
+
+
+def _kopya_saglam(kopya):
+    if kopya is None or kopya["dur"].is_set():
+        return False
+    proc = kopya.get("proc")
+    return proc is not None and proc.poll() is None
+
+
+def _kopya_sonucu_yaz(kopya, yedek=""):
+    """Yalnız bu kopyanın stderr satırı yazılır. Sağlam hedeflere dokunulmaz."""
+    goster = _kopya_satiri(kopya) or str(yedek or "").strip()
+    if not goster:
+        _slot_durum(kopya["id"], "bekliyor", "")
+        return
+    print(f"[SOSYAL HAVUZ] hedef koptu: {goster}", flush=True)
     _slot_durum(kopya["id"], "hata", goster)
 
 
@@ -978,13 +1026,21 @@ def _encoder_hata(ortak, metin, nesil=None):
     _proc_kapat(proc)
     if bitti is not None:
         bitti.wait(timeout=1)
-    for kopya in kopyalar:
-        _kopya_sonlandir(kopya)
     with ortak["kilit"]:
         gercek = (ortak.get("son_hata") or ortak.get("son_satir") or "").strip()
     goster = gercek or metin or "Kodlayıcı koptu"
     print(f"[SOSYAL HAVUZ] kodlayici kapandi: {goster}", flush=True)
-    _ortak_hedef_durumu(ortak, "hata", goster)
+    ayrilan = []
+    for kopya in kopyalar:
+        saglam = _kopya_saglam(kopya)
+        kopya["dur"].set()
+        ayrilan.append((kopya, saglam))
+    for kopya, saglam in ayrilan:
+        _kopya_sonlandir(kopya)
+        if saglam:
+            _slot_durum(kopya["id"], "bekliyor", "")
+            continue
+        _kopya_sonucu_yaz(kopya, "")
 
 
 def _ortak_hatalari_sil(ortak):
@@ -1003,7 +1059,27 @@ def _ortak_hatalari_sil(ortak):
 def _ortak_hedef_durumu(ortak, durum, metin):
     with ortak["kilit"]:
         kimler = list(ortak.get("hedefler") or {})
+        kopyalar = dict(ortak.get("kopyalar") or {})
+    if durum == "hata":
+        for kim in kimler:
+            kopya = kopyalar.get(kim)
+            if _kopya_saglam(kopya):
+                continue
+            ozel = _kopya_satiri(kopya) if kopya is not None else ""
+            if ozel:
+                _slot_durum(kim, "hata", ozel)
+            elif kopya is not None:
+                _slot_durum(kim, "bekliyor", "")
+            elif metin == "FFmpeg açılamadı":
+                _slot_durum(kim, "hata", metin)
+        return
     for kim in kimler:
+        if durum == "bekliyor":
+            if _kopya_saglam(kopyalar.get(kim)):
+                continue
+            slot = _SLOTLAR.get(kim)
+            if slot is not None and slot.get("durum") == "hata":
+                continue
         _slot_durum(kim, durum, metin)
 
 
@@ -1058,6 +1134,10 @@ def _stderr_kopya(kopya, proc):
                 print(f"[SOSYAL HAVUZ] hedef: {metin[:240]}", flush=True)
     except Exception:
         return
+    finally:
+        olay = kopya.get("stderr_bitti")
+        if olay is not None:
+            olay.set()
 
 
 def _surec_baslat(komut, stdout):
