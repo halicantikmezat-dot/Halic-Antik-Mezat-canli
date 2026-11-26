@@ -1870,6 +1870,84 @@ def api_tedarikci_admin_kaydi_sil(urun_id):
     return jsonify({"success": True, "urun": _urun_sozluk(satir, yonetici=True)})
 
 
+def _arsiv_kaydi_mi(satir):
+    if bool(getattr(satir, "hakedis_odendi", False)):
+        return True
+    return (satir.durum or "") in ("reddedildi", "silindi")
+
+
+def _medya_dosyasini_sil(ad, haric_id):
+    temiz = os.path.basename(str(ad or ""))
+    yol = _medya_yolu(temiz)
+    if not yol:
+        return
+    diger = TedarikciUrunleri.query.filter(
+        TedarikciUrunleri.id != int(haric_id),
+        or_(
+            TedarikciUrunleri.fotograflar.contains(temiz),
+            TedarikciUrunleri.paketleme_kaniti == temiz,
+        ),
+    ).first()
+    if diger is not None:
+        return
+    try:
+        os.remove(yol)
+    except OSError:
+        pass
+
+
+def _urun_medyasini_sil(satir):
+    for ad in fotograflari_coz(satir.fotograflar):
+        _medya_dosyasini_sil(ad, satir.id)
+    _medya_dosyasini_sil(satir.paketleme_kaniti, satir.id)
+
+
+def _kalici_sil(satir):
+    try:
+        _vitrinden_kaldir(satir)
+    except Exception:
+        pass
+    try:
+        _katalogdan_cikar(getattr(satir, "katalog_oge_id", "") or "")
+    except Exception:
+        pass
+    _urun_medyasini_sil(satir)
+    _db().session.delete(satir)
+
+
+@tedarikci_bp.route("/api/tedarikci/admin/urun/<int:urun_id>/kalici-sil", methods=["POST"])
+def api_tedarikci_admin_kalici_sil(urun_id):
+    red = _admin_reddi()
+    if red is not None:
+        return red
+    satir = _urun_bul(urun_id)
+    if satir is None:
+        return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
+    if not _arsiv_kaydi_mi(satir):
+        return jsonify({"success": False, "mesaj": "Yalnız arşivdeki kayıt kalıcı silinir."}), 400
+    _kalici_sil(satir)
+    _db().session.commit()
+    return jsonify({"success": True, "mesaj": "Kayıt kalıcı olarak silindi."})
+
+
+@tedarikci_bp.route("/api/tedarikci/admin/arsiv/kalici-temizle", methods=["POST"])
+def api_tedarikci_admin_arsiv_temizle():
+    red = _admin_reddi()
+    if red is not None:
+        return red
+    kayitlar = TedarikciUrunleri.query.filter(TedarikciUrunleri.durum == "silindi").all()
+    adet = 0
+    for satir in kayitlar:
+        _kalici_sil(satir)
+        adet += 1
+    _db().session.commit()
+    if adet == 0:
+        mesaj = "Silinecek deneme kaydı yok."
+    else:
+        mesaj = str(adet) + " silinmiş kayıt kalıcı olarak temizlendi."
+    return jsonify({"success": True, "silinen": adet, "mesaj": mesaj})
+
+
 @tedarikci_bp.route("/api/tedarikci/admin/urun/<int:urun_id>/reddet", methods=["POST"])
 def api_tedarikci_admin_reddet(urun_id):
     red = _admin_reddi()

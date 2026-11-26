@@ -50,11 +50,12 @@
     </div>
     <div class="card">
         <div class="card-title">Onay Havuzu, Kargo &amp; Hakediş Yönetimi <span id="tdBekleyenRozet" style="background:#991b1b; color:#fff; border-radius:999px; padding:2px 10px; font-size:13px;">0 bekleyen</span></div>
-        <div id="tdAdminSekmeler" style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0;">
+        <div id="tdAdminSekmeler" style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; align-items:center;">
             <button type="button" class="btn td-filtre" data-sekme="bekleyen">⏳ Onay Bekleyenler</button>
             <button type="button" class="btn td-filtre" data-sekme="kargo">📦 Satıldı / Kargo &amp; Ödeme Bekleyenler</button>
             <button type="button" class="btn td-filtre" data-sekme="vitrin">🏪 Vitrinde Yayında Olanlar</button>
             <button type="button" class="btn td-filtre" data-sekme="arsiv">📁 Tamamlananlar &amp; Arşiv</button>
+            <button type="button" id="tdArsivTemizle" hidden style="display:none; margin-left:auto;" class="btn btn-red">🧹 Arşivdeki Silinenleri Kalıcı Temizle</button>
         </div>
         <div id="tdAdminListe">Kayıtlar yükleniyor...</div>
     </div>
@@ -164,7 +165,9 @@
             "<span>" + kacis(u.taban_fiyat) + " TL</span>" +
             "<span>" + kacis(u.durum) + "</span>" +
             "<button type='button' class='btn td-detay'>Detay / İşlem</button>" +
-            "<button type='button' class='btn btn-red td-kaydi-sil' data-id='" + u.id + "'>Kaydı Sil</button>" +
+            (aktifSekme === "arsiv"
+                ? "<button type='button' class='btn btn-red td-kalici-sil' data-id='" + u.id + "'>Kalıcı Sil</button>"
+                : "<button type='button' class='btn btn-red td-kaydi-sil' data-id='" + u.id + "'>Kaydı Sil</button>") +
             "</div>" +
             "<div class='td-detay-kutu' hidden style='display:none;margin-top:8px;'>" + kart(u) + "</div></article>";
     }
@@ -182,6 +185,12 @@
         });
         var rozet = document.getElementById("tdBekleyenRozet");
         if (rozet) rozet.textContent = (sayilar.bekleyen || 0) + " bekleyen";
+        var temizle = document.getElementById("tdArsivTemizle");
+        if (temizle) {
+            var arsiv = aktifSekme === "arsiv";
+            temizle.hidden = !arsiv;
+            temizle.style.display = arsiv ? "inline-block" : "none";
+        }
     }
     function riskRenk(seviye) {
         var metin = String(seviye || "");
@@ -260,6 +269,12 @@
             });
     }
     function urunleriYukle() {
+        var temizle = document.getElementById("tdArsivTemizle");
+        if (temizle) {
+            var arsivAcik = aktifSekme === "arsiv";
+            temizle.hidden = !arsivAcik;
+            temizle.style.display = arsivAcik ? "inline-block" : "none";
+        }
         fetch("/api/tedarikci/admin/urunler?sekme=" + encodeURIComponent(aktifSekme)).then(function (r) { return r.json(); }).then(function (data) {
             if (!data || !data.success) { liste.textContent = (data && data.mesaj) || "Liste açılmadı."; return; }
             sekmeleriBoya(data.sayilar);
@@ -331,6 +346,12 @@
                     gonder("/api/tedarikci/admin/urun/" + el.getAttribute("data-id") + "/kaydi-sil", {});
                 });
             });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-kalici-sil"), function (el) {
+                el.addEventListener("click", function () {
+                    if (!window.confirm("Bu arşiv kaydı kalıcı olarak silinsin mi? Bu işlem geri alınamaz.")) return;
+                    gonder("/api/tedarikci/admin/urun/" + el.getAttribute("data-id") + "/kalici-sil", {});
+                });
+            });
             Array.prototype.forEach.call(liste.querySelectorAll(".td-pin-uret"), function (el) {
                 el.addEventListener("click", function () {
                     var tel = el.getAttribute("data-tel");
@@ -372,6 +393,20 @@
             aktifSekme = el.getAttribute("data-sekme") || "bekleyen";
             urunleriYukle();
         });
+    });
+    var arsivTemizle = document.getElementById("tdArsivTemizle");
+    if (arsivTemizle) arsivTemizle.addEventListener("click", function () {
+        if (aktifSekme !== "arsiv") return;
+        if (!window.confirm("Durumu silindi olan tüm deneme kayıtları kalıcı olarak silinsin mi? Bu işlem geri alınamaz.")) return;
+        fetch("/api/tedarikci/admin/arsiv/kalici-temizle", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: "{}"
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data || !data.success) window.alert((data && data.mesaj) || "Arşiv temizlenemedi.");
+            else window.alert(data.mesaj || "Arşiv temizlendi.");
+            urunleriYukle();
+        }).catch(function () { window.alert("Arşiv temizlenemedi."); });
     });
     ayarlariYukle();
     urunleriYukle();
