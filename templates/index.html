@@ -2382,6 +2382,7 @@
         <button type="button" class="menu-oge" onclick="menuIslem(nasilKullanilirAc)">🎙️ Nasıl Kullanılır?</button>
         <button type="button" class="menu-oge" onclick="menuIslem(ozelSohbetAc)">💬 Sohbet (İzleyici Odası)</button>
         <button type="button" class="menu-oge" onclick="menuIslem(kurallariAc)">Kurallar</button>
+        {% include 'tedarikci_panel_modal.html' %}
         <button type="button" class="menu-oge" id="menuKargoKurallar" onclick="menuIslem(kargoKurallarAc)">Kargo &amp; Kurallar</button>
         <button type="button" class="menu-oge" onclick="menuIslem(function(){ cekmeceSekmeAc('elestiri'); })">Eleştiri / Şikayet</button>
         <select id="currencySelector" aria-label="Para birimi seçimi" onchange="paraBirimiDegistir()" style="margin-top:8px;">
