@@ -66,8 +66,6 @@ def _giris_argumanlari(mime):
         "5000000",
         "-analyzeduration",
         "100000",
-        "-seekable",
-        "0",
         "-f",
         _giris_bicimi(mime),
         "-i",
