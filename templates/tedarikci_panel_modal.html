@@ -66,6 +66,7 @@
     if (perde && perde.parentNode !== document.body) document.body.appendChild(perde);
     var ayar = null;
     var giris = false;
+    var listeNotu = "";
     var limit = 500;
     var cayma = 15;
     var ROZET = {
@@ -239,8 +240,9 @@
             if (!data || !data.success) { kutu.innerHTML = "<p>" + kacis((data && data.mesaj) || "Liste açılmadı.") + "</p>"; return; }
             limit = Number(data.kargo_destek_alt_limit || limit);
             cayma = Number(data.cayma_cezasi_orani || cayma);
-            if (!data.urunler.length) { kutu.innerHTML = "<p>Henüz ürün yok.</p>"; return; }
-            kutu.innerHTML = data.urunler.map(kart).join("");
+            if (!data.urunler.length) { kutu.innerHTML = (listeNotu ? "<p>" + kacis(listeNotu) + "</p>" : "") + "<p>Henüz ürün yok.</p>"; listeNotu = ""; return; }
+            kutu.innerHTML = (listeNotu ? "<p>" + kacis(listeNotu) + "</p>" : "") + data.urunler.map(kart).join("");
+            listeNotu = "";
             bagla(kutu, data.urunler);
         }).catch(function () { kutu.innerHTML = "<p>Liste açılmadı.</p>"; });
     }
@@ -331,9 +333,11 @@
             durum.textContent = mesaj;
             if (data && data.success) {
                 e.target.reset();
+                Array.prototype.forEach.call(e.target.querySelectorAll("input[type='file']"), function (alan) { alan.value = ""; });
                 document.getElementById("tdSozlesme").scrollTop = 0;
                 sozlesmeKilidi();
-                oturumuYukle();
+                listeNotu = mesaj;
+                oturumuYukle().then(function () { sekme("liste"); });
             }
         }).catch(function () { durum.textContent = "Ürün gönderilemedi."; });
     });

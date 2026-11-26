@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, request, send_file, session
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 from werkzeug.utils import secure_filename
 
 tedarikci_bp = Blueprint("tedarikci_havuzu", __name__)
@@ -726,6 +726,116 @@ def _dukkan_kodu(ham):
     return kod if kod in _DUKKANLAR else "karma"
 
 
+def _urun_modeli():
+    """Canlı vitrinin okuduğu `urun` tablosu. Model satırına dokunulmaz."""
+    for esleme in _db().Model.registry.mappers:
+        model = esleme.class_
+        if getattr(model, "__tablename__", "") == "urun":
+            return model
+    raise RuntimeError("Vitrin ürün tablosu bulunamadı")
+
+
+def _yukleme_klasoru():
+    klasor = str(current_app.config.get("UPLOAD_FOLDER") or "").strip()
+    if not klasor:
+        klasor = os.path.join(_KOK, "static", "uploads")
+    os.makedirs(klasor, exist_ok=True)
+    return klasor
+
+
+def _vitrin_kaynak_kodu(satir):
+    return "tedarikci:" + str(int(satir.id))
+
+
+def _vitrin_fotolarini_kopyala(satir):
+    klasor = _yukleme_klasoru()
+    adresler = []
+    for ad in fotograflari_coz(satir.fotograflar):
+        kaynak = _medya_yolu(ad)
+        if not kaynak or _uzanti(ad) not in _RESIM:
+            continue
+        hedef_ad = uuid.uuid4().hex[:10] + "_" + os.path.basename(ad)
+        shutil.copyfile(kaynak, os.path.join(klasor, hedef_ad))
+        adresler.append("/static/uploads/" + hedef_ad)
+    return adresler
+
+
+def _vitrine_ekle(satir):
+    """Seçilen dükkanın vitrinine ve izleyici vitrin listesine aktif ürün yazar."""
+    Urun = _urun_modeli()
+    db = _db()
+    kod = _vitrin_kaynak_kodu(satir)
+    var = Urun.query.filter_by(kaynak_tipi=kod).first()
+    if var is not None:
+        var.silindi_mi = False
+        var.durum = "Aktif"
+        var.dukkan_kodu = _dukkan_kodu(satir.hedef_kategori)
+        var.urun_adi = _metin(satir.urun_adi, 200) or var.urun_adi
+        var.acilis_fiyati = float(satir.taban_fiyat or 0)
+        var.guncel_fiyat = float(satir.taban_fiyat or 0)
+        fotolar = _vitrin_fotolarini_kopyala(satir)
+        if fotolar:
+            var.fotograflar = fotolar
+        db.session.flush()
+        return var.id
+    fotolar = _vitrin_fotolarini_kopyala(satir)
+    if not fotolar:
+        raise RuntimeError("Vitrine aktarılacak fotoğraf yok")
+    dukkan = _dukkan_kodu(satir.hedef_kategori)
+    en_yuksek = (
+        db.session.query(func.max(Urun.lot_no))
+        .filter(Urun.dukkan_kodu == dukkan, Urun.silindi_mi.is_(False))
+        .scalar()
+    )
+    taban = float(satir.taban_fiyat or 0)
+    adlar = dict(_DUKKAN_ADLARI)
+    urun = Urun(
+        dukkan_kodu=dukkan,
+        lot_no=int(en_yuksek or 0) + 1,
+        urun_adi=_metin(satir.urun_adi, 200) or "Tedarikçi ürünü",
+        kategori=_metin(adlar.get(dukkan, "Genel"), 100),
+        acilis_fiyati=taban,
+        guncel_fiyat=taban,
+        hemen_al_fiyati=float(satir.satis_fiyati or 0),
+        tanitim_yazisi=_metin(satir.aciklama, 4000),
+        fotograflar=fotolar,
+        video="",
+        ses_dosyasi="",
+        durum="Aktif",
+        kazanan_adi="Yok",
+        kaynak_tipi=kod,
+        stok_adedi=1,
+        silindi_mi=False,
+    )
+    db.session.add(urun)
+    db.session.flush()
+    return urun.id
+
+
+def _vitrinden_kaldir(satir):
+    try:
+        Urun = _urun_modeli()
+    except RuntimeError:
+        return
+    var = Urun.query.filter_by(kaynak_tipi=_vitrin_kaynak_kodu(satir)).first()
+    if var is None:
+        return
+    var.silindi_mi = True
+    var.durum = "Pasif"
+
+
+def _katalogdan_cikar(oge_id):
+    if not oge_id:
+        return
+    import katalog_havuzu as katalog
+
+    with katalog._KILIT:
+        kayitlar = katalog._havuz()
+        kalan = [kayit for kayit in kayitlar if str(kayit.get("id") or "") != str(oge_id)]
+        if len(kalan) != len(kayitlar):
+            katalog._yaz(katalog._HAVUZ_YOL, kalan)
+
+
 def _kataloga_ekle(satir):
     kaynak = ""
     uzanti = ""
@@ -1143,20 +1253,67 @@ def api_tedarikci_admin_ayarlar():
     return jsonify({"success": True, "ayar": _ayar_sozluk(satir)})
 
 
+def _sekme_sorgusu(sekme):
+    sorgu = TedarikciUrunleri.query
+    odendi = TedarikciUrunleri.hakedis_odendi.is_(True)
+    odenmedi = or_(
+        TedarikciUrunleri.hakedis_odendi.is_(False),
+        TedarikciUrunleri.hakedis_odendi.is_(None),
+    )
+    if sekme == "kargo":
+        return sorgu.filter(
+            TedarikciUrunleri.durum.in_(("satildi_kargo_bekliyor", "kargolandi", "iptal_talebi")),
+            odenmedi,
+        )
+    if sekme == "vitrin":
+        return sorgu.filter(
+            TedarikciUrunleri.durum.in_(("vitrin", "onaylandi")),
+            odenmedi,
+        )
+    if sekme == "arsiv":
+        return sorgu.filter(or_(
+            TedarikciUrunleri.durum.in_(("reddedildi", "silindi")),
+            odendi,
+        ))
+    return sorgu.filter(TedarikciUrunleri.durum == "bekliyor")
+
+
+def _sekme_sayilari():
+    return {
+        "bekleyen": _sekme_sorgusu("bekleyen").count(),
+        "kargo": _sekme_sorgusu("kargo").count(),
+        "vitrin": _sekme_sorgusu("vitrin").count(),
+        "arsiv": _sekme_sorgusu("arsiv").count(),
+    }
+
+
 @tedarikci_bp.route("/api/tedarikci/admin/urunler", methods=["GET"])
 def api_tedarikci_admin_urunler():
     red = _admin_reddi()
     if red is not None:
         return red
+    sekme = _metin(request.args.get("sekme"), 20) or "bekleyen"
+    if sekme not in ("bekleyen", "kargo", "vitrin", "arsiv"):
+        sekme = "bekleyen"
     hesaplar = {hesap.telefon: hesap for hesap in TedarikciHesaplari.query.all()}
     urunler = []
-    kayitlar = TedarikciUrunleri.query.order_by(TedarikciUrunleri.id.desc()).limit(400).all()
+    kayitlar = (
+        _sekme_sorgusu(sekme)
+        .order_by(TedarikciUrunleri.id.desc())
+        .limit(300)
+        .all()
+    )
     for satir in kayitlar:
         paket = _urun_sozluk(satir, yonetici=True)
         hesap = hesaplar.get(satir.telefon)
         paket["satici_askida"] = bool(hesap.askida) if hesap else False
         urunler.append(paket)
-    return jsonify({"success": True, "urunler": urunler})
+    return jsonify({
+        "success": True,
+        "sekme": sekme,
+        "sayilar": _sekme_sayilari(),
+        "urunler": urunler,
+    })
 
 
 @tedarikci_bp.route("/api/tedarikci/admin/urun/<int:urun_id>/guncelle", methods=["POST"])
@@ -1211,13 +1368,40 @@ def api_tedarikci_admin_onayla(urun_id):
         return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
     if satir.durum != "bekliyor":
         return jsonify({"success": False, "mesaj": "Yalnız bekleyen ürün vitrine alınır."}), 400
+    oge_id = ""
     try:
         oge_id = _kataloga_ekle(satir)
+        vitrin_id = _vitrine_ekle(satir)
     except Exception as hata:
         _db().session.rollback()
-        return jsonify({"success": False, "mesaj": str(hata) or "Katalog havuzuna eklenemedi."}), 400
+        try:
+            _katalogdan_cikar(oge_id)
+        except Exception:
+            pass
+        return jsonify({"success": False, "mesaj": str(hata) or "Vitrine eklenemedi."}), 400
     satir.durum = "vitrin"
     satir.katalog_oge_id = oge_id
+    _db().session.commit()
+    paket = _urun_sozluk(satir, yonetici=True)
+    paket["vitrin_urun_id"] = vitrin_id
+    return jsonify({"success": True, "urun": paket})
+
+
+@tedarikci_bp.route("/api/tedarikci/admin/urun/<int:urun_id>/kaydi-sil", methods=["POST"])
+def api_tedarikci_admin_kaydi_sil(urun_id):
+    red = _admin_reddi()
+    if red is not None:
+        return red
+    satir = _urun_bul(urun_id)
+    if satir is None:
+        return jsonify({"success": False, "mesaj": "Ürün bulunamadı."}), 404
+    _vitrinden_kaldir(satir)
+    try:
+        _katalogdan_cikar(getattr(satir, "katalog_oge_id", "") or "")
+    except Exception:
+        pass
+    satir.katalog_oge_id = ""
+    satir.durum = "silindi"
     _db().session.commit()
     return jsonify({"success": True, "urun": _urun_sozluk(satir, yonetici=True)})
 

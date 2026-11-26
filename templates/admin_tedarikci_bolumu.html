@@ -50,6 +50,12 @@
     </div>
     <div class="card">
         <div class="card-title">Onay Havuzu, Kargo &amp; Hakediş Yönetimi <span id="tdBekleyenRozet" style="background:#991b1b; color:#fff; border-radius:999px; padding:2px 10px; font-size:13px;">0 bekleyen</span></div>
+        <div id="tdAdminSekmeler" style="display:flex; flex-wrap:wrap; gap:6px; margin:8px 0;">
+            <button type="button" class="btn td-filtre" data-sekme="bekleyen">⏳ Onay Bekleyenler</button>
+            <button type="button" class="btn td-filtre" data-sekme="kargo">📦 Satıldı / Kargo &amp; Ödeme Bekleyenler</button>
+            <button type="button" class="btn td-filtre" data-sekme="vitrin">🏪 Vitrinde Yayında Olanlar</button>
+            <button type="button" class="btn td-filtre" data-sekme="arsiv">📁 Tamamlananlar &amp; Arşiv</button>
+        </div>
         <div id="tdAdminListe">Kayıtlar yükleniyor...</div>
     </div>
 </div>
@@ -57,6 +63,7 @@
 (function () {
     var form = document.getElementById("tdAdminAyar");
     var liste = document.getElementById("tdAdminListe");
+    var aktifSekme = "bekleyen";
     if (!form || !liste) return;
     function kacis(s) {
         return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -127,7 +134,7 @@
             "<p><b>IP:</b> " + kacis(u.yukleyen_ip) + " · <b>Kayıt:</b> " + kacis(u.olusturma_zamani) + " · <b>Satış:</b> " + kacis(u.satis_zamani || "—") + "</p>" +
             "<p><b>Taban:</b> " + kacis(u.taban_fiyat) + " TL · <b>Satış:</b> " + kacis(u.satis_fiyati) + " TL · <b>Net hakediş:</b> " + kacis(u.net_hakedis) + " TL" + (u.hakedis_odendi ? " · Ödendi " + kacis(u.hakedis_odeme_zamani) : "") + "</p>" +
             "<div style='display:flex;gap:6px;flex-wrap:wrap;'><b style='width:100%;'>Fotoğraflar</b>" + (fotolar || "Fotoğraf yok") + "</div>" + kanit +
-            "<p><b>Onaylanan sözleşme kaydı</b></p><pre style='white-space:pre-wrap;font-size:12px;max-height:140px;overflow:auto;background:#0f141c;padding:8px;border-radius:8px;'>" + kacis(u.onaylanan_beyan_metni) + "</pre>" +
+            "<p><button type='button' class='btn td-sozlesme'>Sözleşme Kaydını Göster</button></p><pre class='td-sozlesme-metin' hidden style='display:none;white-space:pre-wrap;font-size:12px;max-height:140px;overflow:auto;background:#0f141c;padding:8px;border-radius:8px;'>" + kacis(u.onaylanan_beyan_metni) + "</pre>" +
             (u.admin_notu ? "<p>Not: " + kacis(u.admin_notu) + "</p>" : "") +
             (bekleyen ? "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;'>" +
                 "<input class='td-ad' data-id='" + u.id + "' value='" + kacis(u.urun_adi) + "' placeholder='Ürün adı'>" +
@@ -146,15 +153,40 @@
                 "<div class='td-pin-sonuc' data-tel='" + kacis(u.telefon) + "'></div>" +
             "</div></article>";
     }
+    function kompakt(u) {
+        return "<article style='border:1px solid #283548;border-radius:8px;padding:8px;margin:6px 0;'>" +
+            "<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>" +
+            "<b>" + kacis(u.urun_adi) + "</b>" +
+            "<span>" + kacis(u.satici_ad_soyad) + "</span>" +
+            "<span>" + kacis(u.taban_fiyat) + " TL</span>" +
+            "<span>" + kacis(u.durum) + "</span>" +
+            "<button type='button' class='btn td-detay'>Detay / İşlem</button>" +
+            "<button type='button' class='btn btn-red td-kaydi-sil' data-id='" + u.id + "'>Kaydı Sil</button>" +
+            "</div>" +
+            "<div class='td-detay-kutu' hidden style='display:none;margin-top:8px;'>" + kart(u) + "</div></article>";
+    }
+    function sekmeleriBoya(sayilar) {
+        sayilar = sayilar || {};
+        Array.prototype.forEach.call(document.querySelectorAll(".td-filtre"), function (el) {
+            var kod = el.getAttribute("data-sekme");
+            var acik = kod === aktifSekme;
+            el.style.background = acik ? "#d4af37" : "transparent";
+            el.style.color = acik ? "#111" : "#fef08a";
+            var adet = sayilar[kod];
+            var etiket = el.getAttribute("data-etiket") || el.textContent.replace(/\s+\(\d+\)\s*$/, "");
+            el.setAttribute("data-etiket", etiket);
+            el.textContent = etiket + (adet != null ? " (" + adet + ")" : "");
+        });
+        var rozet = document.getElementById("tdBekleyenRozet");
+        if (rozet) rozet.textContent = (sayilar.bekleyen || 0) + " bekleyen";
+    }
     function urunleriYukle() {
-        fetch("/api/tedarikci/admin/urunler").then(function (r) { return r.json(); }).then(function (data) {
+        fetch("/api/tedarikci/admin/urunler?sekme=" + encodeURIComponent(aktifSekme)).then(function (r) { return r.json(); }).then(function (data) {
             if (!data || !data.success) { liste.textContent = (data && data.mesaj) || "Liste açılmadı."; return; }
-            var bekleyen = (data.urunler || []).filter(function (u) { return u.durum === "bekliyor"; }).length;
-            var rozet = document.getElementById("tdBekleyenRozet");
-            if (rozet) rozet.textContent = bekleyen + " bekleyen";
-            if (!data.urunler.length) { liste.textContent = "Kayıt yok."; return; }
-            data.urunler.sort(function (a, b) { return (a.durum === "bekliyor" ? 0 : 1) - (b.durum === "bekliyor" ? 0 : 1); });
-            liste.innerHTML = data.urunler.map(kart).join("");
+            sekmeleriBoya(data.sayilar);
+            if (!data.urunler.length) { liste.textContent = "Bu sekmede kayıt yok."; return; }
+            var siki = aktifSekme === "vitrin" || aktifSekme === "arsiv";
+            liste.innerHTML = data.urunler.map(siki ? kompakt : kart).join("");
             function deger(sinif, id) {
                 var el = liste.querySelector("." + sinif + "[data-id='" + id + "']");
                 return el ? el.value : "";
@@ -190,6 +222,31 @@
             Array.prototype.forEach.call(liste.querySelectorAll(".td-askiya"), function (el) {
                 el.addEventListener("click", function () {
                     gonder("/api/tedarikci/admin/satici/askiya", {telefon: el.getAttribute("data-tel"), askida: el.getAttribute("data-askida") === "1"});
+                });
+            });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-sozlesme"), function (el) {
+                el.addEventListener("click", function () {
+                    var kutu = el.parentNode.nextElementSibling;
+                    if (!kutu) return;
+                    var acik = kutu.hidden;
+                    kutu.hidden = !acik;
+                    kutu.style.display = acik ? "block" : "none";
+                    el.textContent = acik ? "Sözleşme Kaydını Gizle" : "Sözleşme Kaydını Göster";
+                });
+            });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-detay"), function (el) {
+                el.addEventListener("click", function () {
+                    var kutu = el.parentNode.parentNode.querySelector(".td-detay-kutu");
+                    if (!kutu) return;
+                    var acik = kutu.hidden;
+                    kutu.hidden = !acik;
+                    kutu.style.display = acik ? "block" : "none";
+                });
+            });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-kaydi-sil"), function (el) {
+                el.addEventListener("click", function () {
+                    if (!window.confirm("Bu kayıt silinsin mi? Vitrindeyse yayından da kalkar.")) return;
+                    gonder("/api/tedarikci/admin/urun/" + el.getAttribute("data-id") + "/kaydi-sil", {});
                 });
             });
             Array.prototype.forEach.call(liste.querySelectorAll(".td-pin-uret"), function (el) {
@@ -228,6 +285,12 @@
             });
         }).catch(function () { liste.textContent = "Liste açılmadı."; });
     }
+    Array.prototype.forEach.call(document.querySelectorAll(".td-filtre"), function (el) {
+        el.addEventListener("click", function () {
+            aktifSekme = el.getAttribute("data-sekme") || "bekleyen";
+            urunleriYukle();
+        });
+    });
     ayarlariYukle();
     urunleriYukle();
 })();
