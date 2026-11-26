@@ -13748,6 +13748,7 @@ except Exception as hata:
 
 from tedarikci_havuzu import tedarikci_bp
 app.register_blueprint(tedarikci_bp)
+app.register_blueprint(__import__("sosyal_kopru_havuzu").bp)
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 

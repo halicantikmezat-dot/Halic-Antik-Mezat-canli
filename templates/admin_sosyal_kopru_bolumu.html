@@ -1,0 +1,197 @@
+<div id="cokluSosyalKopruKutu" style="display:flex; flex-direction:column; gap:8px; padding:8px; border:1px dashed var(--card-border); border-radius:6px;">
+    <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">🌐 Çoklu Sayfa &amp; Köprü Havuzu (Sınırsız Kanal)</div>
+    <div style="font-size:11px; color:#94a3b8;">Üstteki TikTok, Instagram ve Facebook köprüleri aynı şekilde çalışır. Buraya eklenen sayfalar ayrı kayıttır; kod yazmadan yeni kanal bağlanır.</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button type="button" id="skhTumBaslat" class="btn btn-green btn-sm">🚀 Tüm Aktif Kanalları Başlat</button>
+        <button type="button" id="skhTumDurdur" class="btn btn-red btn-sm">⏹️ Tümünü Durdur</button>
+    </div>
+    <div style="font-size:12px; color:#e2e8f0; font-weight:bold;">+ Yeni Sayfa / Kanal Ekle</div>
+    <form id="skhForm" style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+        <select id="skhPlatform" style="margin:0;" required>
+            <option value="tiktok">TikTok</option>
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+            <option value="youtube">YouTube</option>
+            <option value="kick">Kick</option>
+            <option value="x">X</option>
+            <option value="telegram">Telegram</option>
+        </select>
+        <input type="text" id="skhSayfaAdi" maxlength="120" placeholder="Sayfa görünen adı (örn: Haliç Antika 2)" autocomplete="off" required style="margin:0;">
+        <input type="text" id="skhHesap" maxlength="200" placeholder="Kullanıcı adı veya sayfa/webhook kodu (@halicantika2 veya Page ID)" autocomplete="off" required style="margin:0;">
+        <select id="skhHedef" style="margin:0;" required>
+            <option value="yayindaki">O An Yayındaki Dükkan</option>
+        </select>
+        <button type="submit" class="btn btn-green btn-sm" style="grid-column:1 / -1;">+ Yeni Sayfa / Kanal Ekle</button>
+    </form>
+    <div style="display:flex; gap:6px; align-items:center;">
+        <input type="text" id="skhWebhook" readonly spellcheck="false" style="margin:0; flex:1; font-size:12px;" value="/api/canli_havuz/coklu_yorum">
+        <button type="button" id="skhWebhookKopyala" class="btn btn-sm" style="background:#1e293b; color:#e2e8f0;">Kopyala</button>
+    </div>
+    <div style="font-size:11px; color:#94a3b8;">Merkezi Çoklu Kanal Webhook URL. Gövde: hesap_kodu veya sayfa_kodu, kullanici, mesaj. Aynı yorum 10 saniye içinde bir kez düşer.</div>
+    <div id="skhNot" style="font-size:12px; color:#86efac; min-height:16px;"></div>
+    <div style="overflow:auto; max-height:260px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+                <tr style="color:#94a3b8; text-align:left;">
+                    <th style="padding:4px;">Platform</th>
+                    <th style="padding:4px;">Sayfa</th>
+                    <th style="padding:4px;">Kod</th>
+                    <th style="padding:4px;">Hedef</th>
+                    <th style="padding:4px;">Durum</th>
+                    <th style="padding:4px;">İşlem</th>
+                </tr>
+            </thead>
+            <tbody id="skhListe"></tbody>
+        </table>
+    </div>
+</div>
+<script>
+(function () {
+    var form = document.getElementById("skhForm");
+    var liste = document.getElementById("skhListe");
+    var not = document.getElementById("skhNot");
+    var hedef = document.getElementById("skhHedef");
+    var webhook = document.getElementById("skhWebhook");
+    if (!form || !liste) return;
+
+    function kacis(deger) {
+        return String(deger == null ? "" : deger).replace(/[&<>"']/g, function (harf) {
+            return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[harf];
+        });
+    }
+    function notYaz(metin, hata) {
+        if (!not) return;
+        not.style.color = hata ? "#fca5a5" : "#86efac";
+        not.textContent = metin || "";
+    }
+    function webhookYaz() {
+        var adres = location.origin + "/api/canli_havuz/coklu_yorum";
+        if (webhook) webhook.value = adres;
+    }
+    function dukkanlariDoldur(dukkanlar) {
+        var secili = hedef.value || "yayindaki";
+        var html = "";
+        (dukkanlar || []).forEach(function (dukkan) {
+            html += '<option value="' + kacis(dukkan.kod) + '">' + kacis(dukkan.ad) + "</option>";
+        });
+        if (html) hedef.innerHTML = html;
+        hedef.value = secili;
+        if (!hedef.value && hedef.options.length) hedef.selectedIndex = 0;
+    }
+    function rozet(aktif) {
+        if (aktif) {
+            return '<span style="padding:2px 8px; border-radius:999px; background:#14532d; color:#86efac;">Canlı</span>';
+        }
+        return '<span style="padding:2px 8px; border-radius:999px; background:#1e293b; color:#cbd5e1;">Durduruldu</span>';
+    }
+    function tabloyuCiz(kanallar) {
+        if (!kanallar || !kanallar.length) {
+            liste.innerHTML = '<tr><td colspan="6" style="padding:6px; color:#94a3b8;">Henüz ek sayfa yok.</td></tr>';
+            return;
+        }
+        liste.innerHTML = kanallar.map(function (kanal) {
+            var anahtar = kanal.aktif
+                ? '<button type="button" class="btn btn-red btn-sm" data-skh-durum="' + kanal.id + '" data-aktif="0">Durdur</button>'
+                : '<button type="button" class="btn btn-green btn-sm" data-skh-durum="' + kanal.id + '" data-aktif="1">Başlat</button>';
+            var etkinlik = kanal.son_etkinlik
+                ? '<div style="color:#94a3b8; font-size:10px;">' + kacis(kanal.son_etkinlik) + "</div>"
+                : "";
+            return '<tr style="border-top:1px solid #1e293b;">'
+                + '<td style="padding:4px;">' + kacis(kanal.platform_adi) + "</td>"
+                + '<td style="padding:4px;">' + kacis(kanal.sayfa_adi) + "</td>"
+                + '<td style="padding:4px;">' + kacis(kanal.hesap_kodu) + "</td>"
+                + '<td style="padding:4px;">' + kacis(kanal.hedef_adi) + "</td>"
+                + '<td style="padding:4px;">' + rozet(kanal.aktif) + etkinlik + "</td>"
+                + '<td style="padding:4px; white-space:nowrap;">' + anahtar
+                + ' <button type="button" class="btn btn-sm" style="background:#7f1d1d; color:#fff;" data-skh-sil="' + kanal.id + '">Sil</button></td>'
+                + "</tr>";
+        }).join("");
+    }
+    function yukle() {
+        webhookYaz();
+        fetch("/admin/sosyal-kopru/durum", { headers: { "Accept": "application/json" } })
+            .then(function (yanit) { return yanit.json(); })
+            .then(function (veri) {
+                if (!veri || !veri.success) {
+                    notYaz((veri && veri.mesaj) || "Kanal listesi alınamadı.", true);
+                    return;
+                }
+                dukkanlariDoldur(veri.dukkanlar);
+                tabloyuCiz(veri.kanallar);
+            })
+            .catch(function () { notYaz("Kanal listesi alınamadı.", true); });
+    }
+    function gonder(adres, govde) {
+        return fetch(adres, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify(govde || {})
+        }).then(function (yanit) { return yanit.json(); });
+    }
+    form.addEventListener("submit", function (olay) {
+        olay.preventDefault();
+        gonder("/admin/sosyal-kopru/ekle", {
+            platform: document.getElementById("skhPlatform").value,
+            sayfa_adi: document.getElementById("skhSayfaAdi").value,
+            hesap_kodu: document.getElementById("skhHesap").value,
+            hedef_dukkan: hedef.value
+        }).then(function (veri) {
+            notYaz((veri && veri.mesaj) || "Kaydedilemedi.", !(veri && veri.success));
+            if (veri && veri.success) {
+                document.getElementById("skhSayfaAdi").value = "";
+                document.getElementById("skhHesap").value = "";
+                yukle();
+            }
+        }).catch(function () { notYaz("Kanal kaydedilemedi.", true); });
+    });
+    liste.addEventListener("click", function (olay) {
+        var dugme = olay.target.closest("button");
+        if (!dugme) return;
+        if (dugme.getAttribute("data-skh-durum")) {
+            gonder("/admin/sosyal-kopru/durum-ayarla", {
+                id: Number(dugme.getAttribute("data-skh-durum")),
+                aktif: dugme.getAttribute("data-aktif") === "1"
+            }).then(function (veri) {
+                notYaz((veri && veri.mesaj) || "Durum güncellenemedi.", !(veri && veri.success));
+                yukle();
+            }).catch(function () { notYaz("Durum güncellenemedi.", true); });
+        }
+        if (dugme.getAttribute("data-skh-sil")) {
+            if (!window.confirm("Bu sayfa havuzdan silinsin mi?")) return;
+            gonder("/admin/sosyal-kopru/sil", { id: Number(dugme.getAttribute("data-skh-sil")) })
+                .then(function (veri) {
+                    notYaz((veri && veri.mesaj) || "Silinemedi.", !(veri && veri.success));
+                    yukle();
+                }).catch(function () { notYaz("Kanal silinemedi.", true); });
+        }
+    });
+    document.getElementById("skhTumBaslat").addEventListener("click", function () {
+        gonder("/admin/sosyal-kopru/tumunu-baslat", {}).then(function (veri) {
+            notYaz((veri && veri.mesaj) || "Başlatılamadı.", !(veri && veri.success));
+            yukle();
+        }).catch(function () { notYaz("Kanallar başlatılamadı.", true); });
+    });
+    document.getElementById("skhTumDurdur").addEventListener("click", function () {
+        gonder("/admin/sosyal-kopru/tumunu-durdur", {}).then(function (veri) {
+            notYaz((veri && veri.mesaj) || "Durdurulamadı.", !(veri && veri.success));
+            yukle();
+        }).catch(function () { notYaz("Kanallar durdurulamadı.", true); });
+    });
+    document.getElementById("skhWebhookKopyala").addEventListener("click", function () {
+        webhookYaz();
+        var adres = webhook.value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(adres).then(function () {
+                notYaz("Webhook adresi kopyalandı.");
+            }).catch(function () {
+                webhook.select();
+                notYaz("Adres seçildi, kopyalayabilirsiniz.");
+            });
+            return;
+        }
+        webhook.select();
+        notYaz("Adres seçildi, kopyalayabilirsiniz.");
+    });
+    yukle();
+})();
+</script>

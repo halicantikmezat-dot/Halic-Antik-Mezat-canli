@@ -560,6 +560,7 @@
                     <button type="button" class="btn btn-red btn-sm" onclick="sosyalKopru('facebook','durdur')">Durdur</button>
                 </div>
             </div>
+            {% include 'admin_sosyal_kopru_bolumu.html' %}
             <textarea id="cyDuyuru" rows="3" maxlength="2000" placeholder="Sabit yorum duyurusu. {dukkan_adi} {link} yer tutucuları kullanılabilir."></textarea>
             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                 <button type="button" class="btn btn-yellow btn-sm" onclick="canliYayinAyarKaydet()">Ayarları Kaydet</button>
@@ -4107,6 +4108,9 @@
 
         const platformAd = data.platform || "Web";
         const rozet = platformSohbetRozeti(platformAd);
+        if (data && data.havuz && data.rozet && String(data.rozet).indexOf(" - ") !== -1) {
+            rozet.rozet.textContent = String(data.rozet);
+        }
         const sohbetKutusu = document.getElementById("adminCanliSohbetAlani");
         const yeniSatir = document.createElement("div");
         yeniSatir.setAttribute("data-dukkan", String((data && data.dukkan) || "").trim().toLowerCase());
