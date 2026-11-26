@@ -3,25 +3,53 @@
     <div class="card" style="margin-bottom:12px;">
         <div class="card-title">Panel Ayarları &amp; Kural Düzenleyici</div>
         <form id="tdAdminAyar" class="grid-2">
-            <label>Panel açık <input name="panel_aktif" type="checkbox"></label>
-            <input name="menu_basligi" placeholder="Menü başlığı">
-            <textarea name="duyuru_metni" rows="2" placeholder="Duyuru metni"></textarea>
-            <input name="komisyon_orani" type="number" min="0" max="100" step="0.01" placeholder="Komisyon oranı">
-            <input name="kargo_destek_orani" type="number" min="0" max="100" step="0.01" placeholder="Kargo destek oranı">
-            <input name="kargo_destek_alt_limit" type="number" min="0" step="0.01" placeholder="Kargo destek alt limit">
-            <input name="kargo_suresi_saat" type="number" min="1" max="240" placeholder="Kargo süresi (saat)">
-            <input name="cayma_cezasi_orani" type="number" min="0" max="100" step="0.01" placeholder="Cayma cezası oranı">
-            <input name="min_fotograf" type="number" min="1" max="8" placeholder="Min fotoğraf">
-            <input name="max_fotograf" type="number" min="1" max="8" placeholder="Max fotoğraf">
-            <label><input name="tc_zorunlu" type="checkbox"> T.C. zorunlu</label>
-            <label><input name="paketleme_kaniti_zorunlu" type="checkbox"> Paketleme kanıtı zorunlu</label>
-            <textarea name="yasal_sozlesme_metni" rows="5" placeholder="Yasal sözleşme metni" style="grid-column:1 / -1;"></textarea>
+            <style>
+                #tdAdminAyar label.td-alan { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #fef08a; font-weight: 700; }
+                #tdAdminAyar label.td-alan input, #tdAdminAyar label.td-alan textarea { font-weight: 400; color: #ededed; width: 100%; }
+                #tdAdminAyar .td-kutular { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 18px; align-items: center; }
+                #tdAdminAyar .td-kutular label { display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 700; }
+            </style>
+            <div class="td-kutular">
+                <label>Panel açık <input name="panel_aktif" type="checkbox"></label>
+                <label>T.C. zorunlu <input name="tc_zorunlu" type="checkbox"></label>
+                <label>Paketleme kanıtı zorunlu <input name="paketleme_kaniti_zorunlu" type="checkbox"></label>
+            </div>
+            <label class="td-alan">İzleyici Menüsü Buton Adı
+                <input name="menu_basligi" value="🤝 Ürün Sat / Tedarikçi">
+            </label>
+            <label class="td-alan">Panel Duyuru / Bilgilendirme Metni
+                <textarea name="duyuru_metni" rows="3"></textarea>
+            </label>
+            <label class="td-alan">Standart Komisyon Oranı (%)
+                <input name="komisyon_orani" type="number" min="0" max="100" step="0.01" value="20">
+            </label>
+            <label class="td-alan">Alıcı Kargo Desteği Oranı (%)
+                <input name="kargo_destek_orani" type="number" min="0" max="100" step="0.01" value="10">
+            </label>
+            <label class="td-alan">Kargo Desteği Alt Limiti (TL)
+                <input name="kargo_destek_alt_limit" type="number" min="0" step="0.01" value="500">
+            </label>
+            <label class="td-alan">Maksimum Kargo Teslim Süresi (Saat)
+                <input name="kargo_suresi_saat" type="number" min="1" max="240" value="48">
+            </label>
+            <label class="td-alan">Cayma / Dışarıda Satış Cezası (%)
+                <input name="cayma_cezasi_orani" type="number" min="0" max="100" step="0.01" value="15">
+            </label>
+            <label class="td-alan">Minimum Fotoğraf Sayısı
+                <input name="min_fotograf" type="number" min="1" max="8" value="2">
+            </label>
+            <label class="td-alan">Maksimum Fotoğraf Sayısı
+                <input name="max_fotograf" type="number" min="1" max="8" value="4">
+            </label>
+            <label class="td-alan" style="grid-column:1 / -1;">Yasal sözleşme metni
+                <textarea name="yasal_sozlesme_metni" rows="12"></textarea>
+            </label>
             <button type="submit" class="btn btn-green">Ayarları kaydet</button>
             <p id="tdAdminAyarDurum" style="font-size:14px;"></p>
         </form>
     </div>
     <div class="card">
-        <div class="card-title">Onay Havuzu, Kargo &amp; Hakediş Yönetimi</div>
+        <div class="card-title">Onay Havuzu, Kargo &amp; Hakediş Yönetimi <span id="tdBekleyenRozet" style="background:#991b1b; color:#fff; border-radius:999px; padding:2px 10px; font-size:13px;">0 bekleyen</span></div>
         <div id="tdAdminListe">Kayıtlar yükleniyor...</div>
     </div>
 </div>
@@ -90,16 +118,16 @@
         var fotolar = (u.fotograflar || []).map(function (adres) {
             return "<a href='" + kacis(adres) + "' target='_blank' rel='noopener'><img src='" + kacis(adres) + "' alt='' style='width:84px;height:84px;object-fit:cover;border-radius:8px;'></a>";
         }).join("");
-        var kanit = u.paketleme_kaniti ? "<p><a href='" + kacis(u.paketleme_kaniti) + "' target='_blank' rel='noopener'>Paketleme / fiş kanıtı</a></p>" : "";
+        var kanit = u.paketleme_kaniti ? "<p><b>Paketleme kanıtı:</b> <a href='" + kacis(u.paketleme_kaniti) + "' target='_blank' rel='noopener'>Görüntüle</a></p>" : "<p><b>Paketleme kanıtı:</b> yok</p>";
         var bekleyen = u.durum === "bekliyor";
         return "<article style='border:1px solid #283548;border-radius:12px;padding:10px;margin:10px 0;'>" +
             "<b>" + kacis(u.urun_adi) + "</b> <span>" + kacis(u.durum) + "</span>" + (u.satici_askida ? " <span>Satıcı askıda</span>" : "") +
-            "<p>" + kacis(u.satici_ad_soyad) + " · " + kacis(u.telefon) + " · T.C. " + kacis(u.tc_kimlik_no) + "</p>" +
-            "<p>IBAN " + kacis(u.iban) + " · " + kacis(u.sehir) + "</p>" +
-            "<p>IP " + kacis(u.yukleyen_ip) + " · Oluşturma " + kacis(u.olusturma_zamani) + " · Satış " + kacis(u.satis_zamani) + "</p>" +
-            "<p>Satış " + kacis(u.satis_fiyati) + " TL · Net " + kacis(u.net_hakedis) + " TL" + (u.hakedis_odendi ? " · Ödendi " + kacis(u.hakedis_odeme_zamani) : "") + "</p>" +
-            "<div style='display:flex;gap:6px;flex-wrap:wrap;'>" + fotolar + "</div>" + kanit +
-            "<pre style='white-space:pre-wrap;font-size:12px;max-height:90px;overflow:auto;'>" + kacis(u.onaylanan_beyan_metni) + "</pre>" +
+            "<p><b>Satıcı:</b> " + kacis(u.satici_ad_soyad) + " · " + kacis(u.telefon) + "</p>" +
+            "<p><b>T.C.:</b> " + kacis(u.tc_kimlik_no) + " · <b>IBAN:</b> " + kacis(u.iban) + " · <b>Şehir:</b> " + kacis(u.sehir) + "</p>" +
+            "<p><b>IP:</b> " + kacis(u.yukleyen_ip) + " · <b>Kayıt:</b> " + kacis(u.olusturma_zamani) + " · <b>Satış:</b> " + kacis(u.satis_zamani || "—") + "</p>" +
+            "<p><b>Taban:</b> " + kacis(u.taban_fiyat) + " TL · <b>Satış:</b> " + kacis(u.satis_fiyati) + " TL · <b>Net hakediş:</b> " + kacis(u.net_hakedis) + " TL" + (u.hakedis_odendi ? " · Ödendi " + kacis(u.hakedis_odeme_zamani) : "") + "</p>" +
+            "<div style='display:flex;gap:6px;flex-wrap:wrap;'><b style='width:100%;'>Fotoğraflar</b>" + (fotolar || "Fotoğraf yok") + "</div>" + kanit +
+            "<p><b>Onaylanan sözleşme kaydı</b></p><pre style='white-space:pre-wrap;font-size:12px;max-height:140px;overflow:auto;background:#0f141c;padding:8px;border-radius:8px;'>" + kacis(u.onaylanan_beyan_metni) + "</pre>" +
             (u.admin_notu ? "<p>Not: " + kacis(u.admin_notu) + "</p>" : "") +
             (bekleyen ? "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;'>" +
                 "<input class='td-ad' data-id='" + u.id + "' value='" + kacis(u.urun_adi) + "' placeholder='Ürün adı'>" +
@@ -119,7 +147,11 @@
     function urunleriYukle() {
         fetch("/api/tedarikci/admin/urunler").then(function (r) { return r.json(); }).then(function (data) {
             if (!data || !data.success) { liste.textContent = (data && data.mesaj) || "Liste açılmadı."; return; }
+            var bekleyen = (data.urunler || []).filter(function (u) { return u.durum === "bekliyor"; }).length;
+            var rozet = document.getElementById("tdBekleyenRozet");
+            if (rozet) rozet.textContent = bekleyen + " bekleyen";
             if (!data.urunler.length) { liste.textContent = "Kayıt yok."; return; }
+            data.urunler.sort(function (a, b) { return (a.durum === "bekliyor" ? 0 : 1) - (b.durum === "bekliyor" ? 0 : 1); });
             liste.innerHTML = data.urunler.map(kart).join("");
             function deger(sinif, id) {
                 var el = liste.querySelector("." + sinif + "[data-id='" + id + "']");

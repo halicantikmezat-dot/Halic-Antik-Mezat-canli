@@ -36,11 +36,33 @@ _MIME = {
     ".mov": "video/quicktime",
     ".m4v": "video/mp4",
 }
-_DUKKANLAR = {
-    "gumus", "antika", "toptan", "kozmetik", "bijuteri", "hirdavat", "tasarim",
-    "modelaraba", "karma", "diger", "porselen", "bakir", "elektronik", "plak",
-    "retro", "evyasam", "tekstil",
-}
+_DUKKAN_ADLARI = (
+    ("gumus", "Gümüş"),
+    ("antika", "Antika"),
+    ("toptan", "Toptan"),
+    ("kozmetik", "Kozmetik"),
+    ("bijuteri", "Bijuteri"),
+    ("hirdavat", "Hırdavat & Yapı"),
+    ("tasarim", "Tasarım"),
+    ("modelaraba", "Klasik Arabalar"),
+    ("karma", "Oyuncaklar"),
+    ("diger", "Diğer - Her Şey"),
+    ("porselen", "Porselen / Seramik"),
+    ("bakir", "Bakır / Pirinç / Madenler"),
+    ("elektronik", "Elektronik"),
+    ("plak", "Plak / Kaset"),
+    ("retro", "Hediyelik & Retro"),
+    ("evyasam", "Ev & Yaşam"),
+    ("tekstil", "Tekstil"),
+)
+_DUKKANLAR = {kod for kod, _ad in _DUKKAN_ADLARI}
+_MENU_BASLIGI = "🤝 Ürün Sat / Tedarikçi"
+_VARSAYILAN_SOZLESME = """TEDARİKÇİ VE SATIŞ ARACILIK SÖZLEŞMESİ
+1. Mülkiyet, Hukuka Uygunluk ve Kültür Varlıkları Beyanı: Tedarikçi, sisteme yüklediği her ürünün mutlak yasal sahibi veya satışa tam yetkili temsilcisi olduğunu; ürünün çalıntı, gasp edilmiş, hacizli, rehinli, kaçak veya 2863 sayılı Kültür ve Tabiat Varlıklarını Koruma Kanunu kapsamında alım-satımı yasaklanmış tarihi eser/kültür varlığı olmadığını peşinen beyan ve taahhüt eder. TCK m. 165 ve ilgili mevzuat kapsamında doğabilecek tüm cezai, idari ve hukuki sorumluluk münhasıran Tedarikçi'ye aittir.
+2. Platformun Yer Sağlayıcı / Aracı Konumu: Platform yalnızca alıcı ile tedarikçiyi buluşturan elektronik ortam ve aracılık hizmeti sunar; ürünlerin fiziksel zilyetliğini üstlenmez. Ürünün ayıplı, sahte, eksik veya üçüncü kişilerin haklarını ihlal eder nitelikte çıkması halinde Platform'un alıcıya veya üçüncü kişilere ödeyeceği her türlü tazminat, iade bedeli, yargılama gideri ve avukatlık ücretini Platform, Tedarikçi'nin mevcut veya gelecek hakedişlerinden mahsup etme ve doğrudan Tedarikçi'ye rücu etme hakkına sahiptir.
+3. Münhasırlık ve Cayma Cezası: Ürün onaylanıp vitrine/mezata alındığı andan itibaren 72 saat (veya mezat sonuçlanana) kadar Tedarikçi ürünü başka bir platformda veya elden satamaz. Keyfi geri çekme veya çift satış halinde ürünün taban fiyatı üzerinden %15 cayma bedeli Tedarikçi'ye borç kaydedilir.
+4. Paketleme, Kargo Garanti Kilidi ve Teslimat: Satış gerçekleştiğinde Tedarikçi, ürünü en geç 48 saat içinde kırılmaya karşı tam korumalı şekilde paketlemek, paketleme/kargo fişi görselini sisteme yüklemek ve doğru alıcı bilgilerine sevk etmekle yükümlüdür. Hatalı paketleme veya yanlış gönderimden doğan tüm hasar ve kayıplar Tedarikçi'ye aittir.
+5. Komisyon, İsim-IBAN Eşleşmesi ve Hakediş: Satış bedeli üzerinden yürürlükteki komisyon oranı kesilir. Ödemeler yalnızca Tedarikçi'nin kendi T.C. kimlik numarasıyla eşleşen şahsi IBAN hesabına, kargo teslimatı ve alıcı kontrol süresi tamamlandıktan sonra yapılır. İşbu beyan Tedarikçi'nin IP adresi ve zaman damgasıyla dijital olarak kayıt altına alınmıştır."""
 _KILITSIZ = {"bekliyor"}
 _IPTAL_ACIK = {"onaylandi", "vitrin", "satildi_kargo_bekliyor", "kargolandi"}
 _RESIM_BAYT = 12 * 1024 * 1024
@@ -48,7 +70,7 @@ _KANIT_BAYT = 40 * 1024 * 1024
 
 VARSAYILAN_AYAR = {
     "panel_aktif": False,
-    "menu_basligi": "Tedarikçi Paneli",
+    "menu_basligi": _MENU_BASLIGI,
     "duyuru_metni": "",
     "komisyon_orani": 20.0,
     "kargo_destek_orani": 10.0,
@@ -59,7 +81,7 @@ VARSAYILAN_AYAR = {
     "paketleme_kaniti_zorunlu": True,
     "min_fotograf": 2,
     "max_fotograf": 4,
-    "yasal_sozlesme_metni": "",
+    "yasal_sozlesme_metni": _VARSAYILAN_SOZLESME,
 }
 
 TedarikciAyarlari = None
@@ -277,7 +299,7 @@ def _tablolari_tanimla(db):
         __tablename__ = "tedarikci_ayarlari"
         id = db.Column(db.Integer, primary_key=True)
         panel_aktif = db.Column(db.Boolean, nullable=False, default=False)
-        menu_basligi = db.Column(db.String(120), nullable=False, default="Tedarikçi Paneli")
+        menu_basligi = db.Column(db.String(120), nullable=False, default=_MENU_BASLIGI)
         duyuru_metni = db.Column(db.Text, nullable=False, default="")
         komisyon_orani = db.Column(db.Float, nullable=False, default=20.0)
         kargo_destek_orani = db.Column(db.Float, nullable=False, default=10.0)
@@ -492,6 +514,16 @@ def _ayar_satiri():
         satir = ayar_satiri_olustur()
         db.session.add(satir)
         db.session.commit()
+    degisti = False
+    baslik = str(satir.menu_basligi or "").strip()
+    if not baslik or baslik == "Tedarikçi Paneli":
+        satir.menu_basligi = _MENU_BASLIGI
+        degisti = True
+    if not str(satir.yasal_sozlesme_metni or "").strip():
+        satir.yasal_sozlesme_metni = _VARSAYILAN_SOZLESME
+        degisti = True
+    if degisti:
+        db.session.commit()
     return satir
 
 
@@ -622,7 +654,8 @@ def _urun_sozluk(satir, yonetici=False):
 def _ayar_sozluk(satir, herkese=False):
     paket = {
         "panel_aktif": bool(satir.panel_aktif),
-        "menu_basligi": satir.menu_basligi or "Tedarikçi Paneli",
+        "menu_basligi": str(satir.menu_basligi or "").strip() or _MENU_BASLIGI,
+        "dukkanlar": [{"kod": kod, "ad": ad} for kod, ad in _DUKKAN_ADLARI],
         "duyuru_metni": satir.duyuru_metni or "",
         "komisyon_orani": float(satir.komisyon_orani or 0),
         "kargo_destek_orani": float(satir.kargo_destek_orani or 0),
@@ -638,6 +671,8 @@ def _ayar_sozluk(satir, herkese=False):
     if herkese and not paket["panel_aktif"]:
         paket["duyuru_metni"] = ""
         paket["yasal_sozlesme_metni"] = ""
+    elif not str(paket["yasal_sozlesme_metni"]).strip():
+        paket["yasal_sozlesme_metni"] = _VARSAYILAN_SOZLESME
     return paket
 
 
@@ -650,7 +685,7 @@ def _form_girdi():
 
 def _ayar_uygula(satir, veri):
     satir.panel_aktif = _evet(veri.get("panel_aktif"))
-    satir.menu_basligi = _metin(veri.get("menu_basligi"), 120) or "Tedarikçi Paneli"
+    satir.menu_basligi = _metin(veri.get("menu_basligi"), 120) or _MENU_BASLIGI
     satir.duyuru_metni = _metin(veri.get("duyuru_metni"), 4000)
     satir.komisyon_orani = _oran(veri.get("komisyon_orani"))
     satir.kargo_destek_orani = _oran(veri.get("kargo_destek_orani"))
@@ -665,7 +700,8 @@ def _ayar_uygula(satir, veri):
     satir.min_fotograf = alt
     satir.max_fotograf = ust
     if "yasal_sozlesme_metni" in veri:
-        satir.yasal_sozlesme_metni = str(veri.get("yasal_sozlesme_metni") or "")
+        metin = str(veri.get("yasal_sozlesme_metni") or "").strip()
+        satir.yasal_sozlesme_metni = metin or _VARSAYILAN_SOZLESME
 
 
 def _dukkan_kodu(ham):

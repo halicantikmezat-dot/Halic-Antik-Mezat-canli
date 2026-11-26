@@ -1,6 +1,10 @@
-<button type="button" class="menu-oge" id="tedarikciMenuBtn" hidden></button>
-<div id="tedarikciPerde" hidden style="display:none; position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,.62); align-items:flex-end; justify-content:center;">
-    <div id="tedarikciKutu" style="background:#07090e; color:#fff; width:min(560px, 100%); max-height:92vh; overflow:auto; border:1px solid #d4af37; border-radius:16px 16px 0 0; padding:14px;">
+<style>
+#tedarikciMenuBtn[hidden]{display:none !important;}
+#tdGonderBtn:disabled,#tdBeyan:disabled{opacity:.45;cursor:not-allowed;}
+</style>
+<button type="button" class="menu-oge" id="tedarikciMenuBtn" hidden>🤝 Ürün Sat / Tedarikçi</button>
+<div id="tedarikciPerde" hidden style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,.72); align-items:center; justify-content:center; padding:16px;">
+    <div id="tedarikciKutu" style="background:#07090e; color:#fff; width:min(560px, 100%); max-height:90vh; overflow:auto; border:1px solid #d4af37; border-radius:16px; padding:14px;">
         <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
             <strong id="tedarikciBaslik" style="color:#fef08a;">Tedarikçi Paneli</strong>
             <button type="button" id="tedarikciKapat" style="background:#881337; color:#fff; border:0; border-radius:8px; padding:6px 10px; cursor:pointer;">Kapat</button>
@@ -26,14 +30,17 @@
             <input name="sehir" placeholder="Şehir" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
             <input name="urun_adi" required placeholder="Ürün adı" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
             <textarea name="aciklama" rows="2" placeholder="Açıklama" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;"></textarea>
-            <input name="hedef_kategori" placeholder="Hedef kategori / dükkan kodu" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
-            <input name="taban_fiyat" type="number" min="0" step="0.01" placeholder="Taban fiyat" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
-            <input id="tdSatisFiyat" name="satis_fiyati" type="number" min="0" step="0.01" placeholder="Satış fiyatı" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
-            <p id="tdNetOnizleme" style="font-size:14px; color:#86efac;">Net hakediş: 0 TL</p>
+            <label style="font-size:13px; display:grid; gap:4px;">Hedef dükkan
+                <select name="hedef_kategori" id="tdHedefKategori" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;"></select>
+            </label>
+            <label style="font-size:13px; display:grid; gap:4px;">Başlangıç / Taban Fiyatı (TL)
+                <input id="tdTabanFiyat" name="taban_fiyat" type="number" min="0" step="0.01" required style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
+            </label>
+            <p id="tdNetOnizleme" style="font-size:14px; color:#86efac;">Taban fiyata göre tahmini net: 0 TL</p>
             <label style="font-size:13px;">Fotoğraflar <input name="fotograflar" type="file" accept="image/*" multiple></label>
-            <pre id="tdSozlesme" style="white-space:pre-wrap; background:#111827; border-radius:8px; padding:8px; max-height:120px; overflow:auto; font-size:12px;"></pre>
-            <label style="font-size:13px;"><input name="yasal_beyan_onay" type="checkbox" value="1"> Yasal sözleşmeyi okudum ve onaylıyorum.</label>
-            <button type="submit" style="background:#166534; color:#fff; border:0; border-radius:8px; padding:10px; font-weight:700; cursor:pointer;">Ürünü gönder</button>
+            <div id="tdSozlesme" style="white-space:pre-wrap; background:#111827; border-radius:8px; padding:8px; max-height:150px; overflow-y:auto; font-size:12px;"></div>
+            <label style="font-size:13px;"><input id="tdBeyan" name="yasal_beyan_onay" type="checkbox" value="1" disabled> Sözleşmeyi okudum ve onaylıyorum.</label>
+            <button id="tdGonderBtn" type="submit" disabled style="background:#166534; color:#fff; border:0; border-radius:8px; padding:10px; font-weight:700; cursor:pointer;">Ürünü Gönder</button>
             <p id="tdFormDurum" style="font-size:13px;"></p>
         </form>
         <div id="tdListe" hidden></div>
@@ -41,8 +48,10 @@
 </div>
 <script>
 (function () {
+    var VARSAYILAN_BASLIK = "🤝 Ürün Sat / Tedarikçi";
     var btn = document.getElementById("tedarikciMenuBtn");
     var perde = document.getElementById("tedarikciPerde");
+    if (perde && perde.parentNode !== document.body) document.body.appendChild(perde);
     var ayar = null;
     var giris = false;
     var limit = 500;
@@ -80,31 +89,77 @@
         document.getElementById("tdListe").hidden = ad !== "liste";
         if (ad === "liste") listeyiYukle();
     }
+    function baslikMetni(metin) {
+        var temiz = String(metin || "").trim();
+        return temiz || VARSAYILAN_BASLIK;
+    }
+    function dukkanlariDoldur() {
+        var secim = document.getElementById("tdHedefKategori");
+        var liste = (ayar && ayar.dukkanlar) || [];
+        secim.innerHTML = liste.map(function (dukkan) {
+            return "<option value='" + kacis(dukkan.kod) + "'>" + kacis(dukkan.ad) + "</option>";
+        }).join("");
+        if (!secim.innerHTML) secim.innerHTML = "<option value='karma'>Oyuncaklar</option>";
+    }
+    function sozlesmeKilidi() {
+        var kutu = document.getElementById("tdSozlesme");
+        var onay = document.getElementById("tdBeyan");
+        var gonder = document.getElementById("tdGonderBtn");
+        var okundu = kutu.scrollHeight - kutu.clientHeight <= 8 || (kutu.scrollTop + kutu.clientHeight >= kutu.scrollHeight - 8);
+        if (!okundu) {
+            onay.checked = false;
+            onay.disabled = true;
+            gonder.disabled = true;
+            return;
+        }
+        onay.disabled = false;
+        gonder.disabled = !onay.checked;
+    }
     function paneliCiz() {
         if (!ayar || !ayar.panel_aktif) {
             btn.hidden = true;
             return;
         }
         btn.hidden = false;
-        btn.textContent = ayar.menu_basligi || "Tedarikçi Paneli";
-        document.getElementById("tedarikciBaslik").textContent = ayar.menu_basligi || "Tedarikçi Paneli";
+        btn.textContent = baslikMetni(ayar.menu_basligi);
+        document.getElementById("tedarikciBaslik").textContent = baslikMetni(ayar.menu_basligi);
         document.getElementById("tedarikciDuyuru").textContent = ayar.duyuru_metni || "";
         document.getElementById("tdKurallar").textContent = "Komisyon %" + ayar.komisyon_orani + " · Kargo destek %" + ayar.kargo_destek_orani + " (alt limit " + ayar.kargo_destek_alt_limit + " TL) · Cayma %" + ayar.cayma_cezasi_orani + " · Kargo " + ayar.kargo_suresi_saat + " saat · Fotoğraf " + ayar.min_fotograf + "-" + ayar.max_fotograf + (ayar.tc_zorunlu ? " · T.C. zorunlu" : "");
-        document.getElementById("tdSozlesme").textContent = ayar.yasal_sozlesme_metni || "Sözleşme metni henüz girilmedi.";
-        document.getElementById("tdNetOnizleme").textContent = "Net hakediş: " + netHesap(document.getElementById("tdSatisFiyat").value) + " TL";
+        var sozlesme = document.getElementById("tdSozlesme");
+        sozlesme.textContent = ayar.yasal_sozlesme_metni || "";
+        sozlesme.scrollTop = 0;
+        dukkanlariDoldur();
+        document.getElementById("tdNetOnizleme").textContent = "Taban fiyata göre tahmini net: " + netHesap(document.getElementById("tdTabanFiyat").value) + " TL";
+        sozlesmeKilidi();
     }
-    function ac() { perde.hidden = false; perde.style.display = "flex"; }
+    function ac() {
+        perde.hidden = false;
+        perde.style.display = "flex";
+        sozlesmeKilidi();
+    }
     function kapat() { perde.hidden = true; perde.style.display = "none"; }
-    btn.addEventListener("click", function () {
-        if (window.menuIslem) window.menuIslem(ac);
-        else ac();
+    function menuyuKapat() {
+        var menu = document.getElementById("genelMenu");
+        var menuPerde = document.getElementById("menuPerde");
+        if (menu) menu.classList.remove("acik");
+        if (menuPerde) menuPerde.hidden = true;
+    }
+    btn.addEventListener("click", function (olay) {
+        olay.preventDefault();
+        olay.stopPropagation();
+        menuyuKapat();
+        ac();
     });
     document.getElementById("tedarikciKapat").addEventListener("click", kapat);
     perde.addEventListener("click", function (e) { if (e.target === perde) kapat(); });
     Array.prototype.forEach.call(document.querySelectorAll(".td-sekme"), function (el) {
         el.addEventListener("click", function () { sekme(el.getAttribute("data-sekme")); });
     });
-    document.getElementById("tdSatisFiyat").addEventListener("input", paneliCiz);
+    document.getElementById("tdTabanFiyat").addEventListener("input", function () {
+        document.getElementById("tdNetOnizleme").textContent = "Taban fiyata göre tahmini net: " + netHesap(document.getElementById("tdTabanFiyat").value) + " TL";
+    });
+    document.getElementById("tdSozlesme").addEventListener("scroll", sozlesmeKilidi);
+    document.getElementById("tdBeyan").addEventListener("change", sozlesmeKilidi);
     document.getElementById("tdGirisBtn").addEventListener("click", function () {
         fetch("/api/tedarikci/giris", {
             method: "POST",
@@ -229,6 +284,8 @@
             durum.textContent = mesaj;
             if (data && data.success) {
                 e.target.reset();
+                document.getElementById("tdSozlesme").scrollTop = 0;
+                sozlesmeKilidi();
                 oturumuYukle();
             }
         }).catch(function () { durum.textContent = "Ürün gönderilemedi."; });
