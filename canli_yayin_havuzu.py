@@ -3130,6 +3130,8 @@ _RESTREAM_PROC = None
 _RESTREAM_ISTEK = False
 _RESTREAM_HEDEF = ""
 _RESTREAM_SON_HATA = ""
+_RESTREAM_BASLIK = b""
+_RESTREAM_MIME = ""
 
 
 def _restream_anahtar_temizle(deger):
@@ -3196,10 +3198,12 @@ def _restream_istek_guncelle():
 
 
 def _restream_kopru_durdur():
-    global _RESTREAM_ISTEK, _RESTREAM_HEDEF
+    global _RESTREAM_ISTEK, _RESTREAM_HEDEF, _RESTREAM_BASLIK, _RESTREAM_MIME
     with _RESTREAM_KILIT:
         _RESTREAM_ISTEK = False
         _RESTREAM_HEDEF = ""
+        _RESTREAM_BASLIK = b""
+        _RESTREAM_MIME = ""
     _restream_sureci_kapat()
     _sosyal_kapisi(False)
 
@@ -3266,7 +3270,9 @@ def _restream_stderr_oku(proc):
         for satir in iter(akis.readline, b""):
             if not satir:
                 break
-            _restream_hata_yaz(satir.decode("utf-8", "replace"))
+            metin = _restream_hata_yaz(satir.decode("utf-8", "replace"))
+            if metin:
+                print(f"[RESTREAM] ffmpeg: {metin}", flush=True)
     except Exception:
         return
 
@@ -3298,53 +3304,13 @@ def _restream_surec_ac(hedef, mime):
         or str(hedef).startswith("rtmps://live.restream.io/live/")
     ):
         return None
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "matroska"
+    from sosyal_yayin_havuzu import _flv_bayraklari, _giris_argumanlari, _kod_argumanlari
+
     komut = [
         _restream_ffmpeg_yolu(),
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-fflags",
-        "+genpts+discardcorrupt",
-        "-seekable",
-        "0",
-        "-f",
-        bicim,
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-tune",
-        "zerolatency",
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        "25",
-        "-g",
-        "50",
-        "-keyint_min",
-        "50",
-        "-vf",
-        "scale=1280:-2",
-        "-b:v",
-        "2500k",
-        "-maxrate",
-        "2500k",
-        "-bufsize",
-        "5000k",
-        "-c:a",
-        "aac",
-        "-ar",
-        "44100",
-        "-b:a",
-        "128k",
-        "-f",
-        "flv",
-        "-flvflags",
-        "no_duration_filesize",
-        hedef,
+        *_giris_argumanlari(mime),
+        *_kod_argumanlari(),
+        *_flv_bayraklari(hedef),
     ]
     ayar = {}
     if os.name == "nt":
@@ -3367,15 +3333,29 @@ def _restream_surec_ac(hedef, mime):
     return proc
 
 
+def _restream_stdin_yaz(stdin, paket):
+    kalan = paket
+    while kalan:
+        yazilan = stdin.write(kalan)
+        if not yazilan:
+            raise OSError("ffmpeg stdin kapandi")
+        kalan = kalan[yazilan:]
+    stdin.flush()
+
+
 def _restream_yaz(hedef, paket, baslik, mime):
-    global _RESTREAM_PROC
+    global _RESTREAM_PROC, _RESTREAM_BASLIK, _RESTREAM_MIME
     if baslik and not _restream_ebml_mi(paket):
         return "bekliyor"
     eski = None
     erken = None
     stdin = None
     proc = None
+    on_ek = b""
     with _RESTREAM_KILIT:
+        if baslik and _restream_ebml_mi(paket):
+            _RESTREAM_BASLIK = bytes(paket)
+            _RESTREAM_MIME = str(mime or "")
         if not _RESTREAM_ISTEK or _RESTREAM_HEDEF != hedef:
             erken = False
         else:
@@ -3384,17 +3364,19 @@ def _restream_yaz(hedef, paket, baslik, mime):
                 _RESTREAM_PROC = None
                 eski = proc
                 proc = None
-                if not baslik:
-                    erken = "yeniden"
             elif proc is not None and baslik:
                 _RESTREAM_PROC = None
                 eski = proc
                 proc = None
             if erken is None and proc is None:
-                if not _restream_ebml_mi(paket):
-                    erken = "bekliyor"
-                else:
+                if baslik and _restream_ebml_mi(paket):
                     proc = _restream_surec_ac(hedef, mime)
+                elif _restream_ebml_mi(_RESTREAM_BASLIK):
+                    on_ek = _RESTREAM_BASLIK
+                    proc = _restream_surec_ac(hedef, mime or _RESTREAM_MIME)
+                else:
+                    erken = "bekliyor"
+                if erken is None:
                     _RESTREAM_PROC = proc
             if erken is None and (proc is None or proc.stdin is None):
                 if not _restream_hata_oku():
@@ -3406,13 +3388,9 @@ def _restream_yaz(hedef, paket, baslik, mime):
     if erken is not None:
         return erken
     try:
-        kalan = paket
-        while kalan:
-            yazilan = stdin.write(kalan)
-            if not yazilan:
-                raise OSError("ffmpeg stdin kapandi")
-            kalan = kalan[yazilan:]
-        stdin.flush()
+        if on_ek:
+            _restream_stdin_yaz(stdin, on_ek)
+        _restream_stdin_yaz(stdin, paket)
     except Exception:
         with _RESTREAM_KILIT:
             if _RESTREAM_PROC is proc:
@@ -3421,7 +3399,10 @@ def _restream_yaz(hedef, paket, baslik, mime):
             proc.kill()
         except Exception:
             pass
-        return "yeniden"
+        gercek = _restream_hata_oku()
+        if gercek:
+            print(f"[RESTREAM] ffmpeg: {gercek}", flush=True)
+        return "bekliyor"
     return True
 
 

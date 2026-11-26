@@ -47,6 +47,107 @@ def _giris_bicimi(mime):
     return "matroska"
 
 
+def _giris_argumanlari(mime):
+    """Varsayılan 5 sn analyzeduration, canlı WebM'i probe sonunda düşürür.
+
+    Sıfır değer FFmpeg'te 'ayarsız' sayılır ve yine 5 saniyeye döner.
+    """
+    return [
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-fflags",
+        "+genpts+nobuffer+igndts",
+        "-flags",
+        "low_delay",
+        "-use_wallclock_as_timestamps",
+        "1",
+        "-probesize",
+        "5000000",
+        "-analyzeduration",
+        "100000",
+        "-seekable",
+        "0",
+        "-f",
+        _giris_bicimi(mime),
+        "-i",
+        "pipe:0",
+    ]
+
+
+def _kod_argumanlari():
+    return [
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-tune",
+        "zerolatency",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "25",
+        "-g",
+        "50",
+        "-keyint_min",
+        "50",
+        "-vf",
+        "scale=1280:-2",
+        "-b:v",
+        "2500k",
+        "-maxrate",
+        "2500k",
+        "-bufsize",
+        "5000k",
+        "-c:a",
+        "aac",
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        "-b:a",
+        "128k",
+        "-max_interleave_delta",
+        "0",
+        "-max_muxing_queue_size",
+        "1024",
+    ]
+
+
+def _flv_bayraklari(hedef):
+    bayrak = ["-f", "flv", "-flvflags", "no_duration_filesize"]
+    if str(hedef).startswith("rtmps://"):
+        bayrak.extend(["-rw_timeout", "15000000", "-tls_verify", "0"])
+    bayrak.append(str(hedef))
+    return bayrak
+
+
+def _onemli_satir(metin):
+    satir = str(metin or "").lower()
+    return any(
+        iz in satir
+        for iz in (
+            "error",
+            "invalid",
+            "failed",
+            "timed out",
+            "timeout",
+            "cannot",
+            "refused",
+            "broken pipe",
+            "no such",
+            "denied",
+            "unreachable",
+            "could not",
+            "conversion failed",
+        )
+    )
+
+
 def kalici_bagla(oku, yaz):
     """Veritabanı veya Redis varsa JSON yedeğinin önüne geçer."""
     global _KALICI_OKU, _KALICI_YAZ
@@ -361,7 +462,7 @@ def _slot_yaz(slot, paket, baslik, mime):
             kapanan = proc
             proc = None
             if not baslik:
-                _hata_kilit_icinde(slot, slot.get("son_satir") or "Yayın koptu")
+                _hata_kilit_icinde(slot, slot.get("son_hata") or slot.get("son_satir") or "Yayın koptu")
                 dustu = True
         elif proc is not None and baslik:
             slot["proc"] = None
@@ -421,7 +522,7 @@ def _hata_isaretle(slot, metin, nesil=None):
 
 def _hata_kilit_icinde(slot, metin):
     slot["durum"] = "hata"
-    slot["hata"] = _maske(metin)[:120] or "Yayın koptu"
+    slot["hata"] = _maske(metin)[:240] or "Yayın koptu"
 
 
 def _baslik_kopya():
@@ -447,7 +548,7 @@ def _proc_dustu_mu(slot):
         if proc is None or proc.poll() is None:
             return
         _proc_birak(slot)
-        _hata_kilit_icinde(slot, slot.get("son_satir") or "Yayın koptu")
+        _hata_kilit_icinde(slot, slot.get("son_hata") or slot.get("son_satir") or "Yayın koptu")
 
 
 def _proc_birak(slot):
@@ -478,54 +579,7 @@ def _proc_kapat(proc):
 def _surec_ac(hedef, mime, slot):
     if not (str(hedef).startswith("rtmp://") or str(hedef).startswith("rtmps://")):
         return None
-    bicim = _giris_bicimi(mime)
-    komut = [
-        _ffmpeg_yolu(),
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-fflags",
-        "+genpts+discardcorrupt",
-        "-seekable",
-        "0",
-        "-f",
-        bicim,
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-tune",
-        "zerolatency",
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        "25",
-        "-g",
-        "50",
-        "-keyint_min",
-        "50",
-        "-vf",
-        "scale=1280:-2",
-        "-b:v",
-        "2500k",
-        "-maxrate",
-        "2500k",
-        "-bufsize",
-        "5000k",
-        "-c:a",
-        "aac",
-        "-ar",
-        "44100",
-        "-b:a",
-        "128k",
-        "-f",
-        "flv",
-        "-flvflags",
-        "no_duration_filesize",
-        hedef,
-    ]
+    komut = [_ffmpeg_yolu(), *_giris_argumanlari(mime), *_kod_argumanlari(), *_flv_bayraklari(hedef)]
     ayar = {}
     if os.name == "nt":
         bayrak = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -558,7 +612,10 @@ def _stderr_oku(slot, proc):
             if not metin:
                 continue
             with slot["kilit"]:
-                slot["son_satir"] = metin[:180]
+                slot["son_satir"] = metin[:240]
+                if _onemli_satir(metin):
+                    slot["son_hata"] = metin[:240]
+                    print(f"[SOSYAL HAVUZ] ffmpeg: {metin[:240]}", flush=True)
     except Exception:
         return
 
@@ -663,6 +720,7 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     kapanan = None
     eski_kopyalar = []
     durdu = False
+    yeni = False
     nesil = 0
     metin = "Kodlayıcı koptu"
     with ortak["kilit"]:
@@ -675,7 +733,7 @@ def _encoder_yaz(ortak, paket, baslik, mime):
             proc = None
             durdu = not baslik
             if durdu:
-                metin = ortak.get("son_satir") or "Kodlayıcı koptu"
+                metin = (ortak.get("son_hata") or ortak.get("son_satir") or "Kodlayıcı koptu")
         elif proc is not None and baslik:
             ortak["proc"] = None
             kapanan = proc
@@ -702,8 +760,13 @@ def _encoder_yaz(ortak, paket, baslik, mime):
                     ortak["proc"] = proc
                     ortak["nesil"] = int(ortak.get("nesil") or 0) + 1
                     nesil = ortak["nesil"]
+                    yeni = True
+                    olay = threading.Event()
+                    ortak["stderr_bitti"] = olay
+                    ortak["son_hata"] = ""
+                    ortak["son_satir"] = ""
                     threading.Thread(target=_cikis_isci, args=(ortak, proc, nesil), daemon=True).start()
-                    threading.Thread(target=_stderr_ortak, args=(ortak, proc), daemon=True).start()
+                    threading.Thread(target=_stderr_ortak, args=(ortak, proc, olay), daemon=True).start()
         elif proc is not None:
             nesil = ortak["nesil"]
         stdin = proc.stdin if proc is not None else None
@@ -720,7 +783,7 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     if durdu == "acilamadi":
         _ortak_hedef_durumu(ortak, "hata", "FFmpeg açılamadı")
         return
-    _kopyalari_ac(ortak)
+    _kopyalari_ac(ortak, yeni)
     try:
         if on_ek:
             _stdin_yaz(stdin, on_ek)
@@ -730,48 +793,10 @@ def _encoder_yaz(ortak, paket, baslik, mime):
 
 
 def _encoder_ac(mime):
-    bicim = _giris_bicimi(mime)
     komut = [
         _ffmpeg_yolu(),
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-fflags",
-        "+genpts+discardcorrupt",
-        "-seekable",
-        "0",
-        "-f",
-        bicim,
-        "-i",
-        "pipe:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-tune",
-        "zerolatency",
-        "-pix_fmt",
-        "yuv420p",
-        "-r",
-        "25",
-        "-g",
-        "50",
-        "-keyint_min",
-        "50",
-        "-vf",
-        "scale=1280:-2",
-        "-b:v",
-        "2500k",
-        "-maxrate",
-        "2500k",
-        "-bufsize",
-        "5000k",
-        "-c:a",
-        "aac",
-        "-ar",
-        "44100",
-        "-b:a",
-        "128k",
+        *_giris_argumanlari(mime),
+        *_kod_argumanlari(),
         "-f",
         "mpegts",
         "-muxdelay",
@@ -787,13 +812,13 @@ def _encoder_ac(mime):
         return None
 
 
-def _kopyalari_ac(ortak):
+def _kopyalari_ac(ortak, zorla=False):
     with ortak["kilit"]:
         istenen = dict(ortak.get("hedefler") or {})
         mevcut = dict(ortak.get("kopyalar") or {})
     for kim, hedef in istenen.items():
         slot = _SLOTLAR.get(kim)
-        if slot is not None and slot.get("durum") == "hata":
+        if not zorla and slot is not None and slot.get("durum") == "hata":
             continue
         kopya = mevcut.get(kim)
         proc = kopya.get("proc") if kopya is not None else None
@@ -823,18 +848,18 @@ def _kopya_yenile(ortak, kim, hedef):
         "-loglevel",
         "warning",
         "-fflags",
-        "+genpts+discardcorrupt",
+        "+genpts+nobuffer",
+        "-probesize",
+        "1048576",
+        "-analyzeduration",
+        "3000000",
         "-f",
         "mpegts",
         "-i",
         "pipe:0",
         "-c",
         "copy",
-        "-f",
-        "flv",
-        "-flvflags",
-        "no_duration_filesize",
-        hedef,
+        *_flv_bayraklari(hedef),
     ]
     try:
         proc = _surec_baslat(komut, subprocess.DEVNULL)
@@ -919,8 +944,10 @@ def _kopya_hata(ortak, kopya, metin):
     with ortak["kilit"]:
         if ortak["kopyalar"].get(kopya["id"]) is kopya:
             ortak["kopyalar"].pop(kopya["id"], None)
+    goster = (kopya.get("son_hata") or kopya.get("son_satir") or metin or "Yayın koptu")
+    print(f"[SOSYAL HAVUZ] hedef koptu: {goster}", flush=True)
     _kopya_sonlandir(kopya)
-    _slot_durum(kopya["id"], "hata", metin)
+    _slot_durum(kopya["id"], "hata", goster)
 
 
 def _kopya_sonlandir(kopya):
@@ -945,10 +972,19 @@ def _encoder_hata(ortak, metin, nesil=None):
         ortak["proc"] = None
         kopyalar = list(ortak["kopyalar"].values())
         ortak["kopyalar"].clear()
+    bitti = None
+    with ortak["kilit"]:
+        bitti = ortak.get("stderr_bitti")
     _proc_kapat(proc)
+    if bitti is not None:
+        bitti.wait(timeout=1)
     for kopya in kopyalar:
         _kopya_sonlandir(kopya)
-    _ortak_hedef_durumu(ortak, "hata", metin)
+    with ortak["kilit"]:
+        gercek = (ortak.get("son_hata") or ortak.get("son_satir") or "").strip()
+    goster = gercek or metin or "Kodlayıcı koptu"
+    print(f"[SOSYAL HAVUZ] kodlayici kapandi: {goster}", flush=True)
+    _ortak_hedef_durumu(ortak, "hata", goster)
 
 
 def _ortak_hatalari_sil(ortak):
@@ -979,10 +1015,10 @@ def _slot_durum(kim, durum, hata):
         if slot["dur"].is_set():
             return
         slot["durum"] = durum
-        slot["hata"] = _maske(hata)[:120] if hata else ""
+        slot["hata"] = _maske(hata)[:240] if hata else ""
 
 
-def _stderr_ortak(ortak, proc):
+def _stderr_ortak(ortak, proc, bitti=None):
     try:
         akis = proc.stderr
         if akis is None:
@@ -991,11 +1027,18 @@ def _stderr_ortak(ortak, proc):
             if not satir:
                 break
             metin = _maske(satir.decode("utf-8", "replace")).strip()
-            if metin:
-                with ortak["kilit"]:
-                    ortak["son_satir"] = metin[:180]
+            if not metin:
+                continue
+            with ortak["kilit"]:
+                ortak["son_satir"] = metin[:240]
+                if _onemli_satir(metin):
+                    ortak["son_hata"] = metin[:240]
+                    print(f"[SOSYAL HAVUZ] ffmpeg: {metin[:240]}", flush=True)
     except Exception:
         return
+    finally:
+        if bitti is not None:
+            bitti.set()
 
 
 def _stderr_kopya(kopya, proc):
@@ -1007,8 +1050,12 @@ def _stderr_kopya(kopya, proc):
             if not satir:
                 break
             metin = _maske(satir.decode("utf-8", "replace")).strip()
-            if metin:
-                kopya["son_satir"] = metin[:180]
+            if not metin:
+                continue
+            kopya["son_satir"] = metin[:240]
+            if _onemli_satir(metin):
+                kopya["son_hata"] = metin[:240]
+                print(f"[SOSYAL HAVUZ] hedef: {metin[:240]}", flush=True)
     except Exception:
         return
 
