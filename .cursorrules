@@ -1,18 +1,26 @@
+# Haritaya Bak
+
+Herhangi bir dosyada arama veya düzenleme yapmadan önce mutlaka `MIMARI_HARITA.md` dosyasına bak ve sadece ilgili alana odaklan; büyük dosyaları gereksiz yere baştan sona tarama.
+
 # Görev Kapsamı
 
 Her görevde YALNIZCA kullanıcının açıkça belirttiği dosya ve fonksiyon üzerinde çalış. İzin verilmeyen hiçbir dosyayı açıp düzenleme.
 
-# Dokunulmaz Çekirdek Alanlar
+# Modüler Büyüme
 
-Pazaryeri entegrasyonları, XML toptancı aktarımı/kuralları, Cloudinary medya yükleme, BizimHesap ve WooCommerce servisleri, Geliver kargo, 2FA/giriş güvenliği, POS/sepet ve veritabanı modelleri (`db.Model`) üzerinde kullanıcı açıkça izin vermedikçe TEK BİR SATIR BİLE değiştirme.
+Yeni eklenecek her özellik mevcut ana dosyaların içine gömülmeyecek; mutlaka ayrı ve bağımsız bir Blueprint modülü ve ayrı bir şablon parçası olarak oluşturulacak.
 
-# Mezat ve Sayaç Koruması
+`app.py` veya diğer büyük dosyalara yüzlerce satırlık yeni özellik yığma. Yeni bir entegrasyon veya bağımsız iş mantığı ekleneceğinde bunu ayrı bir Python modülü olarak tasarlayıp `app.py` içine yalnızca temiz bir bağlantı (import/blueprint) ile ekle. Bu bağlantı satırı da kullanıcı açıkça istemedikçe yazılmaz.
+
+# Kırmızı Çizgi
+
+Canlı yayın, sayaç (`sayac_guncelle`, `pazarlik_kapandi`, `sayac_bitti`, `urun_satildi_erken`), pey motoru ve mevcut veritabanı tabloları kırmızı çizgidir; açıkça emredilmedikçe dokunulmayacak.
 
 Çalışan geri sayım (`120 -> 1` pazarlık, `60 -> 0` karar), Redis/RAM görev kilidi (`task_id`), nabız (heartbeat) koruması ve Socket.IO olay adları (`sayac_guncelle`, `pazarlik_kapandi`, `sayac_bitti`, `urun_satildi_erken`, `admin_satis_guncelle`, `ses_oynat`, `ses_kes`) bozulamaz.
 
-# Modüler Büyüme Kuralı
+# Dokunulmaz Çekirdek Alanlar
 
-`app.py` veya diğer büyük dosyalara yüzlerce satırlık yeni özellik yığma. Yeni bir entegrasyon veya bağımsız iş mantığı ekleneceğinde bunu ayrı bir Python modülü olarak tasarlayıp `app.py` içine yalnızca temiz bir bağlantı (import/blueprint) ile ekle.
+Pazaryeri entegrasyonları, XML toptancı aktarımı/kuralları, Cloudinary medya yükleme, BizimHesap ve WooCommerce servisleri, Geliver kargo, 2FA/giriş güvenliği, POS/sepet ve veritabanı modelleri (`db.Model`) üzerinde kullanıcı açıkça izin vermedikçe TEK BİR SATIR BİLE değiştirme.
 
 # Doğrulama
 
