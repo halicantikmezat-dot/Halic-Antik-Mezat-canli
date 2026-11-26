@@ -36,10 +36,10 @@
                 <input name="cayma_cezasi_orani" type="number" min="0" max="100" step="0.01" value="15">
             </label>
             <label class="td-alan">Minimum Fotoğraf Sayısı
-                <input name="min_fotograf" type="number" min="1" max="8" value="2">
+                <input name="min_fotograf" type="number" min="1" max="4" value="1">
             </label>
             <label class="td-alan">Maksimum Fotoğraf Sayısı
-                <input name="max_fotograf" type="number" min="1" max="8" value="4">
+                <input name="max_fotograf" type="number" min="1" max="4" value="4">
             </label>
             <label class="td-alan" style="grid-column:1 / -1;">Yasal sözleşme metni
                 <textarea name="yasal_sozlesme_metni" rows="12"></textarea>
@@ -133,6 +133,7 @@
             "<p><b>T.C.:</b> " + kacis(u.tc_kimlik_no) + " · <b>IBAN:</b> " + kacis(u.iban) + " · <b>Şehir:</b> " + kacis(u.sehir) + "</p>" +
             "<p><b>IP:</b> " + kacis(u.yukleyen_ip) + " · <b>Kayıt:</b> " + kacis(u.olusturma_zamani) + " · <b>Satış:</b> " + kacis(u.satis_zamani || "—") + "</p>" +
             "<p><b>Taban:</b> " + kacis(u.taban_fiyat) + " TL · <b>Satış:</b> " + kacis(u.satis_fiyati) + " TL · <b>Net hakediş:</b> " + kacis(u.net_hakedis) + " TL" + (u.hakedis_odendi ? " · Ödendi " + kacis(u.hakedis_odeme_zamani) : "") + "</p>" +
+            "<p class='td-aciklama'><b>Açıklama:</b> " + kacis(u.aciklama) + "</p>" +
             "<div style='display:flex;gap:6px;flex-wrap:wrap;'><b style='width:100%;'>Fotoğraflar</b>" + (fotolar || "Fotoğraf yok") + "</div>" + kanit +
             "<p><button type='button' class='btn td-sozlesme'>Sözleşme Kaydını Göster</button></p><pre class='td-sozlesme-metin' hidden style='display:none;white-space:pre-wrap;font-size:12px;max-height:140px;overflow:auto;background:#0f141c;padding:8px;border-radius:8px;'>" + kacis(u.onaylanan_beyan_metni) + "</pre>" +
             (u.admin_notu ? "<p>Not: " + kacis(u.admin_notu) + "</p>" : "") +
@@ -141,7 +142,9 @@
                 "<input class='td-fiyat' data-id='" + u.id + "' value='" + kacis(u.satis_fiyati) + "' placeholder='Satış fiyatı'>" +
                 "<button type='button' class='btn btn-blue td-kaydet' data-id='" + u.id + "'>Düzenlemeyi kaydet</button>" +
                 "<button type='button' class='btn btn-green td-onay' data-id='" + u.id + "'>Onayla ve Vitrine Al</button>" +
-                "<button type='button' class='btn btn-red td-red' data-id='" + u.id + "'>Reddet</button></div>" : "") +
+                "<button type='button' class='btn td-ai-denetim' data-id='" + u.id + "'>🔬 AI Havuz Laboratuvarı ile Denetle</button>" +
+                "<button type='button' class='btn btn-red td-red' data-id='" + u.id + "'>Reddet</button></div>" +
+                "<div class='td-lab-kutu' data-id='" + u.id + "'></div>" : "") +
             "<div style='display:grid;gap:6px;margin-top:8px;'>" +
                 "<input class='td-alici-ad' data-id='" + u.id + "' value='" + kacis(u.alici_ad_soyad) + "' placeholder='Alıcı ad soyad'>" +
                 "<input class='td-alici-tel' data-id='" + u.id + "' value='" + kacis(u.alici_telefon) + "' placeholder='Alıcı telefon'>" +
@@ -180,6 +183,82 @@
         var rozet = document.getElementById("tdBekleyenRozet");
         if (rozet) rozet.textContent = (sayilar.bekleyen || 0) + " bekleyen";
     }
+    function riskRenk(seviye) {
+        var metin = String(seviye || "");
+        if (metin.indexOf("Yüksek") >= 0) return "#7f1d1d";
+        if (metin.indexOf("Orta") >= 0) return "#92400e";
+        return "#14532d";
+    }
+    function laboratuvarAc(el) {
+        var id = el.getAttribute("data-id");
+        var kutu = liste.querySelector(".td-lab-kutu[data-id='" + id + "']");
+        if (!kutu || el.disabled) return;
+        var eski = el.textContent;
+        el.disabled = true;
+        el.textContent = "🔬 Denetleniyor, lütfen bekleyiniz...";
+        if (kutu) kutu.innerHTML = "";
+        fetch("/api/tedarikci/admin-ai-denetim/" + id, {method: "POST"})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                el.disabled = false;
+                el.textContent = eski;
+                if (!kutu) return;
+                if (!data || !data.success || !data.rapor) {
+                    kutu.innerHTML = "<p style='color:#fde68a;'>" + kacis((data && data.mesaj) || "Laboratuvar raporu alınamadı. Kartı elle denetleyebilirsiniz.") + "</p>";
+                    return;
+                }
+                var rapor = data.rapor;
+                kutu.innerHTML = "<div style='border:1px solid #d4af37;border-radius:12px;padding:10px;background:#111827;margin-top:8px;'>" +
+                    "<b>Laboratuvar Raporu</b>" +
+                    "<p style='margin:8px 0;'><b>⚖️ Hukuki &amp; 2863 Yasaklı Eser Risk Skoru:</b> " +
+                    "<span style='background:" + riskRenk(rapor.risk_seviye) + ";border-radius:999px;padding:2px 8px;'>" + kacis(rapor.risk_seviye) + "</span><br>" +
+                    kacis(rapor.risk_gerekce) + "</p>" +
+                    "<p><b>🔍 Fotoğraf–Metin Tutarlılık Kontrolü:</b><br>" + kacis(rapor.tutarlilik) + "</p>" +
+                    "<p><b>✨ Vitrin İçin Optimize Edilmiş Başlık ve Açıklama</b><br><b>" + kacis(rapor.vitrin_baslik) + "</b><br>" +
+                    kacis(rapor.vitrin_aciklama) + "<br><b>Tahmini piyasa:</b> " + kacis(rapor.piyasa_aralik) + "</p>" +
+                    "<button type='button' class='btn btn-green td-ai-uygula'>✅ AI Düzeltmesini Uygula</button>" +
+                    "<p class='td-lab-durum' style='font-size:13px;color:#86efac;'></p></div>";
+                kutu.querySelector(".td-ai-uygula").addEventListener("click", function () {
+                    var dugme = kutu.querySelector(".td-ai-uygula");
+                    var govde = {};
+                    if (rapor.vitrin_baslik) govde.urun_adi = rapor.vitrin_baslik;
+                    if (rapor.vitrin_aciklama) govde.aciklama = rapor.vitrin_aciklama;
+                    if (!govde.urun_adi && !govde.aciklama) {
+                        window.alert("Uygulanacak vitrin metni boş. Kartı elle düzenleyebilirsiniz.");
+                        return;
+                    }
+                    dugme.disabled = true;
+                    fetch("/api/tedarikci/admin/urun/" + id + "/guncelle", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify(govde)
+                    }).then(function (r) { return r.json(); }).then(function (sonuc) {
+                        dugme.disabled = false;
+                        if (!sonuc || !sonuc.success) {
+                            window.alert((sonuc && sonuc.mesaj) || "AI düzeltmesi uygulanamadı.");
+                            return;
+                        }
+                        var ad = liste.querySelector(".td-ad[data-id='" + id + "']");
+                        if (ad && rapor.vitrin_baslik) ad.value = rapor.vitrin_baslik;
+                        var kart = kutu.closest("article");
+                        if (kart) {
+                            var baslik = kart.querySelector("b");
+                            if (baslik && rapor.vitrin_baslik) baslik.textContent = rapor.vitrin_baslik;
+                            var aciklama = kart.querySelector(".td-aciklama");
+                            if (aciklama) aciklama.innerHTML = "<b>Açıklama:</b> " + kacis(rapor.vitrin_aciklama);
+                        }
+                        kutu.querySelector(".td-lab-durum").textContent = "Başlık ve açıklama vitrin metniyle güncellendi. Onayla ve Vitrine Al ile yayına alabilirsiniz.";
+                    }).catch(function () {
+                        dugme.disabled = false;
+                        window.alert("AI düzeltmesi uygulanamadı. Onay havuzu açık kalır.");
+                    });
+                });
+            }).catch(function () {
+                el.disabled = false;
+                el.textContent = eski;
+                if (kutu) kutu.innerHTML = "<p style='color:#fde68a;'>Laboratuvar raporu alınamadı. Kartı elle denetleyebilirsiniz.</p>";
+            });
+    }
     function urunleriYukle() {
         fetch("/api/tedarikci/admin/urunler?sekme=" + encodeURIComponent(aktifSekme)).then(function (r) { return r.json(); }).then(function (data) {
             if (!data || !data.success) { liste.textContent = (data && data.mesaj) || "Liste açılmadı."; return; }
@@ -199,6 +278,9 @@
             });
             Array.prototype.forEach.call(liste.querySelectorAll(".td-onay"), function (el) {
                 el.addEventListener("click", function () { gonder("/api/tedarikci/admin/urun/" + el.getAttribute("data-id") + "/onayla", {}); });
+            });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-ai-denetim"), function (el) {
+                el.addEventListener("click", function () { laboratuvarAc(el); });
             });
             Array.prototype.forEach.call(liste.querySelectorAll(".td-red"), function (el) {
                 el.addEventListener("click", function () {

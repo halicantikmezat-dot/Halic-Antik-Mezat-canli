@@ -2,13 +2,17 @@
 # Canlı yayın, mezat sayacı ve vitrin şablonlarından bağımsızdır.
 # Mevcut mezat tablolarına kolon eklemez.
 
+import base64
 import hashlib
 import json
 import os
 import secrets
 import shutil
 import threading
+import urllib.error
+import urllib.request
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, request, send_file, session
@@ -23,6 +27,11 @@ _SEMA_KILIT = threading.Lock()
 _SEMA_HAZIR = False
 _PIN_KILIT = threading.Lock()
 _PIN_DENEME = {}
+_MUKERRER_KILIT = threading.Lock()
+_MUKERRER = {}
+_AI_KILIT = threading.Lock()
+_AI_SON = {}
+_AI_ON_NOTU = "AI ön analizi hazırlandı. Lütfen bilgileri kontrol edip gerekiyorsa düzeltin ve onaylayın."
 _RESIM = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 _KANIT = _RESIM | {".mp4", ".webm", ".mov", ".m4v"}
 _MIME = {
@@ -79,7 +88,7 @@ VARSAYILAN_AYAR = {
     "cayma_cezasi_orani": 15.0,
     "tc_zorunlu": True,
     "paketleme_kaniti_zorunlu": True,
-    "min_fotograf": 2,
+    "min_fotograf": 1,
     "max_fotograf": 4,
     "yasal_sozlesme_metni": _VARSAYILAN_SOZLESME,
 }
@@ -308,7 +317,7 @@ def _tablolari_tanimla(db):
         cayma_cezasi_orani = db.Column(db.Float, nullable=False, default=15.0)
         tc_zorunlu = db.Column(db.Boolean, nullable=False, default=True)
         paketleme_kaniti_zorunlu = db.Column(db.Boolean, nullable=False, default=True)
-        min_fotograf = db.Column(db.Integer, nullable=False, default=2)
+        min_fotograf = db.Column(db.Integer, nullable=False, default=1)
         max_fotograf = db.Column(db.Integer, nullable=False, default=4)
         yasal_sozlesme_metni = db.Column(db.Text, nullable=False, default="")
 
@@ -353,6 +362,9 @@ def _tablolari_tanimla(db):
         telefon = db.Column(db.String(20), nullable=False, unique=True, index=True)
         pin_hash = db.Column(db.String(160), nullable=False, default="")
         ad_soyad = db.Column(db.String(120), nullable=False, default="")
+        tc_kimlik_no = db.Column(db.String(11), nullable=False, default="")
+        iban = db.Column(db.String(34), nullable=False, default="")
+        sehir = db.Column(db.String(60), nullable=False, default="")
         askida = db.Column(db.Boolean, nullable=False, default=False)
         olusturma_zamani = db.Column(db.DateTime, nullable=False, default=simdi_utc)
 
@@ -384,7 +396,7 @@ _HATA_METIN = {
     "telefon": "Geçerli bir telefon gerekli.",
     "urun_adi": "Ürün adı gerekli.",
     "tc_kimlik_no": "Geçerli T.C. kimlik numarası gerekli.",
-    "fotograflar": "Fotoğraf sayısı kurala uymuyor.",
+    "fotograflar": "En az 1, en fazla 4 fotoğraf gerekli.",
     "paketleme_kaniti": "Paketleme kanıtı gerekli.",
     "yasal_beyan_onay": "Yasal sözleşme onayı gerekli.",
 }
@@ -521,6 +533,9 @@ def _sema_emin_ol():
         _kolon_ekle(db, "tedarikci_urunleri", "hakedis_odendi", boolean)
         _kolon_ekle(db, "tedarikci_urunleri", "hakedis_odeme_zamani", "TIMESTAMP")
         _kolon_ekle(db, "tedarikci_urunleri", "katalog_oge_id", "VARCHAR(64) DEFAULT ''")
+        _kolon_ekle(db, "tedarikci_hesaplari", "tc_kimlik_no", "VARCHAR(11) DEFAULT ''")
+        _kolon_ekle(db, "tedarikci_hesaplari", "iban", "VARCHAR(34) DEFAULT ''")
+        _kolon_ekle(db, "tedarikci_hesaplari", "sehir", "VARCHAR(60) DEFAULT ''")
         _SEMA_HAZIR = True
 
 
@@ -538,6 +553,9 @@ def _ayar_satiri():
         degisti = True
     if not str(satir.yasal_sozlesme_metni or "").strip():
         satir.yasal_sozlesme_metni = _VARSAYILAN_SOZLESME
+        degisti = True
+    if int(satir.min_fotograf or 0) == 2 and int(satir.max_fotograf or 0) == 4:
+        satir.min_fotograf = 1
         degisti = True
     if degisti:
         db.session.commit()
@@ -712,8 +730,8 @@ def _ayar_uygula(satir, veri):
     satir.cayma_cezasi_orani = _oran(veri.get("cayma_cezasi_orani"))
     satir.tc_zorunlu = _evet(veri.get("tc_zorunlu"))
     satir.paketleme_kaniti_zorunlu = _evet(veri.get("paketleme_kaniti_zorunlu"))
-    alt = min(8, max(1, _pozitif_sayi(veri.get("min_fotograf"), tam=True) or 2))
-    ust = min(8, max(alt, _pozitif_sayi(veri.get("max_fotograf"), tam=True) or 4))
+    alt = min(4, max(1, _pozitif_sayi(veri.get("min_fotograf"), tam=True) or 1))
+    ust = min(4, max(alt, _pozitif_sayi(veri.get("max_fotograf"), tam=True) or 4))
     satir.min_fotograf = alt
     satir.max_fotograf = ust
     if "yasal_sozlesme_metni" in veri:
@@ -724,6 +742,29 @@ def _ayar_uygula(satir, veri):
 def _dukkan_kodu(ham):
     kod = str(ham or "").strip().lower()
     return kod if kod in _DUKKANLAR else "karma"
+
+
+def _dukkan_eslestir(ham):
+    """AI önerisini dükkan koduna çevirir. Tanınmazsa boş döner."""
+    kod = str(ham or "").strip().lower()
+    if kod in _DUKKANLAR:
+        return kod
+    for aday, ad in _DUKKAN_ADLARI:
+        if ad.casefold() == kod or aday in kod:
+            return aday
+    return ""
+
+
+@contextmanager
+def _bir_dort_foto(ayar):
+    """Tedarikçi gönderiminde fotoğraf kuralı 1-4. Ayar satırına yazılmaz."""
+    eski = (ayar.min_fotograf, ayar.max_fotograf)
+    ayar.min_fotograf = 1
+    ayar.max_fotograf = 4
+    try:
+        yield
+    finally:
+        ayar.min_fotograf, ayar.max_fotograf = eski
 
 
 def _urun_modeli():
@@ -902,6 +943,371 @@ def _satici_urun(urun_id):
     return satir
 
 
+def _profil_oku(hesap):
+    ad = str(getattr(hesap, "ad_soyad", "") or "")
+    tc = str(getattr(hesap, "tc_kimlik_no", "") or "")
+    iban = str(getattr(hesap, "iban", "") or "")
+    sehir = str(getattr(hesap, "sehir", "") or "")
+    if not ad or not tc or not iban or not sehir:
+        son = (
+            TedarikciUrunleri.query.filter_by(telefon=hesap.telefon)
+            .order_by(TedarikciUrunleri.id.desc())
+            .first()
+        )
+        if son is not None:
+            ad = ad or son.satici_ad_soyad or ""
+            tc = tc or son.tc_kimlik_no or ""
+            iban = iban or son.iban or ""
+            sehir = sehir or son.sehir or ""
+    return {
+        "satici_ad_soyad": ad,
+        "telefon": hesap.telefon or "",
+        "tc_kimlik_no": tc,
+        "iban": iban,
+        "sehir": sehir,
+    }
+
+
+def _profil_kaydet(hesap, veri):
+    veri = veri or {}
+    ad = _metin(veri.get("satici_ad_soyad"), 120)
+    if ad:
+        hesap.ad_soyad = ad
+    if "tc_kimlik_no" in veri:
+        hesap.tc_kimlik_no = "".join(
+            ch for ch in _metin(veri.get("tc_kimlik_no"), 11) if ch.isdigit()
+        )[:11]
+    if "iban" in veri:
+        hesap.iban = _metin(veri.get("iban"), 34).replace(" ", "").upper()
+    if "sehir" in veri:
+        hesap.sehir = _metin(veri.get("sehir"), 60)
+
+
+def _mukerrer_veritabani(telefon, ad, an):
+    try:
+        kayitlar = (
+            TedarikciUrunleri.query.filter(TedarikciUrunleri.telefon == telefon)
+            .order_by(TedarikciUrunleri.id.desc())
+            .limit(12)
+            .all()
+        )
+    except Exception:
+        return False
+    for satir in kayitlar:
+        if str(satir.urun_adi or "").strip().casefold() != ad:
+            continue
+        zaman = satir.olusturma_zamani
+        if not isinstance(zaman, datetime):
+            continue
+        if zaman.tzinfo is None:
+            zaman = zaman.replace(tzinfo=timezone.utc)
+        if (an - zaman).total_seconds() < 60:
+            return True
+    return False
+
+
+def _mukerrer_ayir(telefon, urun_adi):
+    """Aynı telefon ve ürün adı için 60 saniyelik yer ayırır.
+
+    Engel varsa None, kilit gerekmiyorsa boş metin, tutulduysa anahtar döner.
+    """
+    ad = _metin(urun_adi, 200).casefold()
+    if len(telefon) < 10 or not ad:
+        return ""
+    anahtar = telefon + "\n" + ad
+    an = simdi_utc()
+    with _MUKERRER_KILIT:
+        eski = [k for k, zaman in _MUKERRER.items() if (an - zaman).total_seconds() > 120]
+        for k in eski:
+            _MUKERRER.pop(k, None)
+        once = _MUKERRER.get(anahtar)
+        if once is not None and (an - once).total_seconds() < 60:
+            return None
+        _MUKERRER[anahtar] = an
+    if _mukerrer_veritabani(telefon, ad, an):
+        with _MUKERRER_KILIT:
+            _MUKERRER.pop(anahtar, None)
+        return None
+    return anahtar
+
+
+def _mukerrer_birak(anahtar):
+    if not anahtar:
+        return
+    with _MUKERRER_KILIT:
+        _MUKERRER.pop(anahtar, None)
+
+
+def _ai_anahtarlari():
+    gemini = ""
+    openai_anahtar = ""
+    try:
+        from config import Config
+        gemini = str(getattr(Config, "GEMINI_API_KEY", "") or "").strip()
+        openai_anahtar = str(getattr(Config, "OPENAI_API_KEY", "") or "").strip()
+    except Exception:
+        pass
+    if not gemini:
+        gemini = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_KEY")
+            or ""
+        ).strip()
+    if not openai_anahtar:
+        openai_anahtar = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    return gemini, openai_anahtar
+
+
+def _json_ayikla(ham):
+    metin = str(ham or "").strip()
+    if metin.startswith("```"):
+        metin = metin.strip("`")
+        if metin[:4].lower() == "json":
+            metin = metin[4:]
+        metin = metin.strip()
+    try:
+        veri = json.loads(metin)
+        if isinstance(veri, dict):
+            return veri
+    except (TypeError, ValueError):
+        pass
+    bas = metin.find("{")
+    son = metin.rfind("}")
+    if bas < 0 or son <= bas:
+        return None
+    try:
+        veri = json.loads(metin[bas:son + 1])
+    except (TypeError, ValueError):
+        return None
+    return veri if isinstance(veri, dict) else None
+
+
+def _http_json(url, payload, headers, zaman_asimi):
+    govde = json.dumps(payload).encode("utf-8")
+    istek = urllib.request.Request(url, data=govde, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(istek, timeout=zaman_asimi) as yanit:
+            return json.loads(yanit.read().decode("utf-8")), ""
+    except TimeoutError:
+        return None, "zaman"
+    except urllib.error.URLError as hata:
+        neden = getattr(hata, "reason", None)
+        if isinstance(neden, TimeoutError):
+            return None, "zaman"
+        return None, "servis"
+    except Exception:
+        return None, "servis"
+
+
+def _gemini_iste(anahtar, istem, gorseller):
+    parcalar = [{"text": istem}]
+    for mime, bayt in gorseller:
+        parcalar.append({
+            "inlineData": {
+                "mimeType": mime or "image/jpeg",
+                "data": base64.b64encode(bayt).decode("ascii"),
+            }
+        })
+    paket, hata = _http_json(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + anahtar,
+        {
+            "contents": [{"role": "user", "parts": parcalar}],
+            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        },
+        {"Content-Type": "application/json"},
+        18,
+    )
+    if hata or not isinstance(paket, dict):
+        return "", hata or "servis"
+    adaylar = paket.get("candidates") or []
+    if not adaylar:
+        return "", "servis"
+    parca_listesi = ((adaylar[0].get("content") or {}).get("parts") or [])
+    metin = "\n".join(str(parca.get("text") or "") for parca in parca_listesi if isinstance(parca, dict))
+    return metin, ""
+
+
+def _openai_iste(anahtar, istem, gorseller):
+    icerik = [{"type": "text", "text": istem}]
+    for mime, bayt in gorseller:
+        icerik.append({
+            "type": "image_url",
+            "image_url": {
+                "url": "data:" + (mime or "image/jpeg") + ";base64," + base64.b64encode(bayt).decode("ascii")
+            },
+        })
+    paket, hata = _http_json(
+        "https://api.openai.com/v1/chat/completions",
+        {
+            "model": "gpt-4o-mini",
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": icerik}],
+        },
+        {"Content-Type": "application/json", "Authorization": "Bearer " + anahtar},
+        18,
+    )
+    if hata or not isinstance(paket, dict):
+        return "", hata or "servis"
+    secimler = paket.get("choices") or []
+    if not secimler:
+        return "", "servis"
+    return str(((secimler[0].get("message") or {}).get("content") or "")), ""
+
+
+def _ai_metin(istem, gorseller):
+    gemini, openai_anahtar = _ai_anahtarlari()
+    if not gemini and not openai_anahtar:
+        return "", "anahtar"
+    hatalar = []
+    if gemini:
+        metin, hata = _gemini_iste(gemini, istem, gorseller)
+        if metin.strip():
+            return metin, ""
+        if hata:
+            hatalar.append(hata)
+    if openai_anahtar:
+        metin, hata = _openai_iste(openai_anahtar, istem, gorseller)
+        if metin.strip():
+            return metin, ""
+        if hata:
+            hatalar.append(hata)
+    if "zaman" in hatalar:
+        return "", "zaman"
+    return "", "servis"
+
+
+def _ai_nazik(kod):
+    if kod == "anahtar":
+        mesaj = "AI anahtarı tanımlı değil. Bilgileri kendiniz girip göndermeye devam edebilirsiniz."
+    elif kod == "zaman":
+        mesaj = "AI yanıtı zaman aşımına uğradı. Formu elle doldurmaya devam edebilirsiniz."
+    else:
+        mesaj = "AI ön analizi şu an tamamlanamadı. Ürünü kendiniz girip göndermeye devam edebilirsiniz."
+    return jsonify({"success": False, "manuel": True, "mesaj": mesaj})
+
+
+def _ai_sik_mi(anahtar, saniye):
+    an = simdi_utc()
+    with _AI_KILIT:
+        eski = [k for k, zaman in _AI_SON.items() if (an - zaman).total_seconds() > 120]
+        for k in eski:
+            _AI_SON.pop(k, None)
+        once = _AI_SON.get(anahtar)
+        if once is not None and (an - once).total_seconds() < saniye:
+            return True
+        _AI_SON[anahtar] = an
+    return False
+
+
+def _gorselleri_oku(dosyalar, limit=4):
+    gorseller = []
+    for dosya in dosyalar or []:
+        if len(gorseller) >= limit:
+            break
+        mime = str(getattr(dosya, "mimetype", "") or "").split(";")[0].strip().lower()
+        uzanti = _uzanti(getattr(dosya, "filename", ""))
+        if uzanti not in _RESIM and not mime.startswith("image/"):
+            continue
+        if not mime.startswith("image/"):
+            mime = _MIME.get(uzanti, "image/jpeg")
+        try:
+            icerik = dosya.read()
+        except Exception:
+            continue
+        if not icerik or len(icerik) > 6 * 1024 * 1024:
+            continue
+        gorseller.append((mime, icerik))
+    return gorseller
+
+
+def _disk_gorselleri(satir, limit=4):
+    gorseller = []
+    for ad in fotograflari_coz(satir.fotograflar):
+        if len(gorseller) >= limit:
+            break
+        yol = _medya_yolu(ad)
+        if not yol or _uzanti(ad) not in _RESIM:
+            continue
+        try:
+            with open(yol, "rb") as dosya:
+                icerik = dosya.read()
+        except Exception:
+            continue
+        if not icerik or len(icerik) > 6 * 1024 * 1024:
+            continue
+        gorseller.append((_MIME.get(_uzanti(ad), "image/jpeg"), icerik))
+    return gorseller
+
+
+def _dukkan_listesi_metni():
+    return ", ".join(kod + " (" + ad + ")" for kod, ad in _DUKKAN_ADLARI)
+
+
+def _on_analiz_istemi():
+    return (
+        "Sen bir müzayede vitrini için ön ekspertiz asistanısın. Yalnızca fotoğraflarda görünen ürünü yorumla. "
+        "Çıktın tek bir JSON nesnesi olsun. Başka metin yazma. Anahtarlar: "
+        "onerilen_baslik (kısa kurumsal ürün adı), "
+        "secere_ve_aciklama (muhtemel dönem, malzeme veya maden, işçilik tekniği, görünür kondisyon ve kısa seçere hikayesi), "
+        "onerilen_dukkan (yalnızca verilen kodlardan biri). "
+        "2863 sayılı Kültür ve Tabiat Varlıklarını Koruma Kanunu kapsamına giren kazı buluntusu veya satışı yasak kültür varlığı "
+        "olabileceğini düşünüyorsan bunu secere_ve_aciklama içinde açıkça uyar. Satışı gizleyecek veya yasağı aşacak yönlendirme yazma. "
+        "Dükkan kodları: " + _dukkan_listesi_metni()
+    )
+
+
+def _on_analiz_paketi(veri):
+    dukkan = _dukkan_eslestir(veri.get("onerilen_dukkan"))
+    return {
+        "onerilen_baslik": _metin(veri.get("onerilen_baslik"), 200),
+        "secere_ve_aciklama": _metin(veri.get("secere_ve_aciklama"), 4000),
+        "onerilen_dukkan": dukkan,
+        "ekspertiz_notu": _AI_ON_NOTU,
+    }
+
+
+def _risk_seviye(ham):
+    metin = str(ham or "").casefold()
+    if "yük" in metin or "yuksek" in metin or "high" in metin:
+        return "Yüksek Risk"
+    if "düş" in metin or "dusuk" in metin or "low" in metin:
+        return "Düşük Risk"
+    if "orta" in metin or "medium" in metin:
+        return "Orta"
+    return "Orta"
+
+
+def _denetim_istemi(satir):
+    return (
+        "Sen yönetici denetim laboratuvarısın. Tedarikçi metnini ve fotoğrafları birbirinden bağımsız denetle. "
+        "Yalnızca JSON döndür. Anahtarlar: "
+        "risk_seviye (Düşük Risk, Orta veya Yüksek Risk), "
+        "risk_gerekce (2863 sayılı kanun açısından kazı veya tarihi eser şüphesi varsa açık uyarı, yoksa kısa gerekçe), "
+        "tutarlilik (satıcının yazdığı bilgi ile fotoğraftaki malzeme ve kusur uyuşuyor mu), "
+        "vitrin_baslik (müzayede vitrinine uygun profesyonel başlık), "
+        "vitrin_aciklama (profesyonel düzeltilmiş açıklama), "
+        "piyasa_aralik (tahmini TL piyasa aralığı; kesin ekspertiz değildir). "
+        "Yasak eser şüphesinde satışa teşvik veya gizleme önerisi yazma. "
+        "Tedarikçi başlığı: " + _metin(satir.urun_adi, 200) + ". "
+        "Tedarikçi açıklaması: " + _metin(satir.aciklama, 4000) + ". "
+        "Hedef dükkan: " + _metin(satir.hedef_kategori, 120) + ". "
+        "Taban fiyat: " + str(_pozitif_sayi(satir.taban_fiyat)) + " TL."
+    )
+
+
+def _denetim_paketi(veri):
+    return {
+        "risk_seviye": _risk_seviye(veri.get("risk_seviye")),
+        "risk_gerekce": _metin(veri.get("risk_gerekce"), 1500),
+        "tutarlilik": _metin(veri.get("tutarlilik"), 1500),
+        "vitrin_baslik": _metin(veri.get("vitrin_baslik"), 200),
+        "vitrin_aciklama": _metin(veri.get("vitrin_aciklama"), 4000),
+        "piyasa_aralik": _metin(veri.get("piyasa_aralik"), 160),
+    }
+
+
 @tedarikci_bp.before_request
 def _istek_oncesi():
     if TedarikciAyarlari is None:
@@ -1000,12 +1406,14 @@ def api_tedarikci_oturum():
         session.pop("tedarikci_telefon", None)
         session.pop("tedarikci_id", None)
         return jsonify({"success": True, "giris": False, "panel_aktif": panel})
+    profil = _profil_oku(hesap)
     return jsonify({
         "success": True,
         "giris": True,
         "panel_aktif": panel,
         "telefon": hesap.telefon,
-        "ad_soyad": hesap.ad_soyad or "",
+        "ad_soyad": profil["satici_ad_soyad"] or hesap.ad_soyad or "",
+        "profil": profil,
     })
 
 
@@ -1033,6 +1441,21 @@ def api_tedarikci_urunlerim():
     })
 
 
+@tedarikci_bp.route("/api/tedarikci/profil", methods=["POST"])
+def api_tedarikci_profil():
+    if not _panel_acik():
+        return jsonify({"success": False, "mesaj": "Tedarikçi paneli kapalı."}), 403
+    telefon = _oturum_telefon()
+    if not telefon:
+        return jsonify({"success": False, "mesaj": "Giriş gerekli."}), 401
+    hesap = _hesap_bul(telefon)
+    if hesap is None or hesap.askida:
+        return jsonify({"success": False, "mesaj": "Hesap bulunamadı."}), 403
+    _profil_kaydet(hesap, _form_girdi())
+    _db().session.commit()
+    return jsonify({"success": True, "profil": _profil_oku(hesap)})
+
+
 @tedarikci_bp.route("/api/tedarikci/urun", methods=["POST"])
 def api_tedarikci_urun_gonder():
     if not _panel_acik():
@@ -1041,18 +1464,37 @@ def api_tedarikci_urun_gonder():
     telefon = _telefon_norm(veri.get("telefon") or _oturum_telefon())
     if len(telefon) < 10:
         return jsonify({"success": False, "mesaj": "Telefon gerekli."}), 400
+    kilit = _mukerrer_ayir(telefon, veri.get("urun_adi"))
+    if kilit is None:
+        return jsonify({
+            "success": False,
+            "mesaj": "Aynı telefon ve ürün adı 60 saniye içinde yeniden gönderilemez. Lütfen bekleyin.",
+        }), 429
+    try:
+        return _urun_gonder_kaydet(veri, telefon, kilit)
+    except Exception:
+        _mukerrer_birak(kilit)
+        raise
+
+
+def _urun_gonder_kaydet(veri, telefon, kilit):
+    ayar = _ayar_satiri()
     hesap = _hesap_bul(telefon)
     yeni_pin = ""
     if hesap is not None:
         if hesap.askida:
+            _mukerrer_birak(kilit)
             return jsonify({"success": False, "mesaj": "Hesabınız askıya alındı."}), 403
         if _oturum_telefon() != telefon:
+            _mukerrer_birak(kilit)
             return jsonify({"success": False, "mesaj": "Önce telefon ve PIN ile giriş yapın."}), 401
     else:
         if _oturum_telefon() and _oturum_telefon() != telefon:
+            _mukerrer_birak(kilit)
             return jsonify({"success": False, "mesaj": "Oturumdaki telefon ile form telefonu farklı."}), 400
         yeni_pin, pin_hata = _ilk_kayit_pini(veri.get("kendi_pin"))
         if pin_hata:
+            _mukerrer_birak(kilit)
             return jsonify({"success": False, "mesaj": pin_hata}), 400
         hesap = TedarikciHesaplari(
             telefon=telefon,
@@ -1062,16 +1504,18 @@ def api_tedarikci_urun_gonder():
             olusturma_zamani=simdi_utc(),
         )
         _db().session.add(hesap)
-    ayar = _ayar_satiri()
+    _profil_kaydet(hesap, veri)
     fotolar = _dosyalari_kaydet(request.files.getlist("fotograflar"), _RESIM, _RESIM_BAYT)
     girdi = dict(veri)
     girdi["telefon"] = telefon
     girdi["fotograflar"] = fotolar
     girdi["durum"] = "bekliyor"
-    hazir = urun_kaydini_hazirla(
-        girdi, ayar, yukleyen_ip=_istek_ip(), paketleme_kontrol=False
-    )
+    with _bir_dort_foto(ayar):
+        hazir = urun_kaydini_hazirla(
+            girdi, ayar, yukleyen_ip=_istek_ip(), paketleme_kontrol=False
+        )
     if hazir["hatalar"]:
+        _mukerrer_birak(kilit)
         if yeni_pin:
             _giris_yaz(hesap)
             _db().session.commit()
@@ -1085,17 +1529,28 @@ def api_tedarikci_urun_gonder():
         if yeni_pin:
             cevap["yeni_pin"] = yeni_pin
         return jsonify(cevap), 400
+    if _mukerrer_veritabani(telefon, _metin(veri.get("urun_adi"), 200).casefold(), simdi_utc()):
+        _mukerrer_birak(kilit)
+        _db().session.rollback()
+        return jsonify({
+            "success": False,
+            "mesaj": "Aynı telefon ve ürün adı 60 saniye içinde yeniden gönderilemez. Lütfen bekleyin.",
+        }), 429
     alanlar = hazir["alanlar"]
     alanlar["onaylanan_beyan_metni"] = str(ayar.yasal_sozlesme_metni or "")
     alanlar["yukleyen_ip"] = _istek_ip()
     alanlar["olusturma_zamani"] = simdi_utc()
     satir = TedarikciUrunleri(**alanlar)
-    if not (hesap.ad_soyad or "").strip():
-        hesap.ad_soyad = satir.satici_ad_soyad
+    _profil_kaydet(hesap, {
+        "satici_ad_soyad": satir.satici_ad_soyad,
+        "tc_kimlik_no": satir.tc_kimlik_no,
+        "iban": satir.iban,
+        "sehir": satir.sehir,
+    })
     _giris_yaz(hesap)
     _db().session.add(satir)
     _db().session.commit()
-    cevap = {"success": True, "urun": _urun_sozluk(satir)}
+    cevap = {"success": True, "urun": _urun_sozluk(satir), "profil": _profil_oku(hesap)}
     if yeni_pin:
         cevap["yeni_pin"] = yeni_pin
         cevap["mesaj"] = "Hesabınız açıldı. PIN numaranızı saklayın: " + yeni_pin
@@ -1140,9 +1595,10 @@ def api_tedarikci_urun_guncelle(urun_id):
         girdi["yasal_beyan_onay"] = bool(satir.yasal_beyan_onay)
     girdi["fotograflar"] = fotolar or fotograflari_coz(satir.fotograflar)
     girdi["durum"] = "bekliyor"
-    hazir = urun_kaydini_hazirla(
-        girdi, ayar, yukleyen_ip=eski_ip, paketleme_kontrol=False
-    )
+    with _bir_dort_foto(ayar):
+        hazir = urun_kaydini_hazirla(
+            girdi, ayar, yukleyen_ip=eski_ip, paketleme_kontrol=False
+        )
     if hazir["hatalar"]:
         return jsonify({
             "success": False,
@@ -1157,6 +1613,14 @@ def api_tedarikci_urun_guncelle(urun_id):
     satir.olusturma_zamani = eski_zaman
     satir.onaylanan_beyan_metni = _beyan_sakla(eski_beyan, ayar.yasal_sozlesme_metni)
     satir.durum = "bekliyor"
+    hesap = _hesap_bul(satir.telefon)
+    if hesap is not None:
+        _profil_kaydet(hesap, {
+            "satici_ad_soyad": satir.satici_ad_soyad,
+            "tc_kimlik_no": satir.tc_kimlik_no,
+            "iban": satir.iban,
+            "sehir": satir.sehir,
+        })
     _db().session.commit()
     return jsonify({"success": True, "urun": _urun_sozluk(satir)})
 
@@ -1501,6 +1965,70 @@ def api_tedarikci_admin_askiya():
     hesap.askida = _evet(veri.get("askida", True))
     _db().session.commit()
     return jsonify({"success": True, "telefon": hesap.telefon, "askida": bool(hesap.askida)})
+
+
+@tedarikci_bp.route("/api/tedarikci/ai-on-analiz", methods=["POST"])
+def api_tedarikci_ai_on_analiz():
+    if not _panel_acik():
+        return jsonify({
+            "success": False,
+            "manuel": True,
+            "mesaj": "Tedarikçi paneli kapalı. Bilgileri panel açıldığında elle girebilirsiniz.",
+        })
+    gorseller = _gorselleri_oku(request.files.getlist("fotograflar"))
+    if not gorseller:
+        return jsonify({
+            "success": False,
+            "manuel": True,
+            "mesaj": "Ön analiz için en az bir fotoğraf gerekli. Fotoğrafı ekleyip yeniden deneyebilir veya alanları elle doldurabilirsiniz.",
+        })
+    if _ai_sik_mi("on:" + (_istek_ip() or "yerel"), 8):
+        return jsonify({
+            "success": False,
+            "manuel": True,
+            "mesaj": "AI ön analizi az önce çalıştı. Birkaç saniye sonra yeniden deneyebilir veya formu elle doldurabilirsiniz.",
+        })
+    try:
+        metin, hata = _ai_metin(_on_analiz_istemi(), gorseller)
+        veri = _json_ayikla(metin) if metin else None
+    except Exception:
+        print("[TEDARIKCI] ai on analiz tamamlanamadi", flush=True)
+        return _ai_nazik("servis")
+    if not veri:
+        return _ai_nazik(hata or "servis")
+    paket = _on_analiz_paketi(veri)
+    if not paket["onerilen_baslik"] and not paket["secere_ve_aciklama"]:
+        return _ai_nazik("servis")
+    return jsonify({"success": True, "analiz": paket, "mesaj": paket["ekspertiz_notu"]})
+
+
+@tedarikci_bp.route("/api/tedarikci/admin-ai-denetim/<int:urun_id>", methods=["POST"])
+def api_tedarikci_admin_ai_denetim(urun_id):
+    red = _admin_reddi()
+    if red is not None:
+        return red
+    satir = _urun_bul(urun_id)
+    if satir is None or satir.durum == "silindi":
+        return jsonify({"success": False, "manuel": True, "mesaj": "Ürün bulunamadı."}), 404
+    if _ai_sik_mi("admin:" + str(urun_id), 5):
+        return jsonify({
+            "success": False,
+            "manuel": True,
+            "mesaj": "Bu ürün için laboratuvar az önce çalıştı. Kısa bir süre sonra yeniden deneyebilirsiniz.",
+        })
+    gorseller = _disk_gorselleri(satir)
+    try:
+        metin, hata = _ai_metin(_denetim_istemi(satir), gorseller)
+        veri = _json_ayikla(metin) if metin else None
+    except Exception:
+        print("[TEDARIKCI] ai denetim tamamlanamadi", flush=True)
+        return _ai_nazik("servis")
+    if not veri:
+        return _ai_nazik(hata or "servis")
+    rapor = _denetim_paketi(veri)
+    if not rapor["vitrin_baslik"] and not rapor["vitrin_aciklama"] and not rapor["risk_gerekce"]:
+        return _ai_nazik("servis")
+    return jsonify({"success": True, "rapor": rapor})
 
 
 @tedarikci_bp.record_once

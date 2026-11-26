@@ -5,8 +5,12 @@ __pycache__/
 *.pyc
 mezat_raporu.xlsx
 static/sesler/*.mp3
+instance/
 instance/*.db
 instance/*.json
+static/uploads/
+*.tmp
+tmp_*
 *.log
 temp.mp3
 test*.mp3
