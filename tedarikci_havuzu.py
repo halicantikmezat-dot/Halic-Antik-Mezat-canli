@@ -419,6 +419,23 @@ def _pin_uret():
     return f"{secrets.randbelow(9000) + 1000:04d}"
 
 
+def _pin_uret_aralik():
+    """Yönetici yedeği: 4, 5 veya 6 haneli rastgele PIN."""
+    uzunluk = 4 + secrets.randbelow(3)
+    alt = 10 ** (uzunluk - 1)
+    return f"{secrets.randbelow(9 * alt) + alt:0{uzunluk}d}"
+
+
+def _ilk_kayit_pini(ham):
+    """İlk hesap PIN'i. Boşsa otomatik 4 hane; doluysa yalnızca 4-6 rakam."""
+    temiz = _metin(ham, 8)
+    if not temiz:
+        return _pin_uret(), ""
+    if temiz.isdigit() and 4 <= len(temiz) <= 6:
+        return temiz, ""
+    return "", "PIN 4-6 rakam olmalı."
+
+
 def _pin_ozet(pin, tuz):
     return hashlib.pbkdf2_hmac(
         "sha256", str(pin).encode("utf-8"), tuz.encode("utf-8"), 120000
@@ -829,6 +846,34 @@ def api_tedarikci_giris():
     return jsonify({"success": True, "telefon": hesap.telefon, "ad_soyad": hesap.ad_soyad or ""})
 
 
+@tedarikci_bp.route("/api/tedarikci/pin-guncelle", methods=["POST"])
+def api_tedarikci_pin_guncelle():
+    if not _panel_acik():
+        return jsonify({"success": False, "mesaj": "Tedarikçi paneli kapalı."}), 403
+    telefon = _oturum_telefon()
+    if not telefon:
+        return jsonify({"success": False, "mesaj": "Giriş gerekli."}), 401
+    if _pin_kilitli(telefon):
+        return jsonify({"success": False, "mesaj": "Çok fazla deneme. Bir süre sonra yeniden deneyin."}), 429
+    hesap = _hesap_bul(telefon)
+    if hesap is None or hesap.askida:
+        session.pop("tedarikci_telefon", None)
+        session.pop("tedarikci_id", None)
+        return jsonify({"success": False, "mesaj": "Hesap bulunamadı."}), 403
+    veri = _form_girdi()
+    mevcut = _metin(veri.get("mevcut_pin"), 8)
+    yeni = _metin(veri.get("yeni_pin"), 8)
+    if not mevcut.isdigit() or not _pin_dogru(mevcut, hesap.pin_hash):
+        _pin_basarisiz(telefon)
+        return jsonify({"success": False, "mesaj": "Mevcut PIN hatalı."}), 401
+    if not (yeni.isdigit() and 4 <= len(yeni) <= 6):
+        return jsonify({"success": False, "mesaj": "Yeni PIN 4-6 rakam olmalı."}), 400
+    hesap.pin_hash = _pin_hashle(yeni)
+    _pin_temizle(telefon)
+    _db().session.commit()
+    return jsonify({"success": True, "mesaj": "PIN kodunuz başarıyla güncellendi"})
+
+
 @tedarikci_bp.route("/api/tedarikci/cikis", methods=["POST"])
 def api_tedarikci_cikis():
     session.pop("tedarikci_telefon", None)
@@ -896,7 +941,9 @@ def api_tedarikci_urun_gonder():
     else:
         if _oturum_telefon() and _oturum_telefon() != telefon:
             return jsonify({"success": False, "mesaj": "Oturumdaki telefon ile form telefonu farklı."}), 400
-        yeni_pin = _pin_uret()
+        yeni_pin, pin_hata = _ilk_kayit_pini(veri.get("kendi_pin"))
+        if pin_hata:
+            return jsonify({"success": False, "mesaj": pin_hata}), 400
         hesap = TedarikciHesaplari(
             telefon=telefon,
             pin_hash=_pin_hashle(yeni_pin),
@@ -1233,6 +1280,28 @@ def api_tedarikci_admin_odendi(urun_id):
     satir.hakedis_odeme_zamani = simdi_utc()
     _db().session.commit()
     return jsonify({"success": True, "urun": _urun_sozluk(satir, yonetici=True)})
+
+
+@tedarikci_bp.route("/api/tedarikci/admin/satici/pin-uret", methods=["POST"])
+def api_tedarikci_admin_pin_uret():
+    red = _admin_reddi()
+    if red is not None:
+        return red
+    veri = _form_girdi()
+    telefon = _telefon_norm(veri.get("telefon"))
+    hesap = _hesap_bul(telefon) if telefon else None
+    if hesap is None:
+        return jsonify({"success": False, "mesaj": "Satıcı hesabı bulunamadı."}), 404
+    yeni_pin = _pin_uret_aralik()
+    hesap.pin_hash = _pin_hashle(yeni_pin)
+    _pin_temizle(telefon)
+    _db().session.commit()
+    return jsonify({
+        "success": True,
+        "telefon": hesap.telefon,
+        "yeni_pin": yeni_pin,
+        "mesaj": "Yeni PIN üretildi. Kopyalayıp satıcıya iletin.",
+    })
 
 
 @tedarikci_bp.route("/api/tedarikci/admin/satici/askiya", methods=["POST"])

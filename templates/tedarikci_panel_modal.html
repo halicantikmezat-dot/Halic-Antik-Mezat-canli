@@ -17,6 +17,15 @@
             <p id="tdGirisDurum" style="font-size:13px; min-height:16px;"></p>
         </div>
         <p id="tdOturumSatiri" hidden style="font-size:13px;"></p>
+        <div id="tdPinDegistirKutu" hidden style="display:none; margin:8px 0;">
+            <button type="button" id="tdPinDegistirAc" style="background:transparent; color:#fef08a; border:1px solid #d4af37; border-radius:8px; padding:6px 10px; cursor:pointer;">🔑 PIN Değiştir</button>
+            <div id="tdPinDegistirPanel" hidden style="display:none; margin-top:6px; gap:6px;">
+                <input id="tdMevcutPin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Mevcut PIN" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
+                <input id="tdYeniPin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="Yeni PIN (4-6 rakam)" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
+                <button type="button" id="tdPinGuncelleBtn" style="background:#d4af37; color:#111; border:0; border-radius:8px; padding:8px; font-weight:700; cursor:pointer;">PIN Güncelle</button>
+                <p id="tdPinDurum" style="font-size:13px; min-height:16px;"></p>
+            </div>
+        </div>
         <div style="display:flex; gap:6px; margin:8px 0;">
             <button type="button" class="td-sekme" data-sekme="gonder" style="flex:1; padding:8px; border-radius:8px; border:1px solid #d4af37; background:#d4af37; color:#111; cursor:pointer;">Yeni Ürün Gönder</button>
             <button type="button" class="td-sekme" data-sekme="liste" style="flex:1; padding:8px; border-radius:8px; border:1px solid #d4af37; background:transparent; color:#fef08a; cursor:pointer;">Ürünlerim &amp; Kargo Takibi</button>
@@ -25,6 +34,9 @@
             <p id="tdKurallar" style="font-size:13px; color:#cbd5e1;"></p>
             <input name="satici_ad_soyad" required placeholder="Ad soyad" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
             <input name="telefon" required placeholder="Telefon" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
+            <label id="tdKendiPinAlani" style="font-size:13px; display:grid; gap:4px;">Kendi PIN Kodunu Belirle (4-6 rakam - boş bırakırsan otomatik üretilir)
+                <input name="kendi_pin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4-6 rakam" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
+            </label>
             <input name="tc_kimlik_no" placeholder="T.C. kimlik no" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
             <input name="iban" placeholder="IBAN" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
             <input name="sehir" placeholder="Şehir" style="padding:8px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#fff;">
@@ -160,6 +172,29 @@
     });
     document.getElementById("tdSozlesme").addEventListener("scroll", sozlesmeKilidi);
     document.getElementById("tdBeyan").addEventListener("change", sozlesmeKilidi);
+    document.getElementById("tdPinDegistirAc").addEventListener("click", function () {
+        var panel = document.getElementById("tdPinDegistirPanel");
+        var acik = panel.hidden;
+        panel.hidden = !acik;
+        panel.style.display = acik ? "grid" : "none";
+    });
+    document.getElementById("tdPinGuncelleBtn").addEventListener("click", function () {
+        var durum = document.getElementById("tdPinDurum");
+        fetch("/api/tedarikci/pin-guncelle", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                mevcut_pin: document.getElementById("tdMevcutPin").value,
+                yeni_pin: document.getElementById("tdYeniPin").value
+            })
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            durum.textContent = (data && data.mesaj) || (data && data.success ? "PIN kodunuz başarıyla güncellendi" : "PIN güncellenemedi.");
+            if (data && data.success) {
+                document.getElementById("tdMevcutPin").value = "";
+                document.getElementById("tdYeniPin").value = "";
+            }
+        }).catch(function () { durum.textContent = "PIN güncellenemedi."; });
+    });
     document.getElementById("tdGirisBtn").addEventListener("click", function () {
         fetch("/api/tedarikci/giris", {
             method: "POST",
@@ -179,6 +214,18 @@
             kutu.style.display = giris ? "none" : "grid";
             satir.hidden = !giris;
             satir.innerHTML = giris ? (kacis(data.ad_soyad || data.telefon) + " · <button type='button' id='tdCikisBtn' style='background:transparent;color:#fef08a;border:0;cursor:pointer;'>Çıkış</button>") : "";
+            var pinKutu = document.getElementById("tdPinDegistirKutu");
+            pinKutu.hidden = !giris;
+            pinKutu.style.display = giris ? "block" : "none";
+            if (!giris) {
+                var pinPanel = document.getElementById("tdPinDegistirPanel");
+                pinPanel.hidden = true;
+                pinPanel.style.display = "none";
+                document.getElementById("tdPinDurum").textContent = "";
+            }
+            var kendiPin = document.getElementById("tdKendiPinAlani");
+            kendiPin.hidden = giris;
+            kendiPin.style.display = giris ? "none" : "grid";
             var cikis = document.getElementById("tdCikisBtn");
             if (cikis) cikis.addEventListener("click", function () {
                 fetch("/api/tedarikci/cikis", {method: "POST"}).then(function () { oturumuYukle(); });
@@ -280,7 +327,7 @@
         var durum = document.getElementById("tdFormDurum");
         fetch("/api/tedarikci/urun", {method: "POST", body: new FormData(e.target)}).then(function (r) { return r.json(); }).then(function (data) {
             var mesaj = (data && data.mesaj) || (data && data.success ? "Ürün alındı." : "Ürün gönderilemedi.");
-            if (data && data.yeni_pin) mesaj += " PIN: " + data.yeni_pin;
+            if (data && data.yeni_pin && mesaj.indexOf(String(data.yeni_pin)) < 0) mesaj += " PIN: " + data.yeni_pin;
             durum.textContent = mesaj;
             if (data && data.success) {
                 e.target.reset();

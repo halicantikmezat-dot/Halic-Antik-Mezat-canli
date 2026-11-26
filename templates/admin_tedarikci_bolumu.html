@@ -142,6 +142,8 @@
                 "<button type='button' class='btn btn-yellow td-alici' data-id='" + u.id + "'>Alıcı teslimat bilgisini kaydet</button>" +
                 "<button type='button' class='btn btn-green td-odendi' data-id='" + u.id + "'>Ödendi İşaretle</button>" +
                 "<button type='button' class='btn td-askiya' data-tel='" + kacis(u.telefon) + "' data-askida='" + (u.satici_askida ? "0" : "1") + "'>" + (u.satici_askida ? "Askıyı kaldır" : "Satıcıyı askıya al") + "</button>" +
+                "<button type='button' class='btn td-pin-uret' data-tel='" + kacis(u.telefon) + "'>🔑 Yeni PIN Üret</button>" +
+                "<div class='td-pin-sonuc' data-tel='" + kacis(u.telefon) + "'></div>" +
             "</div></article>";
     }
     function urunleriYukle() {
@@ -188,6 +190,40 @@
             Array.prototype.forEach.call(liste.querySelectorAll(".td-askiya"), function (el) {
                 el.addEventListener("click", function () {
                     gonder("/api/tedarikci/admin/satici/askiya", {telefon: el.getAttribute("data-tel"), askida: el.getAttribute("data-askida") === "1"});
+                });
+            });
+            Array.prototype.forEach.call(liste.querySelectorAll(".td-pin-uret"), function (el) {
+                el.addEventListener("click", function () {
+                    var tel = el.getAttribute("data-tel");
+                    var sonuc = el.parentNode.querySelector(".td-pin-sonuc[data-tel='" + tel + "']");
+                    fetch("/api/tedarikci/admin/satici/pin-uret", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({telefon: tel})
+                    }).then(function (r) { return r.json(); }).then(function (data) {
+                        if (!sonuc) return;
+                        if (!data || !data.success || !data.yeni_pin) {
+                            sonuc.textContent = (data && data.mesaj) || "PIN üretilemedi.";
+                            return;
+                        }
+                        sonuc.innerHTML = "<p style='margin:6px 0 4px;'>Yeni PIN (" + kacis(data.telefon) + ") — bir kez gösterilir, kopyalayın:</p>" +
+                            "<input class='td-pin-deger' readonly value='" + kacis(data.yeni_pin) + "' style='font-size:18px; letter-spacing:2px; padding:6px; width:140px;'>" +
+                            "<button type='button' class='btn td-pin-kopya'>Kopyala</button>";
+                        var kopya = sonuc.querySelector(".td-pin-kopya");
+                        kopya.addEventListener("click", function () {
+                            var alan = sonuc.querySelector(".td-pin-deger");
+                            var yazi = alan ? alan.value : "";
+                            if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(yazi);
+                            } else if (alan) {
+                                alan.focus();
+                                alan.select();
+                                document.execCommand("copy");
+                            }
+                        });
+                    }).catch(function () {
+                        if (sonuc) sonuc.textContent = "PIN üretilemedi.";
+                    });
                 });
             });
         }).catch(function () { liste.textContent = "Liste açılmadı."; });
