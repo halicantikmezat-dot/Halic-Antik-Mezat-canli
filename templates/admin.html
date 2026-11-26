@@ -3734,8 +3734,8 @@
             const okuyucu = new FileReader();
             okuyucu.onloadend = function () {
                 const sonuc = String(okuyucu.result || "");
-                const virgul = sonuc.indexOf(",");
-                resolve(virgul >= 0 ? sonuc.slice(virgul + 1) : "");
+                const im = sonuc.indexOf(";base64,");
+                resolve(im >= 0 ? sonuc.slice(im + 8) : "");
             };
             okuyucu.onerror = function () { resolve(""); };
             okuyucu.readAsDataURL(blob);
@@ -3796,8 +3796,8 @@
             const okuyucu = new FileReader();
             okuyucu.onloadend = function () {
                 const sonuc = String(okuyucu.result || "");
-                const virgul = sonuc.indexOf(",");
-                const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
+                const im = sonuc.indexOf(";base64,");
+                const base64Data = im >= 0 ? sonuc.slice(im + 8) : "";
                 if (!base64Data) return;
                 const oda = rejiHedefKodu();
                 if (!base64Data || base64Data.length < 80) {
@@ -3858,8 +3858,8 @@
             const okuyucu = new FileReader();
             okuyucu.onloadend = function () {
                 const sonuc = String(okuyucu.result || '');
-                const virgul = sonuc.indexOf(',');
-                const base64Data = virgul >= 0 ? sonuc.slice(virgul + 1) : sonuc;
+                const im = sonuc.indexOf(';base64,');
+                const base64Data = im >= 0 ? sonuc.slice(im + 8) : '';
                 if (!base64Data || base64Data.length < 80) {
                     rejiLogYaz('[Gizli Reji] Kayıt boş veya çok kısa. Mikrofonu basılı tutup net konuşun, sonra bırakın.');
                     return;

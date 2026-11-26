@@ -3204,11 +3204,13 @@ def _restream_kopru_durdur():
     _sosyal_kapisi(False)
 
 
-def _restream_sureci_kapat():
-    global _RESTREAM_PROC
-    with _RESTREAM_KILIT:
-        proc = _RESTREAM_PROC
-        _RESTREAM_PROC = None
+def _restream_ebml_mi(paket):
+    """MediaRecorder WebM başlığı EBML imzasıyla başlar."""
+    veri = bytes(paket or b"")
+    return len(veri) >= 4 and veri[:4] == b"\x1a\x45\xdf\xa3"
+
+
+def _restream_proc_kapat(proc):
     if proc is None:
         return
     try:
@@ -3224,6 +3226,14 @@ def _restream_sureci_kapat():
             proc.wait(timeout=2)
         except Exception:
             pass
+
+
+def _restream_sureci_kapat():
+    global _RESTREAM_PROC
+    with _RESTREAM_KILIT:
+        proc = _RESTREAM_PROC
+        _RESTREAM_PROC = None
+    _restream_proc_kapat(proc)
 
 
 def _restream_hata_yaz(metin):
@@ -3288,7 +3298,7 @@ def _restream_surec_ac(hedef, mime):
         or str(hedef).startswith("rtmps://live.restream.io/live/")
     ):
         return None
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
+    bicim = "mp4" if "mp4" in str(mime or "").lower() else "matroska"
     komut = [
         _restream_ffmpeg_yolu(),
         "-hide_banner",
@@ -3359,25 +3369,42 @@ def _restream_surec_ac(hedef, mime):
 
 def _restream_yaz(hedef, paket, baslik, mime):
     global _RESTREAM_PROC
+    if baslik and not _restream_ebml_mi(paket):
+        return "bekliyor"
+    eski = None
+    erken = None
+    stdin = None
+    proc = None
     with _RESTREAM_KILIT:
         if not _RESTREAM_ISTEK or _RESTREAM_HEDEF != hedef:
-            return False
-        proc = _RESTREAM_PROC
-        if proc is not None and proc.poll() is not None:
-            _RESTREAM_PROC = None
-            proc = None
-            if not baslik:
-                return "yeniden"
-        if proc is None:
-            if not baslik:
-                return "yeniden"
-            proc = _restream_surec_ac(hedef, mime)
-            _RESTREAM_PROC = proc
-        if proc is None or proc.stdin is None:
-            if not _restream_hata_oku():
-                _restream_hata_yaz("FFmpeg acilamadi. OBS ile gonderin.")
-            return False
-        stdin = proc.stdin
+            erken = False
+        else:
+            proc = _RESTREAM_PROC
+            if proc is not None and proc.poll() is not None:
+                _RESTREAM_PROC = None
+                eski = proc
+                proc = None
+                if not baslik:
+                    erken = "yeniden"
+            elif proc is not None and baslik:
+                _RESTREAM_PROC = None
+                eski = proc
+                proc = None
+            if erken is None and proc is None:
+                if not _restream_ebml_mi(paket):
+                    erken = "bekliyor"
+                else:
+                    proc = _restream_surec_ac(hedef, mime)
+                    _RESTREAM_PROC = proc
+            if erken is None and (proc is None or proc.stdin is None):
+                if not _restream_hata_oku():
+                    _restream_hata_yaz("FFmpeg acilamadi. OBS ile gonderin.")
+                erken = False
+            elif erken is None:
+                stdin = proc.stdin
+    _restream_proc_kapat(eski)
+    if erken is not None:
+        return erken
     try:
         kalan = paket
         while kalan:
@@ -3462,7 +3489,7 @@ def _restream_parca_al(veri):
                     paket = b""
         sosyal = _sosyal_parca_dagit(paket, baslik, mime) if paket else {}
         if not istek or not hedef:
-            if sosyal.get("adet"):
+            if sosyal.get("adet") or sosyal.get("yeniden"):
                 return _sosyal_yanita_ekle(
                     {"success": True, "restream": False, "sosyal_havuz": True},
                     sosyal,
@@ -3483,6 +3510,11 @@ def _restream_parca_al(veri):
         if not paket:
             return {"success": True, "atlandi": True}
         sonuc = _restream_yaz(hedef, paket, baslik, mime)
+        if sonuc == "bekliyor":
+            return _sosyal_yanita_ekle(
+                {"success": True, "restream": False, "atlandi": True},
+                sosyal,
+            )
         if sonuc == "yeniden":
             return _sosyal_yanita_ekle(
                 {

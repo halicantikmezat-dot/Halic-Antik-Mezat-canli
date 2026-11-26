@@ -31,6 +31,20 @@ _URL = re.compile(
     r"^(rtmps?)://([A-Za-z0-9._-]{1,253})(?::\d{2,5})?(/[^\s\"'\\]{0,420})?$",
     re.IGNORECASE,
 )
+_EBML = b"\x1a\x45\xdf\xa3"
+
+
+def _ebml_mi(paket):
+    """MediaRecorder WebM başlığı EBML imzasıyla başlar."""
+    veri = bytes(paket or b"")
+    return len(veri) >= 4 and veri[:4] == _EBML
+
+
+def _giris_bicimi(mime):
+    """Parçalı WebM, pipe üzerinde matroska demuxer ile okunur."""
+    if "mp4" in str(mime or "").lower():
+        return "mp4"
+    return "matroska"
 
 
 def kalici_bagla(oku, yaz):
@@ -77,6 +91,8 @@ def parca_yaz(paket, baslik, mime):
         if not _YAYIN:
             return {"adet": 0, "yeniden": False}
         if baslik:
+            if not _ebml_mi(paket):
+                return {"adet": 0, "yeniden": True}
             _BASLIK = bytes(paket)
             _MIME = str(mime or "")
         hesaplar = [dict(kayit) for kayit in _oku() if kayit.get("dahil")]
@@ -323,34 +339,62 @@ def _isci(slot):
 def _slot_yaz(slot, paket, baslik, mime):
     if slot.get("ortak"):
         return
+    if baslik and not _ebml_mi(paket):
+        with slot["kilit"]:
+            if slot.get("proc") is None:
+                slot["durum"] = "bekliyor"
+                slot["hata"] = ""
+        return
     nesil = 0
+    kapanan = None
+    dustu = False
+    on_ek = b""
+    stdin = None
+    proc = None
     with slot["kilit"]:
         if slot.get("ortak") or slot["dur"].is_set():
             return
         nesil = slot.get("nesil", 0)
         proc = slot.get("proc")
         if proc is not None and proc.poll() is not None:
-            _proc_birak(slot)
+            slot["proc"] = None
+            kapanan = proc
             proc = None
             if not baslik:
                 _hata_kilit_icinde(slot, slot.get("son_satir") or "Yayın koptu")
-                return
-        if proc is None:
-            on_ek = b""
+                dustu = True
+        elif proc is not None and baslik:
+            slot["proc"] = None
+            slot["nesil"] = nesil + 1
+            nesil = slot["nesil"]
+            kapanan = proc
+            proc = None
+        if not dustu and proc is None:
             if not baslik:
                 on_ek, on_mime = _baslik_kopya()
                 if not on_ek:
                     slot["durum"] = "bekliyor"
-                    return
-                mime = mime or on_mime
-            proc = _surec_ac(slot.get("hedef") or "", mime, slot)
-            if proc is None:
-                _hata_kilit_icinde(slot, "FFmpeg açılamadı")
-                return
-            slot["proc"] = proc
-        else:
-            on_ek = b""
-        stdin = proc.stdin
+                    slot["hata"] = ""
+                    dustu = True
+                else:
+                    mime = mime or on_mime
+            elif not _ebml_mi(paket):
+                slot["durum"] = "bekliyor"
+                slot["hata"] = ""
+                dustu = True
+            if not dustu:
+                proc = _surec_ac(slot.get("hedef") or "", mime, slot)
+                if proc is None:
+                    _hata_kilit_icinde(slot, "FFmpeg açılamadı")
+                    dustu = True
+                else:
+                    slot["proc"] = proc
+        if proc is not None:
+            stdin = proc.stdin
+    if kapanan is not None:
+        _proc_kapat(kapanan)
+    if dustu or stdin is None:
+        return
     try:
         if on_ek:
             _stdin_yaz(stdin, on_ek)
@@ -382,6 +426,8 @@ def _hata_kilit_icinde(slot, metin):
 
 def _baslik_kopya():
     with _KILIT:
+        if not _ebml_mi(_BASLIK):
+            return b"", ""
         return _BASLIK, _MIME
 
 
@@ -432,7 +478,7 @@ def _proc_kapat(proc):
 def _surec_ac(hedef, mime, slot):
     if not (str(hedef).startswith("rtmp://") or str(hedef).startswith("rtmps://")):
         return None
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
+    bicim = _giris_bicimi(mime)
     komut = [
         _ffmpeg_yolu(),
         "-hide_banner",
@@ -601,6 +647,13 @@ def _ortak_giris_isci(ortak):
 
 
 def _encoder_yaz(ortak, paket, baslik, mime):
+    if baslik and not _ebml_mi(paket):
+        with ortak["kilit"]:
+            proc = ortak.get("proc")
+            calisiyor = proc is not None and proc.poll() is None
+        if not calisiyor:
+            _ortak_hedef_durumu(ortak, "bekliyor", "")
+        return
     if baslik:
         _ortak_hatalari_sil(ortak)
     on_ek = b""
@@ -608,6 +661,7 @@ def _encoder_yaz(ortak, paket, baslik, mime):
     if not baslik:
         baslik_ek, baslik_mime = _baslik_kopya()
     kapanan = None
+    eski_kopyalar = []
     durdu = False
     nesil = 0
     metin = "Kodlayıcı koptu"
@@ -622,6 +676,12 @@ def _encoder_yaz(ortak, paket, baslik, mime):
             durdu = not baslik
             if durdu:
                 metin = ortak.get("son_satir") or "Kodlayıcı koptu"
+        elif proc is not None and baslik:
+            ortak["proc"] = None
+            kapanan = proc
+            proc = None
+            eski_kopyalar = list(ortak["kopyalar"].values())
+            ortak["kopyalar"].clear()
         if proc is None and not durdu:
             if not baslik:
                 if not baslik_ek:
@@ -629,7 +689,12 @@ def _encoder_yaz(ortak, paket, baslik, mime):
                 else:
                     on_ek = baslik_ek
                     mime = mime or baslik_mime
+            elif not _ebml_mi(paket):
+                durdu = "bekliyor"
             if proc is None and durdu is not True and durdu != "bekliyor":
+                if ortak["kopyalar"]:
+                    eski_kopyalar.extend(list(ortak["kopyalar"].values()))
+                    ortak["kopyalar"].clear()
                 proc = _encoder_ac(mime)
                 if proc is None:
                     durdu = "acilamadi"
@@ -644,6 +709,8 @@ def _encoder_yaz(ortak, paket, baslik, mime):
         stdin = proc.stdin if proc is not None else None
     if kapanan is not None:
         _proc_kapat(kapanan)
+    for kopya in eski_kopyalar:
+        _kopya_sonlandir(kopya)
     if durdu is True:
         _ortak_hedef_durumu(ortak, "hata", metin)
         return
@@ -663,7 +730,7 @@ def _encoder_yaz(ortak, paket, baslik, mime):
 
 
 def _encoder_ac(mime):
-    bicim = "mp4" if "mp4" in str(mime or "").lower() else "webm"
+    bicim = _giris_bicimi(mime)
     komut = [
         _ffmpeg_yolu(),
         "-hide_banner",
