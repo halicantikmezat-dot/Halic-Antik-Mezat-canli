@@ -13562,6 +13562,8 @@ try:
 except Exception as hata:
     print(f"[BOOT] kamera sinyal atlandi: {hata}", flush=True)
 
+from tedarikci_havuzu import tedarikci_bp
+app.register_blueprint(tedarikci_bp)
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 
