@@ -25,3 +25,5 @@ TikTokLive
 cryptography
 certifi
 imageio-ffmpeg
+selenium
+google-genai

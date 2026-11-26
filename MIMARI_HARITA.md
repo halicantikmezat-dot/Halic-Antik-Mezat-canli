@@ -114,7 +114,9 @@ Tek dosyada uygulama, modeller, mezat, ses, üyelik, POS, XML ve yönetim rotala
 | 2042 | `Ayar` | `ayar` |
 | 2050 | `IcerikMaddesi` | `icerik_maddesi` |
 
-Ayrıca modüllerin kendi tabloları: `dukkan_durum`, `canli_yayin_havuz`, `canli_yayin_push`, `sosyal_kanallar`, `tedarikci_ayarlari`, `tedarikci_urunleri`, `tedarikci_hesaplari`, pazaryeri `tedarikci`.
+Ayrıca modüllerin kendi tabloları: `dukkan_durum`, `canli_yayin_havuz`, `canli_yayin_push`, `sosyal_kanallar`, `tedarikci_ayarlari`, `tedarikci_urunleri`, `tedarikci_hesaplari`, pazaryeri `tedarikci`, `kumbara_gece` (`diger_canli_sahne.py`).
+
+Mevcut SQLite dosyasında eski sürümden kalan `mezat_oda` tablosu durur. Güncel modellerde ve `CREATE TABLE` ifadelerinde tanımı yoktur; çalışan kod bu tabloyu kullanmaz.
 
 ### HTTP rotaları
 
