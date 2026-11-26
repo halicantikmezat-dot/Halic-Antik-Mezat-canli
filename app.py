@@ -12104,13 +12104,9 @@ def wc_orders():
 @socketio.on("connect")
 def handle_connect():
     try:
-        aktif_izleyiciler.add(request.sid)
+        for kimlik in _izleyici_kimlikleri():
+            _kimligi_bagla(request.sid, kimlik)
         izleyici_sayisini_yayinla()
-        diger_sayi, _diger_isimler = diger_kapi.anlik()
-        emit(
-            "izleyici_sayisi_guncelle",
-            {"sayi": diger_sayi, "dukkan": "diger"},
-        )
     finally:
         db.session.remove()
 
@@ -12118,11 +12114,7 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     try:
-        aktif_izleyiciler.discard(request.sid)
-        izleyici_adlari.pop(request.sid, None)
-        soketten_kullanici_kopar(request.sid)
-        _sahne_izleyicisi_sil(request.sid)
-        diger_kapi.sid_dusur(request.sid)
+        _izleyici_sid_sil(request.sid)
         izleyici_sayisini_yayinla()
     finally:
         db.session.remove()
@@ -12667,6 +12659,8 @@ def handle_join_dukkan(data):
                 join_room(dukkan)
             return
         ad = str(veri.get("isim") or "").strip()[:40] or "Misafir"
+        for kimlik in _izleyici_kimlikleri(veri):
+            _kimligi_bagla(request.sid, kimlik)
         izleyici_adlari[request.sid] = ad
         sokete_kullanici_bagla(request.sid, veri.get("kullanici_id"))
         try:
@@ -12688,8 +12682,7 @@ def handle_join_dukkan(data):
         if dukkan == "diger":
             sayi, isimler = diger_kapi.anlik()
         else:
-            sayi = len(aktif_izleyiciler)
-            isimler = list(dict.fromkeys(izleyici_adlari.values()))
+            sayi, isimler = _dukkan_izleyici_ozeti(dukkan)
         emit(
             "izleyici_sayisi_guncelle",
             {
@@ -12718,6 +12711,7 @@ def handle_leave_dukkan(data):
             _sid_dukkan.pop(request.sid, None)
             (_dukkan_izleyici.get(dukkan) or {}).pop(request.sid, None)
     _ozel_odayi_kapat(request.sid)
+    izleyici_sayisini_yayinla()
 
 
 @socketio.on("diger_izleyici_nabiz")
@@ -13144,6 +13138,10 @@ def itiraz_duzelt_bildir():
 
 aktif_izleyiciler = set()
 izleyici_adlari = {}
+_izleyici_kilit = threading.Lock()
+_sid_kimlikler = {}
+_kimlik_sid = {}
+_sid_zaman = {}
 
 
 def _diger_canli_sahneyi_birak():
@@ -13257,22 +13255,207 @@ def _diger_reji_emri_varsa_uygula(dukkan, metin, sid=None, bildir=False):
     return False
 
 
-def izleyici_sayisini_yayinla():
-    sayi = len(aktif_izleyiciler)
+def _cerez_kimligi():
+    try:
+        cerez = request.cookies.get(app.config.get("SESSION_COOKIE_NAME", "session"))
+    except Exception:
+        cerez = ""
+    cerez = str(cerez or "").strip()
+    if not cerez:
+        return ""
+    return "c:" + hashlib.sha256(cerez.encode("utf-8")).hexdigest()[:40]
+
+
+def _ip_parmak_izi():
+    try:
+        iletilen = request.headers.get("X-Forwarded-For", "")
+        ip = iletilen.split(",")[0].strip() if iletilen else str(request.remote_addr or "")
+        ua = str(request.headers.get("User-Agent", "") or "")[:120]
+    except Exception:
+        return ""
+    if not ip and not ua:
+        return ""
+    return "ip:" + hashlib.sha256((ip + "|" + ua).encode("utf-8")).hexdigest()[:40]
+
+
+def _izleyici_kimlikleri(veri=None):
+    """Aynı tarayıcı, oturum veya çerez yenilemede tek kimlik kalsın."""
+    veri = veri or {}
+    kimlikler = []
+    for alan in ("visitor_id", "session_id", "oturum"):
+        gelen = str(veri.get(alan) or "").strip()
+        if gelen and gelen.lower() not in ("null", "undefined"):
+            kimlikler.append("v:" + gelen[:80])
+    cerez = _cerez_kimligi()
+    if cerez:
+        kimlikler.append(cerez)
+    if not kimlikler:
+        parmak = _ip_parmak_izi()
+        if parmak:
+            kimlikler.append(parmak)
+    return kimlikler
+
+
+def _dukkan_izleyici_ozeti(kod):
+    with _ozel_kilit:
+        kayitlar = list((_dukkan_izleyici.get(kod) or {}).values())
     isimler = []
-    for ad in izleyici_adlari.values():
-        temiz = str(ad or "").strip()
-        if temiz and temiz not in isimler:
-            isimler.append(temiz)
+    for bilgi in kayitlar:
+        ad = str((bilgi or {}).get("ad") or "").strip()
+        if ad and ad not in isimler:
+            isimler.append(ad)
+    return len(kayitlar), isimler
+
+
+def _diger_sid_devret(eski, yeni):
+    if not eski or not yeni or eski == yeni:
+        return
+    with diger_kapi._kilit:
+        anahtar = diger_kapi._sid_oturum.pop(eski, None)
+        if not anahtar:
+            return
+        kayit = diger_kapi._oturumlar.get(anahtar)
+        if not kayit or kayit.get("sid") not in (None, eski):
+            return
+        kayit["sid"] = yeni
+        kayit["nabiz"] = time.time()
+        diger_kapi._sid_oturum[yeni] = anahtar
+
+
+def _izleyici_sid_listeden_cikar(sid):
+    aktif_izleyiciler.discard(sid)
+    izleyici_adlari.pop(sid, None)
+    _sid_zaman.pop(sid, None)
+    for kimlik in _sid_kimlikler.pop(sid, set()):
+        if _kimlik_sid.get(kimlik) == sid:
+            _kimlik_sid.pop(kimlik, None)
+
+
+def _sahne_sid_devret(eski, yeni):
+    with _ozel_kilit:
+        dukkan = _sid_dukkan.get(eski)
+        bilgi = None
+        if dukkan:
+            bilgi = (_dukkan_izleyici.get(dukkan) or {}).pop(eski, None)
+            _sid_dukkan.pop(eski, None)
+        if dukkan and bilgi is not None and yeni not in _sid_dukkan:
+            _sid_dukkan[yeni] = dukkan
+            _dukkan_izleyici.setdefault(dukkan, {})[yeni] = bilgi
+        elif dukkan and bilgi is not None:
+            (_dukkan_izleyici.get(dukkan) or {}).pop(eski, None)
+    if not dukkan:
+        return
+    try:
+        leave_room(dukkan, sid=eski)
+    except Exception:
+        pass
+    if bilgi is not None and _sid_dukkan.get(yeni) == dukkan:
+        try:
+            join_room(dukkan, sid=yeni)
+        except Exception:
+            pass
+
+
+def _izleyici_sid_sil(sid, yerine=None):
+    """Kopan veya yenilenen sid'i sayaçtan ve dükkan odasından düşür."""
+    if not sid:
+        return
+    with _izleyici_kilit:
+        if yerine and yerine != sid:
+            ad = izleyici_adlari.get(sid)
+            if ad and yerine not in izleyici_adlari:
+                izleyici_adlari[yerine] = ad
+        _izleyici_sid_listeden_cikar(sid)
+    if yerine and yerine != sid:
+        _diger_sid_devret(sid, yerine)
+        _sahne_sid_devret(sid, yerine)
+        _ozel_odayi_kapat(sid)
+        soketten_kullanici_kopar(sid)
+        return
+    with _ozel_kilit:
+        dukkan = _sid_dukkan.get(sid)
+    if dukkan:
+        try:
+            leave_room(dukkan, sid=sid)
+        except Exception:
+            pass
+    _sahne_izleyicisi_sil(sid)
+    try:
+        diger_kapi.sid_dusur(sid)
+    except Exception:
+        pass
+    soketten_kullanici_kopar(sid)
+
+
+def _kimligi_bagla(sid, kimlik):
+    if not sid or not kimlik:
+        return
+    with _izleyici_kilit:
+        eski = _kimlik_sid.get(kimlik)
+    if eski and eski != sid:
+        _izleyici_sid_sil(eski, yerine=sid)
+    with _izleyici_kilit:
+        _sid_kimlikler.setdefault(sid, set()).add(kimlik)
+        _kimlik_sid[kimlik] = sid
+        aktif_izleyiciler.add(sid)
+        _sid_zaman.setdefault(sid, time.time())
+
+
+def _sid_bagli_mi(sid):
+    try:
+        return bool(socketio.server.manager.is_connected(sid, "/"))
+    except Exception:
+        return True
+
+
+def _hayalet_sidleri_temizle():
+    """Kopmuş ama sözlükte kalmış sid kayıtlarını gerçek soket oturumlarıyla sil."""
+    simdi = time.time()
+    with _izleyici_kilit:
+        aday = [
+            sid for sid, an in list(_sid_zaman.items())
+            if simdi - float(an or 0) >= 8
+        ]
+    silinen = False
+    for sid in aday:
+        if _sid_bagli_mi(sid):
+            continue
+        _izleyici_sid_sil(sid)
+        silinen = True
+    with _ozel_kilit:
+        yetimler = [
+            sid
+            for kayitlar in _dukkan_izleyici.values()
+            for sid in list(kayitlar)
+        ]
+    for sid in yetimler:
+        with _izleyici_kilit:
+            an = _sid_zaman.get(sid)
+        if an is not None and simdi - float(an) < 8:
+            continue
+        if _sid_bagli_mi(sid):
+            continue
+        _izleyici_sid_sil(sid)
+        silinen = True
+    return silinen
+
+
+def _izleyici_hayalet_dongusu():
+    while True:
+        try:
+            if _hayalet_sidleri_temizle():
+                izleyici_sayisini_yayinla()
+        except Exception as hata:
+            print(f"[IZLEYICI] hayalet temizlik atlandi: {hata}", flush=True)
+        socketio.sleep(5)
+
+
+def izleyici_sayisini_yayinla():
     for kod in DUKKANLAR:
         if kod == "diger":
-            diger_sayi, diger_isimler = diger_kapi.anlik()
-            socketio.emit(
-                "izleyici_sayisi_guncelle",
-                {"dukkan": "diger", "sayi": diger_sayi, "isimler": diger_isimler},
-                room="diger",
-            )
-            continue
+            sayi, isimler = diger_kapi.anlik()
+        else:
+            sayi, isimler = _dukkan_izleyici_ozeti(kod)
         socketio.emit(
             "izleyici_sayisi_guncelle",
             {"dukkan": kod, "sayi": sayi, "isimler": isimler},
@@ -13340,6 +13523,7 @@ def _arkaplan_agir_baslangic():
     print("[BOOT] gecikmeli baslangic calisiyor", flush=True)
     try:
         socketio.start_background_task(_bellek_temizleme_dongusu)
+        socketio.start_background_task(_izleyici_hayalet_dongusu)
         socketio.start_background_task(
             diger_kapi.temizlik_dongusu, socketio.sleep, _diger_izleyici_duyur,
         )
