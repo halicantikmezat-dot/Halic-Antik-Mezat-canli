@@ -14164,6 +14164,16 @@ except Exception as hata:
 from tedarikci_havuzu import tedarikci_bp
 app.register_blueprint(tedarikci_bp)
 app.register_blueprint(__import__("sosyal_kopru_havuzu").bp)
+
+print("[BOOT] fanus yarisi", flush=True)
+try:
+    from fanus_yarisi import bagla as _fanus_yarisi_bagla
+
+    _fanus_yarisi_bagla(app, db, socketio, dukkan_dogrula)
+    print("[BOOT] fanus yarisi hazir", flush=True)
+except Exception as hata:
+    print(f"[BOOT] fanus yarisi atlandi: {hata}", flush=True)
+
 _gecikmeli_baslangici_kur()
 print("[BOOT] import bitti, gunicorn portu acabilir", flush=True)
 
