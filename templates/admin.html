@@ -1794,9 +1794,6 @@
         if (typeof seciliDukkan !== "string" || seciliDukkan !== "diger") return;
         const tur = currentAudio && currentAudio.dataset ? currentAudio.dataset.tur : "";
         if (!digerSpikerKorunanTur(tur)) calanSesiDurdur();
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-        }
     }
 
     function digerSpikerDurumunuUygula(data) {
@@ -2102,10 +2099,6 @@
         try { win = cerceve.contentWindow; } catch (e) { return; }
         if (!win) return;
         try {
-            if (win.speechSynthesis) {
-                try { win.speechSynthesis.cancel(); } catch (e) {}
-                win.speechSynthesis.speak = function () {};
-            }
             const proto = win.HTMLMediaElement && win.HTMLMediaElement.prototype;
             if (proto && !proto.__rejiSessiz) {
                 const eskiPlay = proto.play;

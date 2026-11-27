@@ -5481,10 +5481,6 @@
 
     function digerSpikerSesiniKes() {
         if (aktifDukkan !== "diger") return;
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-            try { window.speechSynthesis.onvoiceschanged = null; } catch (e) {}
-        }
         if (digerSecereSesi) {
             try {
                 digerSecereSesi.pause();
@@ -6104,13 +6100,16 @@
     });
 
     socket.on('yeni_sahne_urunu', function(urun) {
-        const dukkan = urun && (urun.dukkan || urun.dukkan_kodu);
+        const dukkan = urun && (urun.sahne_dukkan || urun.dukkan || urun.dukkan_kodu);
         if (urun && (!dukkan || dukkan === aktifDukkan)) {
             secilenArsivUrunId = null;
+            sahneKapali = false;
             const onizleme = document.getElementById('secilenUrunOnizleme');
             if (onizleme) onizleme.style.display = 'none';
             if (typeof kenBurnsDurdur === "function") kenBurnsDurdur();
-            sahneyiGuncelle(urun, urun.durum || "Bekliyor", urun.guncel_fiyat || urun.fiyat, urun.kazanan || "Yok");
+            const acilisPey = parseFloat(urun.guncel_fiyat || urun.fiyat || 0);
+            if (!isNaN(acilisPey)) sonGorulenPey = acilisPey;
+            sahneyiGuncelle(urun, urun.durum || "Bekliyor", acilisPey, urun.kazanan || "Yok", "sahne");
         }
     });
 
@@ -6163,7 +6162,9 @@
         if (!data || (data.dukkan && data.dukkan !== aktifDukkan)) return;
         if (data.aktif_urun) {
             sahneKapali = false;
-            sahneyiGuncelle(data.aktif_urun, data.durum, data.pey, data.kazanan, "sahne");
+            const gelenPey = parseFloat(data.pey || data.aktif_urun.guncel_fiyat || data.aktif_urun.fiyat || 0);
+            if (!isNaN(gelenPey)) sonGorulenPey = gelenPey;
+            sahneyiGuncelle(data.aktif_urun, data.durum, gelenPey, data.kazanan, "sahne");
         }
         const ham = parseInt(data.kalan_sure !== undefined ? data.kalan_sure : data.kalan, 10);
         if (!isNaN(ham)) {
@@ -6628,7 +6629,9 @@
     }
 
     socket.on('sayac_guncelle', function(data) {
-        if (data && data.dukkan === aktifDukkan && !sahneKapali) sayacPaketiniCiz(data);
+        if (!data || data.dukkan !== aktifDukkan) return;
+        if (sahneKapali && !aktifSahneUrunId) return;
+        sayacPaketiniCiz(data);
     });
 
     socket.on('sayac_uzatildi', function(data) {
@@ -7204,26 +7207,6 @@
         peyGonder((Number(sonGorulenPey) || 0) + artis);
     }
 
-    function digerYerelOku(yazi) {
-        if (digerSpikerSessiz || aktifDukkan !== "diger") return;
-        if (!yazi || !window.speechSynthesis || typeof SpeechSynthesisUtterance !== 'function') return;
-        const soyle = function () {
-            const u = new SpeechSynthesisUtterance(yazi);
-            u.lang = 'tr-TR';
-            const sesler = window.speechSynthesis.getVoices() || [];
-            for (let i = 0; i < sesler.length; i++) {
-                const dil = String(sesler[i].lang || '').toLowerCase();
-                if (dil.indexOf('tr') === 0) { u.voice = sesler[i]; break; }
-            }
-            window.speechSynthesis.speak(u);
-        };
-        if ((window.speechSynthesis.getVoices() || []).length) soyle();
-        else {
-            window.speechSynthesis.onvoiceschanged = soyle;
-            window.speechSynthesis.getVoices();
-        }
-    }
-
     function digerSecereyiDinle() {
         playUserClickSound();
         const yazi = String(digerSecere || '').trim();
@@ -7245,8 +7228,8 @@
             const ses = new Audio(URL.createObjectURL(blob));
             digerSecereSesi = ses;
             ses.setAttribute('playsinline', '');
-            ses.play().catch(function () { digerYerelOku(yazi); });
-        }).catch(function () { digerYerelOku(yazi); });
+            ses.play().catch(function () {});
+        }).catch(function () {});
     }
 
     socket.on('diger_canli_sahne', function (data) {

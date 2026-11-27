@@ -549,8 +549,8 @@ def _havuzda_calistir(islem, zaman_asimi):
         raise TimeoutError("ses havuzu zaman asimi") from hata
 
 
-def _edge_tts_mp3(soylenen):
-    """OpenAI susunca tarayıcıya düşmeden Emel sesiyle MP3 üretir.
+def _edge_tts_mp3(soylenen, ses_adi="tr-TR-EmelNeural"):
+    """OpenAI susunca doğal Türkçe Edge sesiyle MP3 üretir.
 
     gevent soket yaması aynı süreçteki asyncio döngüsünü kilitler.
     Eski edge-tts akışı yamasız alt süreçte çalışır.
@@ -583,7 +583,7 @@ def _edge_tts_mp3(soylenen):
                     "-m",
                     "edge_tts",
                     "--voice",
-                    "tr-TR-EmelNeural",
+                    ses_adi,
                     "--file",
                     metin_yol,
                     "--write-media",
@@ -641,23 +641,23 @@ def _ses_modeli():
     model = getattr(Config, "OPENAI_TTS_MODEL", "") or "tts-1-hd"
     if model not in ("tts-1", "tts-1-hd", "gpt-4o-mini-tts"):
         model = "tts-1-hd"
-    ses = getattr(Config, "OPENAI_TTS_VOICE", "") or "nova"
-    return model, ses
+    return model, "nova"
+
+
+def _edge_tts_yedek(soylenen):
+    """OpenAI susunca Emel, o da susunca Ahmet. İkisi de boşsa sessiz kalınır."""
+    for ses_adi in ("tr-TR-EmelNeural", "tr-TR-AhmetNeural"):
+        veri = _edge_tts_mp3(soylenen, ses_adi)
+        if veri:
+            return veri
+    return b""
 
 
 def _tts_uret(metin):
-    """MP3 üretir. Sıra: ElevenLabs, OpenAI, Edge. (bayt, motor) döner."""
+    """MP3 üretir. Önce OpenAI nova; hata veya zaman aşımında Edge Türkçe. (bayt, motor) döner."""
     soylenen = str(metin or "").strip()
     if not soylenen:
         return None, ""
-    if (getattr(Config, "ELEVENLABS_API_KEY", "") or "").strip():
-        try:
-            veri = _havuzda_calistir(lambda: _elevenlabs_mp3(soylenen), 35)
-        except Exception as hata:
-            print(f"[SES HATA] ElevenLabs havuz: {hata}", flush=True)
-            veri = None
-        if veri:
-            return veri, "elevenlabs"
     istemci = _openai_ses_istemcisi()
     if istemci is None:
         print("[SES] OPENAI_API_KEY yok; Edge TTS deneniyor.", flush=True)
@@ -673,9 +673,11 @@ def _tts_uret(metin):
             veri = None
         if veri:
             return veri, "openai"
-    veri = _edge_tts_mp3(soylenen)
+        print("[SES] OpenAI yanıt vermedi; Edge TTS deneniyor.", flush=True)
+    veri = _edge_tts_yedek(soylenen)
     if veri:
         return veri, "edge"
+    print("[SES] OpenAI ve Edge TTS yanıt vermedi; sessiz kalınıyor.", flush=True)
     return None, ""
 
 
@@ -694,7 +696,7 @@ def api_tts():
     if not temiz:
         return jsonify({"success": False, "mesaj": "Metin boş."}), 400
     mp3, motor = _tts_uret(temiz)
-    if not mp3 or motor not in ("elevenlabs", "openai", "edge"):
+    if not mp3 or motor not in ("openai", "edge"):
         return jsonify({"success": False, "mesaj": "Ses üretilemedi."}), 503
     yanit = Response(mp3, mimetype="audio/mpeg")
     yanit.headers["X-TTS-Engine"] = motor
@@ -7791,6 +7793,7 @@ def sahneye_al():
         oda["karar_pey_geldi"] = False
         oda["sayac_aktif"] = False
         oda["sayac_kalan"] = 180
+        oda["mevat_asama"] = "bekliyor"
         oda["durum"]["durum"] = "Bekliyor"
         oda["durum"]["sure_bitis"] = 0
         oda["son_hareket"] = time.time()
@@ -7857,6 +7860,7 @@ def sahneye_al():
         urun_paket.get("fiyat") or 0,
         urun_paket.get("lot") or "",
     )
+    _sahne_anlik_yayinla(dukkan)
 
     return jsonify({"success": True, "urun": urun_paket})
 
@@ -8341,6 +8345,7 @@ def _diger_katalog_sahneye_al(urun_id, istenen_dukkan=""):
                 oda["aktif_urun_id"] = yer.id
                 oda["canli_secere"] = (yer.tanitim_yazisi or "")[:1500]
                 gorev = _pazarligi_hazirla(oda, yer)
+                oda["sayac_kalan"] = 180
                 oda["durum"]["pey"] = baslangic
                 oda["durum"]["kazanan"] = kazanan
                 oda["durum"]["kazanan_id"] = kazanan_id
@@ -8380,6 +8385,7 @@ def _diger_katalog_sahneye_al(urun_id, istenen_dukkan=""):
             )
             socketio.emit("mezat_basladi_muzik", room="diger")
             ahmet_kisa_acilis_seslendir("diger", yer.urun_adi or "", baslangic, yer.lot_no or "")
+            _sahne_anlik_yayinla("diger")
             return {
                 "success": True,
                 "mesaj": "Ürün Diğer sahnesine alındı. 180 saniyelik sayaç başladı.",
@@ -13588,19 +13594,33 @@ def sahneyi_herkese_yayinla(dukkan, urun_paket, pey_paket=None, yeni_urun=False)
     oda = odalar.get(dukkan)
     if oda is not None and urun_paket:
         oda.pop("son_satis", None)
+    yayin = dict(urun_paket) if urun_paket else urun_paket
+    if yayin:
+        yayin["dukkan"] = dukkan
+        yayin["sahne_dukkan"] = dukkan
     if yeni_urun:
         _sahne_sesini_kes(dukkan)
         socketio.emit(
             "yeni_urun_sahneye_alindi",
-            {"dukkan": dukkan, "urun_id": (urun_paket or {}).get("id")},
+            {"dukkan": dukkan, "urun_id": (yayin or {}).get("id")},
             room=dukkan,
         )
-    socketio.emit("yeni_sahne_urunu", urun_paket, room=dukkan)
-    if urun_paket:
-        socketio.emit("yeni_sahne_urunu", urun_paket, room="admin_room")
+    socketio.emit("yeni_sahne_urunu", yayin, room=dukkan)
+    if yayin:
+        socketio.emit("yeni_sahne_urunu", yayin, room="admin_room")
     if pey_paket:
         _pey_duyur(dukkan, pey_paket)
     _dukkan_canli_yayinla()
+
+
+def _sahne_anlik_yayinla(dukkan):
+    """Tek ürün sahneye alındıktan sonra ürün, görsel, pey ve sayacı aynı pakette yollar."""
+    try:
+        paket = _sahne_durumu_paketi(dukkan)
+    except Exception as hata:
+        print(f"[SAHNE] anlik durum: {hata}", flush=True)
+        return
+    _iki_odayi("sahne_durumu", paket, dukkan)
 
 
 def _diger_izleyici_duyur():
