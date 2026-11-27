@@ -29,6 +29,15 @@
     <meta name="twitter:image" content="{{ _seo_gorsel }}">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#0f172a">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem("sahneTema") === "beyaz") {
+                    document.documentElement.setAttribute("data-sahne-tema", "beyaz");
+                }
+            } catch (e) {}
+        })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/img/icon-192.png">
@@ -694,6 +703,45 @@
         @media (prefers-reduced-motion: reduce) {
             .kargo-fanus-dalga, .kargo-fanus-dalga::after, .kargo-fanus.dolu { animation: none; }
         }
+        .fanus-cifti {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 0 0 auto;
+        }
+        .tema-fanus {
+            position: relative;
+            z-index: 2;
+            box-sizing: border-box;
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            padding: 0;
+            margin: 0;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.28), rgba(8, 18, 32, 0.55) 46%, rgba(2, 8, 18, 0.72));
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 1px 4px rgba(0,0,0,0.35);
+            overflow: hidden;
+            cursor: pointer;
+            color: #ecfeff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tema-fanus::after {
+            content: "";
+            position: absolute;
+            inset: 1px;
+            z-index: 2;
+            border-radius: 50%;
+            pointer-events: none;
+            background: linear-gradient(145deg, rgba(255,255,255,0.55), transparent 42%, transparent 62%, rgba(255,255,255,0.16));
+        }
+        .tema-ikon { width: 14px; height: 14px; display: block; position: relative; z-index: 1; }
+        .tema-fanus .tema-ay { display: none; }
+        html[data-sahne-tema="beyaz"] .tema-fanus .tema-gunes { display: none; }
+        html[data-sahne-tema="beyaz"] .tema-fanus .tema-ay { display: block; }
         .zafer-muhur {
             display: none; position: fixed; left: 50%; top: 36%; z-index: 13001;
             transform: translate(-50%, -50%) rotate(-8deg);
@@ -1700,7 +1748,7 @@
         }
         .pwa-indir-yigin {
             position: absolute;
-            left: 174px;
+            left: 214px;
             right: 0;
             bottom: calc(100% + 6px);
             height: 32px;
@@ -2284,6 +2332,200 @@
         @media (prefers-reduced-motion: reduce) {
             #canliYonlendirmeSeridi.gorunur, .canli-kayar-yazi, .canli-yayin-nokta, .ucusan-kalp { animation: none; }
         }
+        html[data-sahne-tema="beyaz"] {
+            --bg-color: #F8FAFC;
+            --card-bg: #FFFFFF;
+            --card-inner: #F8FAFC;
+            --card-border: #E2E8F0;
+            --text-light: #0F172A;
+            --text-muted: #475569;
+        }
+        html[data-sahne-tema="beyaz"],
+        html[data-sahne-tema="beyaz"] body,
+        html[data-sahne-tema="beyaz"] .mobile-container {
+            background: #F8FAFC;
+            background-color: #F8FAFC;
+            color: #0F172A;
+        }
+        html[data-sahne-tema="beyaz"] .header,
+        html[data-sahne-tema="beyaz"] .shop-nav-bar,
+        html[data-sahne-tema="beyaz"] .user-bar-compact {
+            color: #f1f5f9;
+        }
+        html[data-sahne-tema="beyaz"] .stage-wrapper,
+        html[data-sahne-tema="beyaz"] .stage-media-box,
+        html[data-sahne-tema="beyaz"] #medyaKapsayici {
+            background: #FFFFFF;
+        }
+        html[data-sahne-tema="beyaz"] .stage-media-box img,
+        html[data-sahne-tema="beyaz"] .stage-media-box video,
+        html[data-sahne-tema="beyaz"] #medyaKapsayici img,
+        html[data-sahne-tema="beyaz"] .thumb-item,
+        html[data-sahne-tema="beyaz"] .az-sonra-kart img {
+            filter: none !important;
+            -webkit-filter: none !important;
+        }
+        html[data-sahne-tema="beyaz"] .tema-fanus,
+        html[data-sahne-tema="beyaz"] .kargo-fanus {
+            border-color: rgba(15, 23, 42, 0.16);
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.78), rgba(248,250,252,0.42) 48%, rgba(226,232,240,0.62));
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), 0 1px 4px rgba(15,23,42,0.12);
+            color: #0F172A;
+        }
+        html[data-sahne-tema="beyaz"] .mezat-sayaci,
+        html[data-sahne-tema="beyaz"] .guncel-pey-kutu,
+        html[data-sahne-tema="beyaz"] .hibrit-kapsul .guncel-pey-kutu,
+        html[data-sahne-tema="beyaz"] .hibrit-kapsul,
+        html[data-sahne-tema="beyaz"] .sabit-pey-bar {
+            background: rgba(255, 255, 255, 0.94);
+            color: #0F172A;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .timer-digits-mini { color: #0F172A; }
+        html[data-sahne-tema="beyaz"] .dial-bg { stroke: rgba(15, 23, 42, 0.16); }
+        html[data-sahne-tema="beyaz"] .dial-active { stroke: #B45309; }
+        html[data-sahne-tema="beyaz"] .urgent .timer-digits-mini,
+        html[data-sahne-tema="beyaz"] .urgent .timer-status-text { color: #f43f5e !important; }
+        html[data-sahne-tema="beyaz"] .urgent .dial-active { stroke: #e11d48; }
+        html[data-sahne-tema="beyaz"] .timer-status-text,
+        html[data-sahne-tema="beyaz"] .price-label,
+        html[data-sahne-tema="beyaz"] .guncel-pey-kutu .pey-etiket,
+        html[data-sahne-tema="beyaz"] .drawer-header,
+        html[data-sahne-tema="beyaz"] .user-name-display {
+            color: #B45309;
+        }
+        html[data-sahne-tema="beyaz"] .guncel-pey-kutu .price-val,
+        html[data-sahne-tema="beyaz"] .guncel-pey-kutu #aktif_kazanan,
+        html[data-sahne-tema="beyaz"] .hibrit-kapsul .pey-ticker-oge {
+            color: #0F172A !important;
+            text-shadow: none !important;
+        }
+        html[data-sahne-tema="beyaz"] .bidder-val { color: #475569; }
+        html[data-sahne-tema="beyaz"] .bidder-val b { color: #0F172A; }
+        html[data-sahne-tema="beyaz"] .hibrit-kapsul.yazi-modu input.akis-mesaj { color: #0F172A; caret-color: #B45309; }
+        html[data-sahne-tema="beyaz"] .hibrit-kapsul.yazi-modu input.akis-mesaj::placeholder { color: #475569; }
+        html[data-sahne-tema="beyaz"] .akis-mikrofon {
+            background: rgba(255,255,255,0.92);
+            color: #0F172A;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .btn-dinle-kisa {
+            background: rgba(255,255,255,0.92);
+            color: #0F172A;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .sabit-pey-bar { border-top-color: #E2E8F0; }
+        html[data-sahne-tema="beyaz"] .btn-action-green,
+        html[data-sahne-tema="beyaz"] .btn-action-blue { color: #ffffff !important; }
+        html[data-sahne-tema="beyaz"] .btn-buy-now { background: #FACC15; color: #111111; }
+        html[data-sahne-tema="beyaz"] .yuzer-sohbet .chat-item {
+            background: rgba(15, 23, 42, 0.82);
+            color: #F8FAFC;
+            border: 1px solid rgba(255,255,255,0.22);
+        }
+        html[data-sahne-tema="beyaz"] #altCekmece {
+            background: rgba(248, 250, 252, 0.97) !important;
+            color: #0F172A !important;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .cekmece-sekmeler button,
+        html[data-sahne-tema="beyaz"] .chat-drawer,
+        html[data-sahne-tema="beyaz"] .chat-messages,
+        html[data-sahne-tema="beyaz"] .chat-item {
+            background: #FFFFFF;
+            color: #0F172A;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .chat-item.ahmet {
+            background: #FFFBEB;
+            color: #0F172A;
+            border-left: 2px solid #B45309;
+        }
+        html[data-sahne-tema="beyaz"] #altCekmece #katalogSonucListesi,
+        html[data-sahne-tema="beyaz"] #altCekmece #secilenUrunOnizleme,
+        html[data-sahne-tema="beyaz"] #elestiriPaneli {
+            background: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #E2E8F0 !important;
+        }
+        html[data-sahne-tema="beyaz"] #elestiriPaneli p,
+        html[data-sahne-tema="beyaz"] #elestiriPaneli select,
+        html[data-sahne-tema="beyaz"] #elestiriPaneli textarea {
+            color: #0F172A !important;
+        }
+        html[data-sahne-tema="beyaz"] .bilgi-karti,
+        html[data-sahne-tema="beyaz"] .bilgi-karti p {
+            background: #FFFFFF;
+            color: #0F172A !important;
+            border-color: #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .bilgi-karti b,
+        html[data-sahne-tema="beyaz"] #lotAnonsMetni {
+            color: #B45309 !important;
+        }
+        html[data-sahne-tema="beyaz"] #kargoKurallarModal .modal-content {
+            background: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1px solid #E2E8F0 !important;
+        }
+        html[data-sahne-tema="beyaz"] #kargoKurallarModal h3,
+        html[data-sahne-tema="beyaz"] #kargoKurallarModal li b,
+        html[data-sahne-tema="beyaz"] #kargoOzetSepet {
+            color: #B45309 !important;
+        }
+        html[data-sahne-tema="beyaz"] #kargoKurallarModal ol,
+        html[data-sahne-tema="beyaz"] #kargoKurallarModal li {
+            color: #0F172A !important;
+        }
+        html[data-sahne-tema="beyaz"] #kargoFanusOzet {
+            background: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #E2E8F0 !important;
+        }
+        html[data-sahne-tema="beyaz"] #kargoOzetDestek { color: #0F766E !important; }
+        html[data-sahne-tema="beyaz"] #kargoOzetKalan { color: #475569 !important; }
+        html[data-sahne-tema="beyaz"] .fanus-yaris,
+        html[data-sahne-tema="beyaz"] .fanus-odul {
+            background: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #B45309 !important;
+        }
+        html[data-sahne-tema="beyaz"] .fanus-yaris-baslik,
+        html[data-sahne-tema="beyaz"] .fanus-not,
+        html[data-sahne-tema="beyaz"] .fanus-odul b,
+        html[data-sahne-tema="beyaz"] .fanus-kim.altin,
+        html[data-sahne-tema="beyaz"] .fanus-altin-isim {
+            color: #B45309 !important;
+        }
+        html[data-sahne-tema="beyaz"] .fanus-bant { color: #0F172A !important; border-top-color: #E2E8F0 !important; }
+        html[data-sahne-tema="beyaz"] .fanus-sira,
+        html[data-sahne-tema="beyaz"] .fanus-kim,
+        html[data-sahne-tema="beyaz"] .fanus-yuzde { color: #0F172A !important; }
+        html[data-sahne-tema="beyaz"] .fanus-kim .raunt { color: #475569 !important; }
+        html[data-sahne-tema="beyaz"] .fanus-bant.ben,
+        html[data-sahne-tema="beyaz"] .fanus-kim.altin,
+        html[data-sahne-tema="beyaz"] .fanus-altin-isim { border-color: #B45309 !important; }
+        html[data-sahne-tema="beyaz"] .fanus-cubuk {
+            background: #E2E8F0 !important;
+            box-shadow: inset 0 0 0 1px #E2E8F0;
+        }
+        html[data-sahne-tema="beyaz"] .fanus-eylem button.odul {
+            background: #FFFFFF !important;
+            color: #B45309 !important;
+            border: 1px solid #B45309 !important;
+        }
+        html[data-sahne-tema="beyaz"] .az-sonra-sahne {
+            background: rgba(255,255,255,0.94);
+            border-color: #B45309;
+        }
+        html[data-sahne-tema="beyaz"] .az-sonra-ad { color: #0F172A; }
+        html[data-sahne-tema="beyaz"] .az-sonra-fiyat { color: #166534; }
+        html[data-sahne-tema="beyaz"] .footer { background: #F8FAFC; color: #475569; }
+        html[data-sahne-tema="beyaz"] .btn-footer {
+            background: #FFFFFF;
+            color: #0F172A;
+            border-color: #E2E8F0;
+        }
     </style>
 </head>
 <body onclick="sesKilidiAc()">
@@ -2609,11 +2851,22 @@
             <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
         </div>
         <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
+        <div class="fanus-cifti">
+        <button type="button" id="temaFanus" class="tema-fanus" aria-pressed="false" aria-label="Beyaz sahneye geç" title="Beyaz sahne">
+            <svg class="tema-ikon tema-gunes" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+                <path d="M12 3.4v2.1M12 18.5v2.1M3.4 12h2.1M18.5 12h2.1M6 6l1.5 1.5M16.5 16.5L18 18M18 6l-1.5 1.5M7.5 16.5L6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+            </svg>
+            <svg class="tema-ikon tema-ay" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.6 3.7A7.3 7.3 0 1 0 20.4 14.2 5.7 5.7 0 0 1 15.6 3.7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+            </svg>
+        </button>
         <button type="button" id="kargoFanus" class="kargo-fanus" onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
             <span class="kargo-fanus-sivi" id="kargoFanusSivi" aria-hidden="true"><span class="kargo-fanus-dalga"></span></span>
             <span class="kargo-fanus-ikon" aria-hidden="true">📦</span>
             <span class="kargo-fanus-tutar" id="kargoFanusTutar"></span>
         </button>
+        </div>
         </div>
         <div class="akis-mesaj-satiri">
             <div class="mesaj-kutu-yigin">
@@ -9467,5 +9720,36 @@
     })();
 </script>
 <script src="/static/fanus_yarisi.js"></script>
+<script>
+    (function () {
+        var anahtar = "sahneTema";
+        function oku() {
+            try { return localStorage.getItem(anahtar) === "beyaz" ? "beyaz" : "siyah"; }
+            catch (e) { return "siyah"; }
+        }
+        function yaz(tema) {
+            try { localStorage.setItem(anahtar, tema); } catch (e) {}
+        }
+        function uygula(tema) {
+            var beyaz = tema === "beyaz";
+            if (beyaz) document.documentElement.setAttribute("data-sahne-tema", "beyaz");
+            else document.documentElement.removeAttribute("data-sahne-tema");
+            var btn = document.getElementById("temaFanus");
+            if (!btn) return;
+            btn.setAttribute("aria-pressed", beyaz ? "true" : "false");
+            btn.setAttribute("aria-label", beyaz ? "Siyah sahneye geç" : "Beyaz sahneye geç");
+            btn.setAttribute("title", beyaz ? "Siyah sahne" : "Beyaz sahne");
+        }
+        uygula(oku());
+        var dugme = document.getElementById("temaFanus");
+        if (dugme) {
+            dugme.addEventListener("click", function () {
+                var sonraki = document.documentElement.getAttribute("data-sahne-tema") === "beyaz" ? "siyah" : "beyaz";
+                yaz(sonraki);
+                uygula(sonraki);
+            });
+        }
+    })();
+</script>
 </body>
 </html>
