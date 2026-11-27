@@ -1,6 +1,47 @@
+import sys
+
+# Yük testi yaması Flask ve SQLAlchemy'den önce olmalı.
+# thread + contextvars: her yeşil iplik kendi app_context'ini uyku boyunca tutar.
+# ssl süreç açılışında yüklendiyse yarım yama uygulanmaz.
+_ssl_onceden = "ssl" in sys.modules
 from gevent import monkey
-monkey.patch_all()
-print("[BOOT] gevent monkey patch tamam", flush=True)
+monkey.patch_all(thread=True, contextvars=True, ssl=not _ssl_onceden)
+print(
+    "[BOOT] gevent yamasi thread=1 contextvars=1 ssl="
+    + ("0" if _ssl_onceden else "1"),
+    flush=True,
+)
+
+
+def _eventlet_monkey_patch_engelle():
+    """eventlet.monkey_patch gevent thread/contextvars yamasını ezer, SQLAlchemy bağlamı kopar."""
+
+    def _yok(*_a, **_k):
+        print("[BOOT] eventlet.monkey_patch yok sayildi", flush=True)
+        return False
+
+    def _kilitle(modul):
+        if modul is not None and hasattr(modul, "monkey_patch"):
+            modul.monkey_patch = _yok
+
+    _kilitle(sys.modules.get("eventlet"))
+    gercek = __import__
+
+    def _ice_aktar(ad, globals=None, locals=None, fromlist=(), level=0):
+        yuklenen = gercek(ad, globals, locals, fromlist, level)
+        if ad == "eventlet" or (isinstance(ad, str) and ad.startswith("eventlet.")):
+            _kilitle(sys.modules.get("eventlet"))
+            _kilitle(yuklenen)
+        return yuklenen
+
+    sys.modules["builtins"].__import__ = _ice_aktar
+
+
+_eventlet_monkey_patch_engelle()
+
+if __name__ == "__main__":
+    # python app.py çalışırken "from app import ..." ikinci Flask ve SQLAlchemy kurmasın.
+    sys.modules["app"] = sys.modules[__name__]
 
 try:
     import azure.cognitiveservices.speech as speechsdk
@@ -39,6 +80,7 @@ import re
 import secrets
 import threading
 import time
+import traceback
 import uuid
 import html
 
@@ -188,7 +230,14 @@ app.config["SECRET_KEY"] = (os.environ.get("SECRET_KEY") or "").strip() or secre
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = Config.SQLALCHEMY_ENGINE_OPTIONS
-print("[BOOT] veritabani havuzu Config uzerinden", flush=True)
+_havuz = app.config["SQLALCHEMY_ENGINE_OPTIONS"]
+print(
+    "[BOOT] veritabani havuzu size="
+    + str(_havuz.get("pool_size"))
+    + " overflow="
+    + str(_havuz.get("max_overflow")),
+    flush=True,
+)
 
 app.config["MAX_CONTENT_LENGTH"] = 250 * 1024 * 1024
 
@@ -203,7 +252,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 print("[BOOT] sqlalchemy kuruluyor", flush=True)
-db = SQLAlchemy(app)
+db = SQLAlchemy()
+db.init_app(app)
 
 
 def _sqlite_baglanti_kilidini_ayarlar(dbapi_connection, _connection_record):
@@ -241,7 +291,7 @@ socketio = SocketIO(
     ping_interval=25,
     max_http_buffer_size=8000000,
 )
-print("[BOOT] socketio hazir", flush=True)
+print(f"[BOOT] socketio hazir async={socketio.async_mode}", flush=True)
 
 
 def _ortam_uyarilarini_yaz():
@@ -492,32 +542,96 @@ def _openai_mp3(istemci, model, ses, soylenen):
 def _havuzda_calistir(islem, zaman_asimi):
     """Ag cagrisini gevent hub'indan ayirir. Cagiran yesil, havuz bitene kadar bekler."""
     import gevent
-    return gevent.get_hub().threadpool.spawn(islem).get(timeout=zaman_asimi)
+    try:
+        return gevent.get_hub().threadpool.spawn(islem).get(timeout=zaman_asimi)
+    except gevent.Timeout as hata:
+        # Timeout BaseException'dır; yakalanmazsa anons kuyruğu yeşili ölür.
+        raise TimeoutError("ses havuzu zaman asimi") from hata
 
 
 def _edge_tts_mp3(soylenen):
-    """OpenAI susunca tarayıcıya düşmeden Emel sesiyle MP3 üretir."""
+    """OpenAI susunca tarayıcıya düşmeden Emel sesiyle MP3 üretir.
+
+    gevent soket yaması aynı süreçteki asyncio döngüsünü kilitler.
+    Eski edge-tts akışı yamasız alt süreçte çalışır.
+    """
     metin = str(soylenen or "").strip()
     if not metin:
         return b""
 
     def _uret():
-        import asyncio
-        import edge_tts
+        from gevent.monkey import get_original
+        import os
+        import subprocess
+        import sys
+        import tempfile
 
-        async def _oku():
-            iletisim = edge_tts.Communicate(metin, "tr-TR-EmelNeural")
-            parcalar = []
-            async for parca in iletisim.stream():
-                if parca.get("type") == "audio":
-                    parcalar.append(parca["data"])
-            return b"".join(parcalar)
+        metin_yol = ""
+        ses_yol = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", suffix=".txt", delete=False
+            ) as metin_dosya:
+                metin_dosya.write(metin)
+                metin_yol = metin_dosya.name
+            ses_fd, ses_yol = tempfile.mkstemp(suffix=".mp3")
+            os.close(ses_fd)
+            Popen = get_original("subprocess", "Popen")
+            surec = Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "edge_tts",
+                    "--voice",
+                    "tr-TR-EmelNeural",
+                    "--file",
+                    metin_yol,
+                    "--write-media",
+                    ses_yol,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            try:
+                _cikti, hata = surec.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                surec.kill()
+                try:
+                    surec.communicate(timeout=5)
+                except Exception:
+                    pass
+                print("[SES HATA] Edge TTS surec zaman asimi", flush=True)
+                return b""
+            if surec.returncode != 0:
+                ozet = (hata or b"").decode("utf-8", errors="replace").replace("\n", " ")[:240]
+                print(f"[SES HATA] Edge TTS surec: {ozet}", flush=True)
+                return b""
+            try:
+                with open(ses_yol, "rb") as ses_dosya:
+                    veri = ses_dosya.read()
+            except OSError as hata:
+                print(f"[SES HATA] Edge TTS dosya: {hata}", flush=True)
+                return b""
+            if not veri:
+                ozet = (hata or b"").decode("utf-8", errors="replace").replace("\n", " ")[:240]
+                print(f"[SES HATA] Edge TTS bos: {ozet}", flush=True)
+            return veri
+        finally:
+            for yol in (metin_yol, ses_yol):
+                if yol:
+                    try:
+                        os.remove(yol)
+                    except OSError:
+                        pass
 
-        return asyncio.run(_oku())
-
+    import gevent
     try:
-        import gevent
         return gevent.get_hub().threadpool.spawn(_uret).get(timeout=25) or b""
+    except gevent.Timeout:
+        print("[SES HATA] Edge TTS zaman asimi", flush=True)
+        return b""
     except Exception as hata:
         print(f"[SES HATA] Edge TTS: {hata}", flush=True)
         return b""
@@ -3317,6 +3431,165 @@ def _otonom_sahneyi_indir(dukkan):
     _otonom_durum_duyur(dukkan, False)
 
 
+def _otonom_siradaki_sec(dukkan, son_biten_id):
+    """Sıradaki sahne ürünü. (urun, acilis, kazanan, kazanan_id, yeniden_sahne) veya None."""
+    oda = odalar[dukkan]
+    yeniden_sahne = True
+    secilen_urun = None
+    acilis_fiyati = 0
+    kazanan = "Yok"
+    kazanan_id = None
+
+    if oda.get("aktif_urun_id") and not oda.get("sayac_aktif"):
+        sahnedeki = db.session.get(Urun, oda["aktif_urun_id"])
+        if not _otonom_urun_satildi(sahnedeki):
+            secilen_urun = sahnedeki
+            acilis_fiyati = float(
+                oda["durum"].get("pey") or sahnedeki.acilis_fiyati or 0
+            )
+            kazanan = oda["durum"].get("kazanan") or "Yok"
+            kazanan_id = oda["durum"].get("kazanan_id")
+            yeniden_sahne = False
+        else:
+            oda["aktif_urun_id"] = None
+
+    if secilen_urun is None:
+        en_iyi_ot = (
+            OnTeklif.query.filter_by(dukkan_kodu=dukkan)
+            .order_by(OnTeklif.id.asc())
+            .first()
+        )
+        try:
+            from diger_canli_sahne import odunc_idleri as _odunc_idleri
+            from diger_canli_sahne import odunc_mu as _odunc_mu
+        except Exception:
+            _odunc_mu = None
+            _odunc_idleri = None
+        if en_iyi_ot and _odunc_mu and _odunc_idleri and _odunc_mu(en_iyi_ot.urun_id):
+            haric = _odunc_idleri()
+            en_iyi_ot = (
+                OnTeklif.query.filter(
+                    OnTeklif.dukkan_kodu == dukkan,
+                    ~OnTeklif.urun_id.in_(haric),
+                )
+                .order_by(OnTeklif.id.asc())
+                .first()
+                if haric
+                else None
+            )
+        if en_iyi_ot:
+            on_urun = db.session.get(Urun, en_iyi_ot.urun_id)
+            if not _otonom_urun_satildi(on_urun) and on_urun.id != son_biten_id:
+                secilen_urun = on_urun
+                acilis_fiyati = float(en_iyi_ot.teklif)
+                kazanan = en_iyi_ot.musteri_adi
+                kazanan_id = en_iyi_ot.musteri_id
+            elif _otonom_urun_satildi(on_urun):
+                db.session.delete(en_iyi_ot)
+                db.session.commit()
+
+    if secilen_urun is None:
+        aciklar = _otonom_satilmamis_lotlar(dukkan)
+        if son_biten_id and len(aciklar) > 1:
+            biten = next((u for u in aciklar if u.id == son_biten_id), None)
+            diger = [u for u in aciklar if u.id != son_biten_id]
+            esik = int(biten.lot_no or 0) if biten is not None else -1
+            secilen_urun = next(
+                (u for u in diger if int(u.lot_no or 0) > esik),
+                diger[0] if diger else None,
+            )
+        elif aciklar:
+            secilen_urun = aciklar[0]
+        if secilen_urun is not None and acilis_fiyati == 0 and kazanan == "Yok":
+            acilis_fiyati = float(secilen_urun.acilis_fiyati or 0)
+
+    if secilen_urun is None:
+        return None
+    return secilen_urun, acilis_fiyati, kazanan, kazanan_id, yeniden_sahne
+
+
+def _otonom_secileni_yayinla(dukkan, secilen_urun, acilis_fiyati, kazanan, kazanan_id):
+    """Seçilen ürünü /sahneye-al ile aynı sahne ve sayaç kaydıyla izleyiciye yayınlar."""
+    oda = odalar[dukkan]
+    with oda_kilitleri[dukkan]:
+        if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
+            return False
+        oda["aktif_urun_id"] = secilen_urun.id
+        oda["durum"]["durum"] = "Bekliyor"
+        oda["durum"]["pey"] = acilis_fiyati
+        oda["durum"]["kazanan"] = kazanan
+        oda["durum"]["kazanan_id"] = kazanan_id
+        oda["durum"]["sure_bitis"] = 0
+        oda["lot_kapanis"] = ""
+        oda["satildi"] = False
+        oda["satis_tebrik_bekleniyor"] = False
+        oda["karar_pey_geldi"] = False
+        oda["sayac_aktif"] = False
+        oda["sayac_kalan"] = 180
+        oda["son_hareket"] = time.time()
+        oda["son_sessizlik"] = 0
+        secilen_urun.guncel_fiyat = acilis_fiyati
+        secilen_urun.durum = "Aktif"
+        secilen_urun.kazanan_adi = kazanan
+        secilen_urun.kazanan_id = kazanan_id
+        db.session.add(secilen_urun)
+        db.session.commit()
+        paket = secilen_urun.to_dict()
+        lot_no = secilen_urun.lot_no
+        baslik = secilen_urun.urun_adi
+        hemen_al = secilen_urun.hemen_al_fiyati or 0
+        tanitim = secilen_urun.tanitim_yazisi or ""
+        urun_id = secilen_urun.id
+    for _takip in UrunTakip.query.filter_by(urun_id=urun_id).all():
+        _iki_odayi(
+            "urun_takip_bildirimi",
+            {
+                "dukkan": dukkan,
+                "urun_id": urun_id,
+                "mesaj": f"Takip ettiğiniz Lot #{lot_no} ({baslik}) sahneye alındı!",
+            },
+            dukkan,
+        )
+    sahneyi_herkese_yayinla(
+        dukkan,
+        paket,
+        {
+            "dukkan": dukkan,
+            "urun_id": urun_id,
+            "pey": acilis_fiyati,
+            "kazanan": kazanan,
+            "kazanan_id": kazanan_id,
+        },
+        yeni_urun=True,
+    )
+    bota_haber_ver(
+        "urun_sahneye_aldi",
+        {
+            "dukkan": dukkan,
+            "lot": lot_no,
+            "baslik": baslik,
+            "acilis": acilis_fiyati,
+            "guncel_fiyat": acilis_fiyati,
+            "hemen_al": hemen_al,
+            "tanitim_yazisi": tanitim,
+        },
+    )
+    _iki_odayi(
+        "sayac_guncelle",
+        {
+            "dukkan": dukkan,
+            "kalan": 180,
+            "kalan_sure": 180,
+            "toplam": 180,
+            "sayac_gorunsun": True,
+            "sayac_aktif": False,
+            "asama": "bekliyor",
+        },
+        dukkan,
+    )
+    return True
+
+
 def _otonom_donguyu_garantile(dukkan):
     if _otonom_dongu_calisiyor.get(dukkan):
         return
@@ -3329,10 +3602,19 @@ def _otonom_donguyu_garantile(dukkan):
 
 def _otonomu_baslat(dukkan):
     oda = odalar[dukkan]
-    lot = _otonom_musait_lot(dukkan, oda)
     if dukkan_kalici_durum is not None:
+        dukkan_kalici_durum.lider_ol(dukkan, zorla=True)
         dukkan_kalici_durum.kaydet(dukkan, otonom_aktif=True, son_hata="")
     oda["otonom_aktif"] = True
+    lot = _otonom_musait_lot(dukkan, oda)
+    if not (oda.get("aktif_urun_id") and oda.get("sayac_aktif")):
+        secim = _otonom_siradaki_sec(dukkan, None)
+        if secim is not None:
+            secilen_urun, acilis_fiyati, kazanan, kazanan_id, _yeniden = secim
+            if _otonom_secileni_yayinla(
+                dukkan, secilen_urun, acilis_fiyati, kazanan, kazanan_id
+            ):
+                lot = secilen_urun.lot_no
     _otonom_donguyu_garantile(dukkan)
     _otonom_durum_duyur(dukkan, True)
     return lot
@@ -3400,9 +3682,9 @@ def diger_otonom_pas_gec(pas):
 
 
 def _otonom_gozcusu():
-    while True:
-        try:
-            with app.app_context():
+    with app.app_context():
+        while True:
+            try:
                 for kod in list(DUKKANLAR.keys()):
                     if dukkan_kalici_durum is None:
                         break
@@ -3412,12 +3694,19 @@ def _otonom_gozcusu():
                         oda["otonom_aktif"] = aktif
                     if aktif:
                         _otonom_donguyu_garantile(kod)
-        except Exception as hata:
-            print(f"[OTONOM] gozcu: {hata}", flush=True)
-        socketio.sleep(2)
+            except Exception as hata:
+                print(f"[OTONOM] gozcu: {hata}", flush=True)
+            finally:
+                db.session.remove()
+            socketio.sleep(2)
 
 
 def dukkan_otonom_dongusu(dukkan):
+    with app.app_context():
+        _dukkan_otonom_dongusu_ic(dukkan)
+
+
+def _dukkan_otonom_dongusu_ic(dukkan):
     oda = odalar[dukkan]
     kural = DUKKANLAR[dukkan]
     _otonom_dongu_calisiyor[dukkan] = True
@@ -3444,140 +3733,15 @@ def dukkan_otonom_dongusu(dukkan):
                     if oda.get("aktif_urun_id") and oda.get("sayac_aktif"):
                         pass
                     else:
-                        yeniden_sahne = True
-                        secilen_urun = None
-                        acilis_fiyati = 0
-                        kazanan = "Yok"
-                        kazanan_id = None
-
-                        if oda.get("aktif_urun_id") and not oda.get("sayac_aktif"):
-                            sahnedeki = db.session.get(Urun, oda["aktif_urun_id"])
-                            if not _otonom_urun_satildi(sahnedeki):
-                                secilen_urun = sahnedeki
-                                acilis_fiyati = float(
-                                    oda["durum"].get("pey") or sahnedeki.acilis_fiyati or 0
-                                )
-                                kazanan = oda["durum"].get("kazanan") or "Yok"
-                                kazanan_id = oda["durum"].get("kazanan_id")
-                                yeniden_sahne = False
-                            else:
-                                oda["aktif_urun_id"] = None
-
-                        if secilen_urun is None:
-                            en_iyi_ot = (
-                                OnTeklif.query.filter_by(dukkan_kodu=dukkan)
-                                .order_by(OnTeklif.id.asc())
-                                .first()
-                            )
-                            try:
-                                from diger_canli_sahne import odunc_idleri as _odunc_idleri
-                                from diger_canli_sahne import odunc_mu as _odunc_mu
-                            except Exception:
-                                _odunc_mu = None
-                                _odunc_idleri = None
-                            if (
-                                en_iyi_ot
-                                and _odunc_mu
-                                and _odunc_idleri
-                                and _odunc_mu(en_iyi_ot.urun_id)
-                            ):
-                                haric = _odunc_idleri()
-                                en_iyi_ot = (
-                                    OnTeklif.query.filter(
-                                        OnTeklif.dukkan_kodu == dukkan,
-                                        ~OnTeklif.urun_id.in_(haric),
-                                    )
-                                    .order_by(OnTeklif.id.asc())
-                                    .first()
-                                    if haric
-                                    else None
-                                )
-                            if en_iyi_ot:
-                                on_urun = db.session.get(Urun, en_iyi_ot.urun_id)
-                                if (
-                                    not _otonom_urun_satildi(on_urun)
-                                    and on_urun.id != son_biten_id
-                                ):
-                                    secilen_urun = on_urun
-                                    acilis_fiyati = float(en_iyi_ot.teklif)
-                                    kazanan = en_iyi_ot.musteri_adi
-                                    kazanan_id = en_iyi_ot.musteri_id
-                                elif _otonom_urun_satildi(on_urun):
-                                    db.session.delete(en_iyi_ot)
-                                    db.session.commit()
-
-                        if secilen_urun is None:
-                            aciklar = _otonom_satilmamis_lotlar(dukkan)
-                            if son_biten_id and len(aciklar) > 1:
-                                biten = next(
-                                    (u for u in aciklar if u.id == son_biten_id), None
-                                )
-                                diger = [u for u in aciklar if u.id != son_biten_id]
-                                esik = int(biten.lot_no or 0) if biten is not None else -1
-                                secilen_urun = next(
-                                    (u for u in diger if int(u.lot_no or 0) > esik),
-                                    diger[0] if diger else None,
-                                )
-                            elif aciklar:
-                                secilen_urun = aciklar[0]
-                            if secilen_urun is not None and acilis_fiyati == 0 and kazanan == "Yok":
-                                acilis_fiyati = float(secilen_urun.acilis_fiyati or 0)
-
-                        if secilen_urun is None:
+                        secim = _otonom_siradaki_sec(dukkan, son_biten_id)
+                        if secim is None:
                             socketio.sleep(3)
                             continue
-
-                        if yeniden_sahne:
-                            with oda_kilitleri[dukkan]:
-                                if not oda.get("otonom_aktif") or oda.get("sayac_aktif"):
-                                    continue
-                                oda["aktif_urun_id"] = secilen_urun.id
-                                oda["durum"]["durum"] = "Bekliyor"
-                                oda["durum"]["pey"] = acilis_fiyati
-                                oda["durum"]["kazanan"] = kazanan
-                                oda["durum"]["kazanan_id"] = kazanan_id
-                                secilen_urun.guncel_fiyat = acilis_fiyati
-                                db.session.commit()
-                                paket = secilen_urun.to_dict()
-                                lot_no = secilen_urun.lot_no
-                                baslik = secilen_urun.urun_adi
-                                hemen_al = secilen_urun.hemen_al_fiyati or 0
-                                tanitim = secilen_urun.tanitim_yazisi or ""
-                                urun_id = secilen_urun.id
-                            for _takip in UrunTakip.query.filter_by(urun_id=urun_id).all():
-                                _iki_odayi(
-                                    "urun_takip_bildirimi",
-                                    {
-                                        "dukkan": dukkan,
-                                        "urun_id": urun_id,
-                                        "mesaj": f"Takip ettiğiniz Lot #{lot_no} ({baslik}) sahneye alındı!",
-                                    },
-                                    dukkan,
-                                )
-                            sahneyi_herkese_yayinla(
-                                dukkan,
-                                paket,
-                                {
-                                    "dukkan": dukkan,
-                                    "urun_id": urun_id,
-                                    "pey": acilis_fiyati,
-                                    "kazanan": kazanan,
-                                    "kazanan_id": kazanan_id,
-                                },
-                                yeni_urun=True,
-                            )
-                            bota_haber_ver(
-                                "urun_sahneye_aldi",
-                                {
-                                    "dukkan": dukkan,
-                                    "lot": lot_no,
-                                    "baslik": baslik,
-                                    "acilis": acilis_fiyati,
-                                    "guncel_fiyat": acilis_fiyati,
-                                    "hemen_al": hemen_al,
-                                    "tanitim_yazisi": tanitim,
-                                },
-                            )
+                        secilen_urun, acilis_fiyati, kazanan, kazanan_id, yeniden_sahne = secim
+                        if yeniden_sahne and not _otonom_secileni_yayinla(
+                            dukkan, secilen_urun, acilis_fiyati, kazanan, kazanan_id
+                        ):
+                            continue
 
                         _otonom_secere_oku(dukkan, secilen_urun, acilis_fiyati)
                         _oturumu_birak()
@@ -3655,6 +3819,10 @@ def dukkan_otonom_dongusu(dukkan):
                             _otonom_sahneyi_indir(dukkan)
             except Exception as hata:
                 _otonom_hatayi_bildir(dukkan, hata)
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 
 # VERİTABANI ONARIMI: Tüm eksik kolonları (ip_adresi dahil) PostgreSQL'e otomatik ekler
@@ -3869,6 +4037,8 @@ def veritabani_tablolari_onar():
         try:
             print("[BOOT] urun kategori indeksleri", flush=True)
             urun_vitrin_indekslerini_hazirla()
+            print("[BOOT] ban kalintilari", flush=True)
+            ban_kalintilarini_temizle()
             print("[BOOT] veritabani onarimi bitti", flush=True)
         except Exception:
             try:
@@ -5000,6 +5170,121 @@ def istek_cihaz_kodu(veri=None):
     return get_device_fingerprint()
 
 
+def _telefon_bicimleri(tel):
+    ham = "".join(ch for ch in str(tel or "") if ch.isdigit())
+    if not ham:
+        return []
+    bicimler = {ham}
+    if ham.startswith("0"):
+        bicimler.add(ham[1:])
+    else:
+        bicimler.add("0" + ham)
+    if ham.startswith("90") and len(ham) > 10:
+        bicimler.add(ham[2:])
+        bicimler.add("0" + ham[2:])
+    return [b for b in bicimler if b]
+
+
+def kara_listeden_sil(kullanici):
+    """Ban kalkınca bu telefon, e-posta, IP ve kullanıcıya ait kara liste satırlarını siler."""
+    if not kullanici or not getattr(kullanici, "id", None):
+        return
+    tel = (kullanici.telefon or "").strip()
+    posta = (kullanici.email or "").strip().lower()
+    cihaz = (kullanici.cihaz_kodu or "").strip()
+    ip = (kullanici.ip_adresi or "").strip()
+    ad = (kullanici.ad_soyad or "").strip().lower()
+    kosullar = [KaraListe.kaynak_id == kullanici.id]
+    for bicim in _telefon_bicimleri(tel):
+        kosullar.append(KaraListe.telefon == bicim)
+    if posta:
+        kosullar.append(func.lower(KaraListe.email) == posta)
+    if cihaz:
+        kosullar.append(KaraListe.cihaz_kodu == cihaz)
+    if ip:
+        kosullar.append(KaraListe.ip_adresi == ip)
+    for satir in KaraListe.query.filter(or_(*kosullar)).all():
+        db.session.delete(satir)
+    if not ad:
+        return
+    for kolon in ("kullanici_adi", "ad_soyad", "kullanici_ad"):
+        try:
+            if IS_SQLITE:
+                satirlar = db.session.execute(text("PRAGMA table_info(kara_liste)")).fetchall()
+                var = any(str(satir[1]) == kolon for satir in satirlar)
+            else:
+                var = db.session.execute(
+                    text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = 'kara_liste' AND column_name = :kolon"
+                    ),
+                    {"kolon": kolon},
+                ).first() is not None
+        except Exception:
+            var = False
+        if not var:
+            continue
+        db.session.execute(
+            text(
+                f"DELETE FROM kara_liste WHERE lower({kolon}) = :ad "
+                "AND (kaynak_id IS NULL OR kaynak_id = :id)"
+            ),
+            {"ad": ad, "id": kullanici.id},
+        )
+
+
+def _ayni_ban_kimlikleri(kullanici):
+    kosullar = [Kullanici.id == kullanici.id]
+    posta = (kullanici.email or "").strip().lower()
+    telefonlar = _telefon_bicimleri(kullanici.telefon)
+    if posta:
+        kosullar.append(func.lower(Kullanici.email) == posta)
+    if telefonlar:
+        kosullar.append(Kullanici.telefon.in_(telefonlar))
+    return Kullanici.query.filter(or_(*kosullar)).all()
+
+
+def bani_kaldir(kullanici):
+    if not kullanici:
+        return
+    for kayit in _ayni_ban_kimlikleri(kullanici):
+        kayit.is_banned = False
+        if (kayit.durum or "") == "engellendi":
+            kayit.durum = "onayli"
+            kayit.onayli_mi = True
+        for kolon in ("banli", "askida", "aski", "askiya_alindi"):
+            if not _kullanici_kolonu_var_mi(kolon):
+                continue
+            db.session.execute(
+                text(f"UPDATE kullanici SET {kolon} = 0 WHERE id = :i"),
+                {"i": kayit.id},
+            )
+        kara_listeden_sil(kayit)
+
+
+def ban_kalintilarini_temizle():
+    """Görünürde açık olup bayrağı veya kara listesi askıda kalmış kayıtları düzeltir."""
+    try:
+        acik = Kullanici.query.filter(
+            or_(Kullanici.is_banned.is_(False), Kullanici.is_banned.is_(None)),
+            Kullanici.durum != "engellendi",
+        ).all()
+        for kayit in acik:
+            KaraListe.query.filter(KaraListe.kaynak_id == kayit.id).delete(
+                synchronize_session=False
+            )
+        tutarsiz = Kullanici.query.filter(
+            Kullanici.is_banned.is_(True),
+            Kullanici.durum != "engellendi",
+        ).all()
+        for kayit in tutarsiz:
+            bani_kaldir(kayit)
+        db.session.commit()
+    except Exception as hata:
+        db.session.rollback()
+        print(f"[BAN] kalinti temizlenemedi: {hata}", flush=True)
+
+
 def kara_listeye_yaz(kullanici):
     if not kullanici:
         return
@@ -5050,23 +5335,13 @@ def kimlik_engeli(kullanici=None, telefon="", email="", cihaz="", ip=""):
         except Exception:
             db.session.rollback()
         return True
-    tel = telefon or (getattr(kullanici, "telefon", "") if kullanici else "")
-    posta = email or (getattr(kullanici, "email", "") if kullanici else "")
-    cihaz_kodu = cihaz or (getattr(kullanici, "cihaz_kodu", "") if kullanici else "")
-    adres = ip or (getattr(kullanici, "ip_adresi", "") if kullanici else "")
-    if not kara_liste_cakisma(tel, posta, cihaz_kodu, adres):
-        return False
     if kullanici:
-        kullanici.is_banned = True
-        kullanici.durum = "engellendi"
-        kullanici.onayli_mi = False
-        kara_listeye_yaz(kullanici)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        kullanici_soketlerini_kes(kullanici.id)
-    return True
+        return False
+    tel = (telefon or "").strip()
+    posta = (email or "").strip().lower()
+    cihaz_kodu = (cihaz or "").strip()
+    adres = (ip or "").strip()
+    return kara_liste_cakisma(tel, posta, cihaz_kodu, adres) is not None
 
 
 def on_odeme_kilitli_mi(kullanici):
@@ -5171,11 +5446,32 @@ def otp_kodu_uret():
     return f"{random.randint(0, 999999):06d}"
 
 
+def _smtp_gercek_socket():
+    """Gevent yamalı soket, işletim sistemi ipliğinde hub'ı kilitler."""
+    try:
+        from gevent.monkey import get_original
+        return get_original("socket")
+    except Exception:
+        return None
+
+
+def _smtp_is_kilidi():
+    kilit = getattr(_smtp_is_kilidi, "_kilit", None)
+    if kilit is None:
+        try:
+            from gevent.monkey import get_original
+            kilit = get_original("threading", "Lock")()
+        except Exception:
+            kilit = threading.Lock()
+        _smtp_is_kilidi._kilit = kilit
+    return kilit
+
+
 def otp_eposta_gonder(alici, kod):
-    print(f"[TEST-OTP] {kod}")
+    print(f"[TEST-OTP] {kod}", flush=True)
     host = os.environ.get("SMTP_HOST", "").strip()
     if not host or not alici:
-        print("[OTP] SMTP_HOST tanımlı değil; kod yalnızca test çıktısına yazıldı.")
+        print("[OTP] SMTP_HOST tanımlı değil; kod yalnızca test çıktısına yazıldı.", flush=True)
         return False
     try:
         import smtplib
@@ -5189,18 +5485,41 @@ def otp_eposta_gonder(alici, kod):
             "Kod 10 dakika geçerlidir."
         )
         port = int(os.environ.get("SMTP_PORT", "587") or 587)
-        with smtplib.SMTP(host, port, timeout=10) as smtp:
-            if os.environ.get("SMTP_TLS", "1") != "0":
-                smtp.starttls()
-            kullanici = os.environ.get("SMTP_USER", "")
-            sifre = os.environ.get("SMTP_PASSWORD", "")
-            if kullanici:
-                smtp.login(kullanici, sifre)
-            smtp.send_message(ileti)
+        gercek_socket = _smtp_gercek_socket()
+        eski_socket = smtplib.socket
+        with _smtp_is_kilidi():
+            if gercek_socket is not None:
+                smtplib.socket = gercek_socket
+            try:
+                with smtplib.SMTP(host, port, timeout=8) as smtp:
+                    if os.environ.get("SMTP_TLS", "1") != "0":
+                        smtp.starttls()
+                        if getattr(smtp, "sock", None) is not None:
+                            smtp.sock.settimeout(8)
+                    kullanici = os.environ.get("SMTP_USER", "")
+                    sifre = os.environ.get("SMTP_PASSWORD", "")
+                    if kullanici:
+                        smtp.login(kullanici, sifre)
+                    smtp.send_message(ileti)
+            finally:
+                smtplib.socket = eski_socket
         return True
     except Exception as hata:
-        print(f"[OTP] E-posta gönderilemedi: {hata}")
+        print(f"[OTP] E-posta gönderilemedi: {hata}", flush=True)
         return False
+
+
+def otp_epostayi_bekletmeden_gonder(alici, kod):
+    """Kod satırı kayda geçtikten sonra SMTP HTTP isteğini tutmasın."""
+    host = os.environ.get("SMTP_HOST", "").strip()
+    if not host or not alici:
+        return otp_eposta_gonder(alici, kod)
+    try:
+        import gevent
+        gevent.get_hub().threadpool.spawn(otp_eposta_gonder, alici, kod)
+    except Exception as hata:
+        print(f"[OTP] Arka plan e-posta başlatılamadı: {hata}", flush=True)
+    return True
 
 
 def otp_kaydet(kullanici):
@@ -6729,17 +7048,22 @@ def kayit_ol():
                 silindi_mi=False,
             )
             db.session.add(kullanici)
+        if not kullanici.sifre_hash:
+            kullanici.sifre_hash = generate_password_hash(uuid.uuid4().hex)
         kod = otp_kaydet(kullanici)
-        db.session.commit()
+        db.session.flush()
         try:
-            db.session.execute(
-                text("UPDATE kullanici SET sifre = '' WHERE id = :i AND (sifre IS NULL OR sifre = '')"),
-                {"i": kullanici.id},
-            )
-            db.session.commit()
+            with db.session.begin_nested():
+                db.session.execute(
+                    text(
+                        "UPDATE kullanici SET sifre = '' "
+                        "WHERE id = :i AND (sifre IS NULL OR sifre = '')"
+                    ),
+                    {"i": kullanici.id},
+                )
         except Exception as sifre_hata:
-            db.session.rollback()
-            print(f"Kayıt şifre alanı: {sifre_hata}")
+            print(f"Kayıt şifre alanı: {sifre_hata}", flush=True)
+        db.session.commit()
     except Exception as hata:
         db.session.rollback()
         print(f"Kayıt hatası: {hata}")
@@ -6751,9 +7075,9 @@ def kayit_ol():
         }), 500
 
     try:
-        gitti = otp_eposta_gonder(kullanici.email or mail, kod)
+        gitti = otp_epostayi_bekletmeden_gonder(kullanici.email or mail, kod)
     except Exception as posta_hata:
-        print(f"[OTP] E-posta gönderilemedi, kayıt korunuyor: {posta_hata}")
+        print(f"[OTP] E-posta gönderilemedi, kayıt korunuyor: {posta_hata}", flush=True)
         gitti = False
     return kod_yaniti(kullanici, kod, gitti)
 
@@ -9092,7 +9416,7 @@ def musteri_durum_guncelle():
             kullanici.onayli_mi = False
             kara_listeye_yaz(kullanici)
         elif yeni_durum == "onayli":
-            kullanici.is_banned = False
+            bani_kaldir(kullanici)
         db.session.commit()
 
         if yeni_durum == "engellendi":
@@ -9313,7 +9637,11 @@ def otonom_mezat_kontrol():
                 else:
                     _otonomu_durdur(d)
             except Exception as hata:
-                db.session.rollback()
+                print(f"[OTONOM] {d} iz:\n{traceback.format_exc()}", flush=True)
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
                 hatalar.append({"dukkan": d, "mesaj": str(hata)})
                 _otonom_hatayi_bildir(d, hata)
 
@@ -10390,7 +10718,7 @@ def _xml_gorsel_listesi(ham):
     return adresler
 
 
-def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None, stok_sifir=False):
+def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None, stok_sifir=False, stok=None):
     ad = _xml_etiket_temizle(ad)[:200]
     if not ad:
         return None
@@ -10404,6 +10732,16 @@ def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None, 
         gorseller = _xml_gorsel_listesi(gorseller)
     except Exception:
         gorseller = []
+    stok_adet = None
+    if stok is not None:
+        try:
+            sayi = stok if isinstance(stok, (int, float)) and not isinstance(stok, bool) else _xml_stok_sayisi(stok)
+            if sayi is not None:
+                stok_adet = max(0, int(float(sayi)))
+        except (TypeError, ValueError):
+            stok_adet = None
+    if stok_adet == 0:
+        stok_sifir = True
     nedenler = []
     if stok_sifir:
         nedenler.append("stok 0")
@@ -10414,6 +10752,7 @@ def _xml_kayit_paketle(ad, aciklama, kategori, fiyat, gorseller, kurallar=None, 
         "aciklama": aciklama,
         "kategori": kategori or "Genel",
         "fiyat": fiyat,
+        "stok": stok_adet,
         "gorseller": gorseller,
         "dukkan": _xml_dukkan_siniflandir(ad, aciklama, kategori, kurallar),
         "kayda_uygun": not nedenler,
@@ -10520,6 +10859,7 @@ def _xml_bloktan_urun(eleman, kurallar):
             gorseller,
             kurallar,
             stok_sifir=_xml_stok_sifir_mi(eleman),
+            stok=_xml_eleman_stok_adedi(eleman),
         )
     except Exception:
         return None
@@ -10611,6 +10951,7 @@ def _xml_tablodan_urunler(ham, uzanti, kurallar):
                 _xml_tablo_alani(basliklar, kayit, _XML_GORSEL_BASLIKLARI),
                 kurallar,
                 stok_sifir=_xml_stok_sayisi(stok_ham) == 0,
+                stok=stok_ham,
             )
         except Exception:
             paket = None
@@ -10675,23 +11016,78 @@ def _xml_tarama_yaniti(urunler, kaynak):
 
 
 def _xml_kaynagi_indir(url):
-    if not url.lower().startswith(("http://", "https://")):
+    """Eski requests indirmesi. gevent yamalı soket zaman aşımını yuttuğu için yamasız süreçte yürür."""
+    if not str(url or "").lower().startswith(("http://", "https://")):
         raise ValueError("XML linki http veya https olmalı.")
-    cevap = requests.get(url, timeout=90, stream=True)
-    try:
-        cevap.raise_for_status()
-        parcalar = []
-        boyut = 0
-        for parca in cevap.iter_content(chunk_size=65536):
-            if not parca:
-                continue
-            boyut += len(parca)
-            if boyut > _XML_LAB_BAYT:
+
+    def _cek():
+        from gevent.monkey import get_original
+        import subprocess
+        import sys
+        import tempfile
+
+        betik = (
+            "import sys\n"
+            "import requests\n"
+            "url, yol, sinir = sys.argv[1], sys.argv[2], int(sys.argv[3])\n"
+            "cevap = requests.get(url, timeout=90, stream=True)\n"
+            "try:\n"
+            "    cevap.raise_for_status()\n"
+            "    boyut = 0\n"
+            "    with open(yol, 'wb') as dosya:\n"
+            "        for parca in cevap.iter_content(chunk_size=65536):\n"
+            "            if not parca:\n"
+            "                continue\n"
+            "            boyut += len(parca)\n"
+            "            if boyut > sinir:\n"
+            "                raise SystemExit(2)\n"
+            "            dosya.write(parca)\n"
+            "finally:\n"
+            "    cevap.close()\n"
+        )
+        fd, yol = tempfile.mkstemp(suffix=".xml")
+        os.close(fd)
+        Popen = get_original("subprocess", "Popen")
+        try:
+            surec = Popen(
+                [sys.executable, "-c", betik, str(url), yol, str(_XML_LAB_BAYT)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            try:
+                _cikti, hata = surec.communicate(timeout=120)
+            except subprocess.TimeoutExpired:
+                surec.kill()
+                try:
+                    surec.communicate(timeout=5)
+                except Exception:
+                    pass
+                raise TimeoutError("XML indirme zaman aşımı")
+            if surec.returncode == 2:
                 raise ValueError("XML yanıtı 40 MB sınırını aşıyor.")
-            parcalar.append(parca)
-    finally:
-        cevap.close()
-    return b"".join(parcalar)
+            if surec.returncode != 0:
+                ozet = (hata or b"").decode("utf-8", errors="replace").replace("\n", " ")[:240]
+                raise ValueError(ozet or "XML indirilemedi.")
+            with open(yol, "rb") as dosya:
+                return dosya.read()
+        finally:
+            try:
+                os.remove(yol)
+            except OSError:
+                pass
+
+    import gevent
+    try:
+        return gevent.get_hub().threadpool.spawn(_cek).get(timeout=130)
+    except gevent.Timeout as hata:
+        raise TimeoutError("XML indirme zaman aşımı") from hata
+
+
+def _xml_kaynagini_ayikla(ham, uzanti):
+    """Excel ve XML ayrıştırması hub'ı kilitlemesin."""
+    return _havuzda_calistir(lambda: _xml_kaynagi_coz(ham, uzanti), 180)
 
 
 
@@ -10779,6 +11175,7 @@ def xml_laboratuvar_kurallar():
 @admin_required
 def toplu_urun_yukle():
     try:
+        _oturumu_birak()
         dosya = request.files.get("dosya")
         url = (request.form.get("xml_url") or "").strip()
         if dosya and getattr(dosya, "filename", ""):
@@ -10790,12 +11187,12 @@ def toplu_urun_yukle():
                 return jsonify({"success": False, "mesaj": "Dosya boş."})
             if len(ham) > _XML_LAB_BAYT:
                 return jsonify({"success": False, "mesaj": "Dosya 40 MB sınırını aşıyor."})
-            urunler = _xml_kaynagi_coz(ham, uzanti)
+            urunler = _xml_kaynagini_ayikla(ham, uzanti)
             kaynak = dosya.filename
             _xml_besleme["link"] = ""
         elif url:
             ham = _xml_kaynagi_indir(url)
-            urunler = _xml_kaynagi_coz(ham, ".xml")
+            urunler = _xml_kaynagini_ayikla(ham, ".xml")
             kaynak = url
             _xml_besleme["link"] = url
         else:
@@ -10849,6 +11246,12 @@ def xml_dagitimi_onayla():
                 if fiyat is None or not ad:
                     atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat eksik"})
                     continue
+                try:
+                    stok_adet = int(urun.get("stok")) if urun.get("stok") is not None else 1
+                except (TypeError, ValueError):
+                    stok_adet = 1
+                if stok_adet <= 0:
+                    stok_adet = 1
                 satis = _xml_satis_fiyati(fiyat, dagitim_kari)
                 if satis is None:
                     atlanan.append({"sira": sira, "ad": ad, "neden": "fiyat eksik"})
@@ -10884,14 +11287,19 @@ def xml_dagitimi_onayla():
                     hedef.fotograflar = gorseller
                     hedef.tanitim_yazisi = _xml_etiket_temizle(urun.get("aciklama"))[:4000]
                     hedef.kaynak_tipi = "xml"
+                    hedef.stok_adedi = stok_adet
                     hedef.hemen_al_fiyati = _xml_hemen_al_fiyati(satis)
                     if _xml_besleme.get("link"):
                         hedef.xml_kaynak_url = str(_xml_besleme.get("link"))[:500]
+                    db.session.commit()
                     guncellenen.append({
                         "dukkan": dukkan,
                         "lot_no": hedef.lot_no,
                         "ad": ad,
                     })
+                    if (len(eklenen) + len(guncellenen)) % 25 == 0:
+                        _oturumu_birak()
+                        socketio.sleep(0)
                     continue
                 lot_no = sonraki_lot(dukkan)
                 yeni_urun = Urun(
@@ -10909,13 +11317,19 @@ def xml_dagitimi_onayla():
                     durum="Aktif",
                     silindi_mi=False,
                     kaynak_tipi="xml",
+                    stok_adedi=stok_adet,
                     xml_kaynak_url=(str(_xml_besleme.get("link") or "")[:500] or None),
                 )
                 if hasattr(yeni_urun, "eklenme_tarihi") and getattr(yeni_urun, "eklenme_tarihi", None) is None:
                     yeni_urun.eklenme_tarihi = datetime.now()
                 db.session.add(yeni_urun)
+                db.session.commit()
                 eklenen.append({"dukkan": dukkan, "lot_no": lot_no, "ad": ad})
+                if (len(eklenen) + len(guncellenen)) % 25 == 0:
+                    _oturumu_birak()
+                    socketio.sleep(0)
             except Exception as hata:
+                db.session.rollback()
                 atlanan.append({
                     "sira": sira,
                     "ad": str((urun or {}).get("ad") if isinstance(urun, dict) else "")[:200],
@@ -11615,8 +12029,9 @@ def xml_stok_senkron_calistir(yalniz_id=None):
                 for kaynak in secilen:
                     try:
                         url = kaynak["url"]
+                        _oturumu_birak()
                         ham = _xml_kaynagi_indir(url)
-                        kayitlar = _xml_stok_kayitlarini_oku(ham)
+                        kayitlar = _havuzda_calistir(lambda: _xml_stok_kayitlarini_oku(ham), 180)
                         if not kayitlar:
                             print("XML stok senkronu: ürün satırı yok, bu kaynak duruyor.")
                             continue

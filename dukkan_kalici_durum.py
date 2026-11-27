@@ -228,25 +228,17 @@ def acilista_yukle(dukkan):
     return otonom
 
 
-def lider_ol(dukkan, sure=None):
-    """Döngüyü tek süreç yürütür. Kilit süresi dolunca başka işçi devralabilir."""
-    pid = str(os.getpid())
-    simdi = time.time()
-    pencere = float(sure or _kilit_sure)
-    if _redis is not None:
-        try:
-            anahtar = f"halic:dukkan:lider:{dukkan}"
-            sahip = _redis.get(anahtar)
-            if sahip in (None, "", pid):
-                _redis.set(anahtar, pid, ex=int(pencere))
-                return _redis.get(anahtar) == pid
-            return False
-        except Exception as hata:
-            print(f"[DUKKAN DURUM] Redis lider atlandi: {hata}", flush=True)
-    esik = simdi - pencere
-    sonuc = _oturum().execute(
-        text(
-            """
+def _lider_db_al(dukkan, pid, simdi, zorla, pencere):
+    """Veritabanı lider satırını alır. zorla=True takılı kilidi bu sürece devreder."""
+    if zorla:
+        sorgu = """
+            UPDATE dukkan_durum
+            SET lider_pid = :pid, lider_nabiz = :simdi
+            WHERE dukkan_kodu = :kod
+        """
+        parametre = {"pid": pid, "simdi": simdi, "kod": dukkan}
+    else:
+        sorgu = """
             UPDATE dukkan_durum
             SET lider_pid = :pid, lider_nabiz = :simdi
             WHERE dukkan_kodu = :kod
@@ -254,12 +246,74 @@ def lider_ol(dukkan, sure=None):
                 lider_pid IS NULL OR lider_pid = '' OR lider_pid = :pid
                 OR lider_nabiz IS NULL OR lider_nabiz < :esik
               )
+        """
+        parametre = {
+            "pid": pid,
+            "simdi": simdi,
+            "kod": dukkan,
+            "esik": simdi - float(pencere),
+        }
+    sonuc = _oturum().execute(text(sorgu), parametre)
+    _oturum().commit()
+    if int(sonuc.rowcount or 0) == 1:
+        return True
+    if not zorla:
+        return False
+    _oturum().execute(
+        text(
+            """
+            INSERT INTO dukkan_durum
+                (dukkan_kodu, otonom_aktif, canli_durum, son_hata, lider_pid, lider_nabiz, guncelleme)
+            VALUES
+                (:kod, :otonom, :canli, :hata, :pid, :simdi, :an)
+            ON CONFLICT(dukkan_kodu) DO UPDATE SET
+                lider_pid = excluded.lider_pid,
+                lider_nabiz = excluded.lider_nabiz
             """
         ),
-        {"pid": pid, "simdi": simdi, "kod": dukkan, "esik": esik},
+        {
+            "kod": dukkan,
+            "otonom": False,
+            "canli": False,
+            "hata": "",
+            "pid": pid,
+            "simdi": simdi,
+            "an": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
     )
     _oturum().commit()
-    return int(sonuc.rowcount or 0) == 1
+    return True
+
+
+def lider_ol(dukkan, sure=None, zorla=False):
+    """Döngüyü tek süreç yürütür. Kilit süresi dolunca başka işçi devralabilir.
+
+    zorla=True: "17 Salonu Başlat" takılı kalmış lider kilidini bu sürece devreder.
+    """
+    pid = str(os.getpid())
+    simdi = time.time()
+    pencere = float(sure or _kilit_sure)
+    if _redis is not None:
+        try:
+            anahtar = f"halic:dukkan:lider:{dukkan}"
+            sahip = _redis.get(anahtar)
+            if zorla or sahip in (None, "", pid):
+                _redis.set(anahtar, pid, ex=int(pencere))
+                if _redis.get(anahtar) == pid:
+                    if zorla:
+                        try:
+                            _lider_db_al(dukkan, pid, simdi, True, pencere)
+                        except Exception as hata:
+                            print(f"[DUKKAN DURUM] lider devralma yazilamadi: {hata}", flush=True)
+                            try:
+                                _oturum().rollback()
+                            except Exception:
+                                pass
+                    return True
+            return False
+        except Exception as hata:
+            print(f"[DUKKAN DURUM] Redis lider atlandi: {hata}", flush=True)
+    return _lider_db_al(dukkan, pid, simdi, zorla, pencere)
 
 
 def lider_birak(dukkan):

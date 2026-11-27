@@ -28,9 +28,18 @@ keepalive = 5
 def post_fork(server, worker):
     """Sema ve indeks DDL'i burada calismaz.
 
-    preload_app kapali oldugu icin her worker uygulamayi kendi yukler.
-    PostgreSQL advisory lock app acilisindadir. Bu kanca yalnizca worker
-    kimligini isaretler.
+    Uygulama yuklenmeden gevent yamasi vurulur. eventlet secilmez;
+    thread ve contextvars acik kalir ki arka plan yesil ipligi
+    SQLAlchemy app_context kaydini uyku sirasinda dusurmesin.
     """
+    import sys
+    from gevent import monkey
+
+    ssl_onceden = "ssl" in sys.modules
+    monkey.patch_all(thread=True, contextvars=True, ssl=not ssl_onceden)
     os.environ["GUNICORN_WORKER_PID"] = str(worker.pid)
-    worker.log.info("worker %s acildi; sema kilidi boot asamasinda", worker.pid)
+    worker.log.info(
+        "worker %s gevent baglami hazir ssl=%s",
+        worker.pid,
+        "0" if ssl_onceden else "1",
+    )

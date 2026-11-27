@@ -43,17 +43,22 @@ def _havuz_tam_sayi(ad, varsayilan):
 
 
 def _sqlalchemy_engine_options(db_uri):
-    """PostgreSQL havuzu. Yerel SQLite dosyasında kilit beklemesi 30 saniyedir."""
+    """17 salon aynı anda açılınca varsayılan 5+10 havuzu yetmez."""
+    havuz = {
+        "pool_size": 30,
+        "max_overflow": 40,
+        "pool_timeout": 15,
+        "pool_recycle": 280,
+        "pool_pre_ping": True,
+    }
     adres = str(db_uri or "")
     if adres.startswith("sqlite"):
-        return {"connect_args": {"timeout": 30}}
-    return {
-        "pool_pre_ping": True,
-        "pool_recycle": 280,
-        "pool_size": _havuz_tam_sayi("DB_POOL_SIZE", 20),
-        "max_overflow": _havuz_tam_sayi("DB_MAX_OVERFLOW", 30),
-        "connect_args": {"options": "-c lock_timeout=5000"},
-    }
+        havuz["connect_args"] = {"timeout": 30}
+        return havuz
+    havuz["pool_size"] = _havuz_tam_sayi("DB_POOL_SIZE", 30)
+    havuz["max_overflow"] = _havuz_tam_sayi("DB_MAX_OVERFLOW", 40)
+    havuz["connect_args"] = {"options": "-c lock_timeout=5000"}
+    return havuz
 
 
 def _veritabani_adresi():
