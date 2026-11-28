@@ -4589,6 +4589,104 @@ def vitrin_urunler():
         db.session.remove()
 
 
+def _siradaki_lot_karti(urun):
+    fotolar = list(getattr(urun, "fotograflar", None) or [])
+    foto = fotolar[0] if fotolar else (urun.video or "")
+    return {
+        "lot": urun.lot_no,
+        "ad": urun.urun_adi or "Ürün",
+        "fiyat": float(urun.acilis_fiyati or 0),
+        "foto": foto or "",
+    }
+
+
+@app.route("/api/siradaki-lotlar", methods=["GET"])
+def siradaki_lotlar():
+    """Sahnedeki üründen sonraki ilk 3 bekleyen lot. Pey ve sayaca yazmaz."""
+    dukkan = dukkan_dogrula(request.args.get("dukkan", "diger"))
+    if dukkan == "diger":
+        try:
+            from diger_canli_sahne import kuyruk_listesi
+
+            urunler = []
+            for kart in (kuyruk_listesi() or [])[:3]:
+                urunler.append({
+                    "lot": kart.get("lot_no"),
+                    "ad": kart.get("baslik") or "Ürün",
+                    "fiyat": float(kart.get("baslangic_fiyati") or 0),
+                    "foto": kart.get("gorsel") or "",
+                })
+            return jsonify({"success": True, "urunler": urunler})
+        except Exception:
+            return jsonify({"success": True, "urunler": []})
+    try:
+        aktif_id = (odalar.get(dukkan) or {}).get("aktif_urun_id")
+        simdiki = db.session.get(Urun, aktif_id) if aktif_id else None
+        esik = int(simdiki.lot_no or 0) if simdiki is not None else -1
+
+        def sorgu():
+            return Urun.query.filter(
+                Urun.dukkan_kodu == dukkan,
+                Urun.durum != "Satıldı",
+                or_(Urun.silindi_mi.is_(False), Urun.silindi_mi.is_(None)),
+                or_(Urun.stok_adedi.is_(None), Urun.stok_adedi > 0),
+            )
+
+        sonraki = sorgu()
+        if simdiki is not None:
+            sonraki = sonraki.filter(Urun.id != simdiki.id)
+        sonraki = (
+            sonraki.filter(Urun.lot_no > esik)
+            .order_by(Urun.lot_no.asc(), Urun.id.asc())
+            .limit(3)
+            .all()
+        )
+        secilen = list(sonraki)
+        kalan = 3 - len(secilen)
+        if kalan > 0:
+            basi = sorgu().filter(Urun.lot_no <= esik)
+            if simdiki is not None:
+                basi = basi.filter(Urun.id != simdiki.id)
+            secilen.extend(
+                basi.order_by(Urun.lot_no.asc(), Urun.id.asc()).limit(kalan).all()
+            )
+        return jsonify({"success": True, "urunler": [_siradaki_lot_karti(u) for u in secilen]})
+    except Exception:
+        db.session.rollback()
+        return jsonify({"success": True, "urunler": []})
+    finally:
+        db.session.remove()
+
+
+@app.route("/api/fanus/tepki", methods=["POST"])
+def izleyici_fanus_tepkisi():
+    """Hızlı tepki puanı. Yorumla aynı 15 saniyelik aralığı kullanır."""
+    veri = request.get_json(silent=True) or {}
+    simge = str(veri.get("simge") or "")
+    if simge not in ("🔥", "👏", "💎"):
+        return jsonify({"success": False, "puan": False}), 400
+    ham = session.get("kullanici_id") or session.get("musteri_id") or veri.get("kullanici_id")
+    try:
+        kimlik = int(ham)
+    except (TypeError, ValueError):
+        return jsonify({"success": True, "puan": False, "giris": False})
+    if kimlik <= 0:
+        return jsonify({"success": True, "puan": False, "giris": False})
+    dukkan = dukkan_dogrula(veri.get("dukkan"))
+    try:
+        from fanus_yarisi import _YORUM_ARALIGI, _odul_yaz, _son_yorum
+
+        if (time.time() - _son_yorum(kimlik)) < _YORUM_ARALIGI:
+            return jsonify({"success": True, "puan": False, "bekle": True})
+        _odul_yaz(kimlik, dukkan, 2, 1, "yorum")
+        return jsonify({"success": True, "puan": True})
+    except Exception as hata:
+        print("[FANUS] tepki atlandi: " + str(hata), flush=True)
+        return jsonify({"success": True, "puan": False})
+    finally:
+        db.session.remove()
+
+
 _KURUMSAL_ALANLAR = (
     "sirketUnvani",
     "vergiDairesi",

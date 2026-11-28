@@ -704,11 +704,206 @@
             .kargo-fanus-dalga, .kargo-fanus-dalga::after, .kargo-fanus.dolu { animation: none; }
         }
         .fanus-cifti {
+            position: static;
+            z-index: 2;
+            height: 32px;
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            margin-left: 6px;
+            pointer-events: auto;
+        }
+        .fanus-cifti > .tema-fanus,
+        .fanus-cifti > .kargo-fanus,
+        .tepki-kutu { flex: 0 0 32px; }
+        .tepki-kutu { position: relative; width: 32px; height: 32px; }
+        .tepki-menu {
+            position: absolute;
+            right: 0;
+            bottom: calc(100% + 8px);
+            z-index: 8;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(8, 14, 24, 0.62);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .tepki-menu[hidden] { display: none !important; }
+        .tepki-menu button {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.08);
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .hoparlor-fanus {
+            margin-left: auto;
+            pointer-events: auto;
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
+            font-size: 15px;
+        }
+        @media (max-width: 360px) {
+            .fanus-cifti { gap: 4px; margin-left: 4px; }
+        }
+        .lot-vitrin {
+            position: fixed;
+            left: max(8px, calc(50vw - 232px));
+            right: auto;
+            bottom: calc(156px + env(safe-area-inset-bottom));
+            z-index: 10050;
+            width: min(260px, calc(100vw - 24px));
+            padding: 10px;
+            box-sizing: border-box;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background: rgba(8, 14, 24, 0.72);
+            color: #f8fafc;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+        .lot-vitrin[hidden] { display: none !important; }
+        .lot-vitrin-ust {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .lot-vitrin-ust b { font-size: 13px; color: #fef08a; }
+        .lot-vitrin-ust button {
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 800;
+        }
+        .lot-vitrin-kart {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex: 0 0 auto;
+            padding: 6px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
         }
+        .lot-vitrin-kart img {
+            width: 42px;
+            height: 42px;
+            object-fit: cover;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            flex: 0 0 42px;
+        }
+        .lot-vitrin-kart .lot-no { font-size: 10px; font-weight: 800; color: #fde68a; }
+        .lot-vitrin-kart .lot-ad {
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.25;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .lot-vitrin-kart .lot-fiyat { font-size: 11px; color: #99f6e4; font-weight: 800; }
+        .lot-vitrin-bos { margin: 4px 0 2px; font-size: 12px; line-height: 1.4; color: #e2e8f0; }
+        .tepki-sahne {
+            position: fixed;
+            right: max(12px, calc(50vw - 228px));
+            bottom: calc(156px + env(safe-area-inset-bottom));
+            width: 72px;
+            height: min(42vh, 280px);
+            z-index: 1100;
+            pointer-events: none;
+            overflow: visible;
+        }
+        .tepki-balon {
+            position: absolute;
+            right: 8px;
+            bottom: 0;
+            font-size: 26px;
+            line-height: 1;
+            opacity: 0.92;
+            filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+            animation: tepkiYuksel 2.6s ease-out forwards;
+        }
+        @keyframes tepkiYuksel {
+            0% { transform: translate3d(0, 8px, 0) scale(0.82); opacity: 0.95; }
+            70% { opacity: 0.72; }
+            100% { transform: translate3d(var(--tepki-kayma, -6px), -38vh, 0) scale(1.08); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .tepki-balon { animation-duration: 0.01ms; }
+        }
+        .kurulum-sekmeler { display: flex; gap: 6px; margin-bottom: 10px; }
+        .kurulum-sekmeler button {
+            flex: 1;
+            margin: 0;
+            padding: 7px 4px;
+            border-radius: 999px;
+            border: 1px solid rgba(212, 175, 55, 0.45);
+            background: transparent;
+            color: #f8fafc;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .kurulum-sekmeler button.secili { background: #d4af37; color: #111; }
+        .kurulum-uyari {
+            margin: 0 0 8px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(180, 83, 9, 0.22);
+            border: 1px solid rgba(253, 230, 138, 0.55);
+            color: #fef3c7;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .kurulum-uyari[hidden] { display: none !important; }
+        .kurulum-panel[hidden] { display: none !important; }
+        .kurulum-adim {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin: 0 0 8px;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+        .kurulum-ikon {
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            font-size: 14px;
+            font-weight: 800;
+        }
+        .kurulum-bildirim {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.14);
+        }
+        .kurulum-bildirim p { margin: 0 0 8px; font-size: 12px; color: #e2e8f0; }
+        .pwa-ios-kutu { max-height: min(86vh, 640px); overflow: auto; }
         .tema-fanus {
             position: relative;
             z-index: 2;
@@ -1579,19 +1774,20 @@
         .btn-dinle-kisa {
             position: static;
             z-index: 2;
-            width: 36px;
-            height: 36px;
-            flex: 0 0 36px;
+            width: 32px;
+            height: 32px;
+            flex: 0 0 32px;
             box-sizing: border-box;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0, 0, 0, 0.38);
-            color: #ffffff;
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.28), rgba(8, 18, 32, 0.55) 46%, rgba(2, 8, 18, 0.72));
+            color: #ecfeff;
             border: 1px solid rgba(255, 255, 255, 0.4);
-            border-radius: 999px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 1px 4px rgba(0,0,0,0.35);
+            border-radius: 50%;
             padding: 0;
-            font-size: 18px;
+            font-size: 15px;
             line-height: 1;
             cursor: pointer;
         }
@@ -1655,10 +1851,13 @@
         .genel-menu a.dukkan-sonuk { opacity: 0.5; }
         .lot-galeri-satiri { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 50; display: flex; align-items: center; gap: 6px; pointer-events: none; }
         .lot-galeri-satiri .lot-rozet { position: static; flex: 0 0 auto; }
-        .lot-galeri-satiri .stage-thumbnails { position: static !important; top: auto !important; left: auto !important; right: auto !important; display: flex; gap: 4px; background: transparent !important; border: none !important; padding: 0; max-width: calc(100% - 108px); overflow-x: auto; pointer-events: auto; }
+        .lot-galeri-satiri .stage-thumbnails { position: static !important; top: auto !important; left: auto !important; right: auto !important; display: flex; gap: 4px; background: transparent !important; border: none !important; padding: 0; max-width: calc(100% - 148px); overflow-x: auto; pointer-events: auto; }
         .lot-galeri-satiri .thumb-item { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
         .mezat-sayaci { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 40; display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.38); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.28); border-radius: 12px; padding: 4px 8px; color: #fff; margin: 0; }
-        .sayac-hoparlor-satiri { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 1002; display: flex; align-items: center; gap: 6px; }
+        .sayac-hoparlor-satiri { position: fixed; left: max(8px, calc(50vw - 232px)); right: calc(max(8px, 50vw - 232px) + 52px); bottom: calc(102px + env(safe-area-inset-bottom)); z-index: 1003; display: flex; align-items: center; gap: 6px; pointer-events: none; }
+        .sayac-hoparlor-satiri .mezat-sayaci,
+        .sayac-hoparlor-satiri .fanus-cifti { pointer-events: auto; }
+        .sayac-hoparlor-satiri .mezat-sayaci { flex: 0 0 auto; }
         .sayac-hoparlor-satiri .mezat-sayaci { position: static; left: auto; bottom: auto; z-index: auto; }
         .guncel-pey-kutu { position: fixed; left: max(8px, calc(50vw - 232px)); bottom: 118px; z-index: 60; height: 38px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.38); color: #ffffff; border: 1px solid rgba(255,255,255,0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 999px; padding: 0 14px; font-size: 15px; font-weight: 700; line-height: 1; white-space: nowrap; }
         .guncel-pey-kutu .pey-etiket { color: #fef08a; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; line-height: 1; }
@@ -2372,6 +2571,31 @@
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), 0 1px 4px rgba(15,23,42,0.12);
             color: #0F172A;
         }
+        html[data-sahne-tema="beyaz"] .lot-vitrin {
+            background: rgba(255, 255, 255, 0.86);
+            color: #0F172A;
+            border-color: rgba(15, 23, 42, 0.12);
+        }
+        html[data-sahne-tema="beyaz"] .lot-vitrin-ust b { color: #B45309; }
+        html[data-sahne-tema="beyaz"] .lot-vitrin-ust button { background: #E2E8F0; color: #0F172A; }
+        html[data-sahne-tema="beyaz"] .lot-vitrin-kart { border-top-color: #E2E8F0; }
+        html[data-sahne-tema="beyaz"] .lot-vitrin-kart .lot-ad,
+        html[data-sahne-tema="beyaz"] .lot-vitrin-bos { color: #0F172A; }
+        html[data-sahne-tema="beyaz"] .lot-vitrin-kart .lot-fiyat { color: #0F766E; }
+        html[data-sahne-tema="beyaz"] .tepki-menu {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(15, 23, 42, 0.12);
+        }
+        html[data-sahne-tema="beyaz"] .tepki-menu button {
+            background: rgba(255, 255, 255, 0.82);
+            border-color: rgba(15, 23, 42, 0.16);
+        }
+        html[data-sahne-tema="beyaz"] .hoparlor-fanus {
+            border-color: rgba(15, 23, 42, 0.16);
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.78), rgba(248,250,252,0.42) 48%, rgba(226,232,240,0.62));
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), 0 1px 4px rgba(15,23,42,0.12);
+            color: #0F172A;
+        }
         html[data-sahne-tema="beyaz"] .mezat-sayaci,
         html[data-sahne-tema="beyaz"] .guncel-pey-kutu,
         html[data-sahne-tema="beyaz"] .hibrit-kapsul .guncel-pey-kutu,
@@ -2410,9 +2634,10 @@
             border-color: #E2E8F0;
         }
         html[data-sahne-tema="beyaz"] .btn-dinle-kisa {
-            background: rgba(255,255,255,0.92);
+            border-color: rgba(15, 23, 42, 0.16);
+            background: radial-gradient(circle at 32% 28%, rgba(255,255,255,0.78), rgba(248,250,252,0.42) 48%, rgba(226,232,240,0.62));
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), 0 1px 4px rgba(15,23,42,0.12);
             color: #0F172A;
-            border-color: #E2E8F0;
         }
         html[data-sahne-tema="beyaz"] .sabit-pey-bar { border-top-color: #E2E8F0; }
         html[data-sahne-tema="beyaz"] .btn-action-green,
@@ -2715,6 +2940,7 @@
                 <div class="lot-rozet" id="cornerLotNo">{% if ilk_sahne is defined and ilk_sahne and ilk_sahne.aktif_urun %}LOT #{{ ilk_sahne.aktif_urun.lot }}{% else %}LOT #000{% endif %}</div>
                 <button type="button" id="btnUrunuDinle" class="btn-urun-dinle" hidden onclick="digerSecereyiDinle()">🔊 Ürünü Dinle</button>
                 <div id="stageThumbs" class="stage-thumbnails" style="display:none;"></div>
+                <button type="button" id="btnDinleKisa" class="btn-dinle-kisa hoparlor-fanus" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
             </div>
             <div id="bilgiKarti" class="bilgi-karti" hidden>
                 <b id="aktif_baslik">Sahnede aktif ürün yok</b>
@@ -2850,31 +3076,46 @@
             </div>
             <div class="timer-status-text" id="timerStatusTitle">MEZAT BEKLENİYOR</div>
         </div>
-        <button type="button" id="btnDinleKisa" class="btn-dinle-kisa" title="Dinle" aria-label="Sesli anlatımı aç veya kapat" onclick="bilgiKartiniAcKapa()">🔊</button>
-        <div class="fanus-cifti">
-        <button type="button" id="temaFanus" class="tema-fanus" aria-pressed="false" aria-label="Beyaz sahneye geç" title="Beyaz sahne">
-            <svg class="tema-ikon tema-gunes" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
-                <path d="M12 3.4v2.1M12 18.5v2.1M3.4 12h2.1M18.5 12h2.1M6 6l1.5 1.5M16.5 16.5L18 18M18 6l-1.5 1.5M7.5 16.5L6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
-            </svg>
-            <svg class="tema-ikon tema-ay" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M15.6 3.7A7.3 7.3 0 1 0 20.4 14.2 5.7 5.7 0 0 1 15.6 3.7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
-            </svg>
-        </button>
-        <button type="button" id="kargoFanus" class="kargo-fanus" onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
-            <span class="kargo-fanus-sivi" id="kargoFanusSivi" aria-hidden="true"><span class="kargo-fanus-dalga"></span></span>
-            <span class="kargo-fanus-ikon" aria-hidden="true">📦</span>
-            <span class="kargo-fanus-tutar" id="kargoFanusTutar"></span>
-        </button>
-        </div>
+        <div class="fanus-cifti" id="fanusDizisi">
+                <button type="button" id="lotFanus" class="tema-fanus" onclick="lotVitriniAc()" aria-label="Sıradaki 3 lot" title="Sıradaki 3 Lot">
+                    <svg class="tema-ikon" viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="4" y="3.5" width="16" height="4.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+                        <rect x="4" y="9.9" width="16" height="4.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+                        <rect x="4" y="16.3" width="16" height="4.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+                    </svg>
+                </button>
+                <button type="button" id="temaFanus" class="tema-fanus" aria-pressed="false" aria-label="Beyaz sahneye geç" title="Beyaz sahne">
+                    <svg class="tema-ikon tema-gunes" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"></circle>
+                        <path d="M12 3.4v2.1M12 18.5v2.1M3.4 12h2.1M18.5 12h2.1M6 6l1.5 1.5M16.5 16.5L18 18M18 6l-1.5 1.5M7.5 16.5L6 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+                    </svg>
+                    <svg class="tema-ikon tema-ay" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M15.6 3.7A7.3 7.3 0 1 0 20.4 14.2 5.7 5.7 0 0 1 15.6 3.7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path>
+                    </svg>
+                </button>
+                <button type="button" id="kargoFanus" class="kargo-fanus" onclick="kargoKurallarAc()" aria-label="Kargo kumbarası" title="Tek Koli Avantajı: 1.000 TL sepete 100 TL, 5.000 TL sepete 500 TL Kargo Desteği anında düşer!">
+                    <span class="kargo-fanus-sivi" id="kargoFanusSivi" aria-hidden="true"><span class="kargo-fanus-dalga"></span></span>
+                    <span class="kargo-fanus-ikon" aria-hidden="true">📦</span>
+                    <span class="kargo-fanus-tutar" id="kargoFanusTutar"></span>
+                </button>
+                <button type="button" id="indirFanus" class="tema-fanus" onclick="pwaUygulamayiIndir()" aria-label="Uygulamayı indir" title="Uygulamayı İndir">
+                    <svg class="tema-ikon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 4.2v10.2M7.2 10.6 12 15.4l4.8-4.8M6 19.2h12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                </button>
+                <div class="tepki-kutu" id="tepkiKutu">
+                    <div class="tepki-menu" id="tepkiMenu" hidden>
+                        <button type="button" aria-label="Ateş tepkisi" onclick="hizliTepkiSec('🔥')">🔥</button>
+                        <button type="button" aria-label="Alkış tepkisi" onclick="hizliTepkiSec('👏')">👏</button>
+                        <button type="button" aria-label="Elmas tepkisi" onclick="hizliTepkiSec('💎')">💎</button>
+                    </div>
+                    <button type="button" id="tepkiFanus" class="tema-fanus" onclick="tepkiMenusunuAc()" aria-expanded="false" aria-label="Tepki gönder" title="Tepki">🔥</button>
+                </div>
+            </div>
         </div>
         <div class="akis-mesaj-satiri">
             <div class="mesaj-kutu-yigin">
             <div class="pwa-indir-yigin" id="pwaIndirYigin">
-                <button type="button" class="pwa-indir pwa-indir-tetik" id="pwaIndirPey" onclick="pwaUygulamayiIndir()">
-                    <span class="pwa-uzun">📲 Uygulamayı İndir</span>
-                    <span class="pwa-kisa">📲 İndir</span>
-                </button>
                 <button type="button" id="canliYonlendirmeSeridi" class="{% if _cy_burada %}gorunur kanal-kapsul{% elif _cy_kapsul %}gorunur{% endif %}" {% if not (_cy_kapsul or _cy_burada) %}hidden{% endif %}>
                     <span class="canli-kayar-yazi" id="canliYonlendirmeMetin">{% if _cy_burada %}🔴 Tüm Kanallarımız{% elif _cy_kapsul %}🔴 Tüm Kanallarımız — Canlı Yayına Katıl   ·   🔴 Tüm Kanallarımız — Canlı Yayına Katıl{% endif %}</span>
                 </button>
@@ -9551,6 +9792,122 @@
         }, true);
     })();
 
+    var sonTepkiPuani = 0;
+
+    function lotVitriniKapat() {
+        var kutu = document.getElementById("lotVitrin");
+        if (kutu) kutu.hidden = true;
+    }
+
+    function lotVitriniCiz(liste) {
+        var hedef = document.getElementById("lotVitrinListe");
+        if (!hedef) return;
+        var satirlar = Array.isArray(liste) ? liste.slice(0, 3) : [];
+        if (!satirlar.length) {
+            hedef.innerHTML = '<p class="lot-vitrin-bos">Sıradaki ürünler hazırlanıyor</p>';
+            return;
+        }
+        hedef.innerHTML = satirlar.map(function (satir) {
+            var fiyat = Math.round(Number(satir.fiyat) || 0).toLocaleString("tr-TR") + " TL";
+            var foto = satir.foto
+                ? '<img src="' + azSonraKacis(satir.foto) + '" alt="">'
+                : '<img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">';
+            return '<div class="lot-vitrin-kart">' + foto
+                + '<div style="min-width:0;flex:1;">'
+                + '<div class="lot-no">LOT #' + azSonraKacis(satir.lot) + '</div>'
+                + '<div class="lot-ad">' + azSonraKacis(satir.ad || "Ürün") + '</div>'
+                + '<div class="lot-fiyat">Açılış ' + azSonraKacis(fiyat) + '</div>'
+                + '</div></div>';
+        }).join("");
+    }
+
+    function lotVitriniAc() {
+        var kutu = document.getElementById("lotVitrin");
+        var hedef = document.getElementById("lotVitrinListe");
+        if (!kutu || !hedef) return;
+        if (!kutu.hidden) {
+            lotVitriniKapat();
+            return;
+        }
+        kutu.hidden = false;
+        hedef.innerHTML = '<p class="lot-vitrin-bos">Sıradaki ürünler hazırlanıyor</p>';
+        fetch("/api/siradaki-lotlar?dukkan=" + encodeURIComponent(aktifDukkan) + "&t=" + Date.now(), { cache: "no-store" })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { lotVitriniCiz((data && data.urunler) || []); })
+            .catch(function () { lotVitriniCiz([]); });
+    }
+
+    var tepkiKapanis = 0;
+
+    function tepkiMenusunuKapat() {
+        var menu = document.getElementById("tepkiMenu");
+        var dugme = document.getElementById("tepkiFanus");
+        if (tepkiKapanis) {
+            clearTimeout(tepkiKapanis);
+            tepkiKapanis = 0;
+        }
+        if (menu) menu.hidden = true;
+        if (dugme) dugme.setAttribute("aria-expanded", "false");
+    }
+
+    function tepkiMenusunuAc() {
+        var menu = document.getElementById("tepkiMenu");
+        var dugme = document.getElementById("tepkiFanus");
+        if (!menu) return;
+        if (!menu.hidden) {
+            tepkiMenusunuKapat();
+            return;
+        }
+        menu.hidden = false;
+        if (dugme) dugme.setAttribute("aria-expanded", "true");
+        if (tepkiKapanis) clearTimeout(tepkiKapanis);
+        tepkiKapanis = setTimeout(tepkiMenusunuKapat, 5000);
+    }
+
+    function hizliTepkiSec(simge) {
+        hizliTepkiGonder(simge);
+        tepkiMenusunuKapat();
+    }
+
+    function hizliTepkiGonder(simge) {
+        var sahne = document.getElementById("tepkiSahne");
+        if (sahne) {
+            var balon = document.createElement("span");
+            balon.className = "tepki-balon";
+            balon.textContent = simge;
+            balon.style.setProperty("--tepki-kayma", ((Math.random() * 28) - 20).toFixed(0) + "px");
+            sahne.appendChild(balon);
+            setTimeout(function () { if (balon.parentNode) balon.parentNode.removeChild(balon); }, 2700);
+        }
+        var simdi = Date.now();
+        if (!kullaniciId || (simdi - sonTepkiPuani) < 15000) return;
+        sonTepkiPuani = simdi;
+        fetch("/api/fanus/tepki", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ simge: simge, dukkan: aktifDukkan, kullanici_id: kullaniciId })
+        }).then(function (r) { return r.json(); }).then(function (veri) {
+            if (veri && veri.bekle) sonTepkiPuani = Date.now();
+            if (veri && veri.puan === false && !veri.bekle) sonTepkiPuani = 0;
+        }).catch(function () { sonTepkiPuani = 0; });
+    }
+
+    document.addEventListener("click", function (e) {
+        var kutu = document.getElementById("lotVitrin");
+        var dugme = document.getElementById("lotFanus");
+        if (!kutu || kutu.hidden) return;
+        if (kutu.contains(e.target) || (dugme && dugme.contains(e.target))) return;
+        lotVitriniKapat();
+    });
+    document.addEventListener("click", function (e) {
+        var kutu = document.getElementById("tepkiKutu");
+        var menu = document.getElementById("tepkiMenu");
+        if (!menu || menu.hidden || !kutu) return;
+        if (kutu.contains(e.target)) return;
+        tepkiMenusunuKapat();
+    });
+
     (function ilkSahneyiBas() {
         var ham = document.getElementById("ilkSahneVerisi");
         if (!ham || typeof sahneyiGuncelle !== "function") return;
@@ -9561,14 +9918,42 @@
         sahneyiGuncelle(paket.aktif_urun, paket.durum, pey, paket.kazanan);
     })();
 </script>
+<div id="tepkiSahne" class="tepki-sahne" aria-hidden="true"></div>
+<div id="lotVitrin" class="lot-vitrin" hidden>
+    <div class="lot-vitrin-ust">
+        <b>Sıradaki 3 Lot</b>
+        <button type="button" onclick="lotVitriniKapat()" aria-label="Sıradaki lotları kapat">✕</button>
+    </div>
+    <div id="lotVitrinListe"></div>
+</div>
 <div id="pwaIosIpucu" hidden>
     <div class="pwa-ios-kutu" role="dialog" aria-modal="true" aria-labelledby="pwaIosBaslik">
-        <h3 id="pwaIosBaslik">iPhone'a Uygulama Olarak Eklemek İçin</h3>
-        <ol>
-            <li>Safari'nin en altındaki Paylaş (↑) simgesine dokunun.</li>
-            <li>Açılan menüden "Ana Ekrana Ekle" seçeneğine basın.</li>
-        </ol>
-        <button type="button" id="pwaIosIpucuKapat">Anladım</button>
+        <h3 id="pwaIosBaslik">Uygulamayı Telefonuna / Bilgisayarına Kur</h3>
+        <div class="kurulum-sekmeler" role="tablist">
+            <button type="button" data-kurulum="iphone" role="tab">iPhone</button>
+            <button type="button" data-kurulum="android" role="tab">Android</button>
+            <button type="button" data-kurulum="bilgisayar" role="tab">Bilgisayar</button>
+        </div>
+        <p id="kurulumUygulamaIci" class="kurulum-uyari" hidden>Instagram veya WhatsApp içinden açıldı. Kurulum için önce tarayıcının menüsünden Safari'de Aç.</p>
+        <div class="kurulum-panel" data-kurulum-panel="iphone">
+            <div class="kurulum-adim"><span class="kurulum-ikon">↑</span><span>Alt ortadaki Paylaş simgesine dokun.</span></div>
+            <div class="kurulum-adim"><span class="kurulum-ikon">+</span><span>Aşağı kaydırıp Ana Ekrana Ekle seçeneğini seç.</span></div>
+            <div class="kurulum-adim"><span class="kurulum-ikon">✓</span><span>Sağ üstten Ekle'ye bas.</span></div>
+        </div>
+        <div class="kurulum-panel" data-kurulum-panel="android" hidden>
+            <div class="kurulum-adim"><span class="kurulum-ikon">⋮</span><span>Sağ üstteki üç nokta menüsüne dokun.</span></div>
+            <div class="kurulum-adim"><span class="kurulum-ikon">↓</span><span>Uygulamayı Yükle veya Ana Ekrana Ekle seçeneğini seç.</span></div>
+            <div class="kurulum-adim"><span class="kurulum-ikon">✓</span><span>Yükle'yi onayla.</span></div>
+        </div>
+        <div class="kurulum-panel" data-kurulum-panel="bilgisayar" hidden>
+            <div class="kurulum-adim"><span class="kurulum-ikon">↓</span><span>Chrome veya Edge adres çubuğunun sağındaki Yükle simgesine tıkla.</span></div>
+            <div class="kurulum-adim"><span class="kurulum-ikon">✓</span><span>Açılan pencereden Yükle'yi onayla.</span></div>
+        </div>
+        <div class="kurulum-bildirim">
+            <p id="kurulumBildirimDurum">Bildirim izni henüz verilmedi.</p>
+            <button type="button" id="kurulumBildirimAc">Canlı Mezat Bildirimlerini Aç</button>
+        </div>
+        <button type="button" id="pwaIosIpucuKapat">Kapat</button>
     </div>
 </div>
 <script>
@@ -9673,12 +10058,46 @@
         var bildirimUst = document.getElementById("btnBildirimAc");
         if (bildirimUst) bildirimUst.addEventListener("click", function () { window.bildirimAboneliginiAc(); });
         window.bildirimZiliniUygula();
-        window.pwaUygulamayiIndir = function () {
-            if (uygulamaIcinde()) {
-                tetikleriGizle();
+        function uygulamaIciTarayici() {
+            return /Instagram|FBAN|FBAV|FB_IAB|WhatsApp|Line\/|TikTok|Musical\.ly|Snapchat|Twitter/i.test(navigator.userAgent || "");
+        }
+        function kurulumSekmesi(ad) {
+            var dugmeler = document.querySelectorAll("[data-kurulum]");
+            var paneller = document.querySelectorAll("[data-kurulum-panel]");
+            for (var i = 0; i < dugmeler.length; i++) {
+                dugmeler[i].classList.toggle("secili", dugmeler[i].getAttribute("data-kurulum") === ad);
+            }
+            for (var j = 0; j < paneller.length; j++) {
+                paneller[j].hidden = paneller[j].getAttribute("data-kurulum-panel") !== ad;
+            }
+            var uyari = document.getElementById("kurulumUygulamaIci");
+            if (uyari) uyari.hidden = !(ad === "iphone" && uygulamaIciTarayici());
+        }
+        function kurulumCihazi() {
+            if (iosMu()) return "iphone";
+            if (/Android/i.test(navigator.userAgent || "")) return "android";
+            return "bilgisayar";
+        }
+        function bildirimDurumunuYaz() {
+            var satir = document.getElementById("kurulumBildirimDurum");
+            if (!satir) return;
+            if (!("Notification" in window)) {
+                satir.textContent = "Bu tarayıcı bildirim iznini desteklemiyor.";
                 return;
             }
-            if (bekleyenKurulum) {
+            if (Notification.permission === "granted") satir.textContent = "Bildirimler açık.";
+            else if (Notification.permission === "denied") satir.textContent = "Bildirimler engelli. Tarayıcı ayarından açabilirsiniz.";
+            else satir.textContent = "Bildirim izni henüz verilmedi.";
+        }
+        function kurulumPenceresiniAc() {
+            var ipucu = document.getElementById("pwaIosIpucu");
+            if (!ipucu) return;
+            kurulumSekmesi(kurulumCihazi());
+            bildirimDurumunuYaz();
+            ipucu.hidden = false;
+        }
+        window.pwaUygulamayiIndir = function () {
+            if (bekleyenKurulum && !iosMu() && !uygulamaIciTarayici() && !uygulamaIcinde()) {
                 var olay = bekleyenKurulum;
                 bekleyenKurulum = null;
                 olay.prompt();
@@ -9687,10 +10106,7 @@
                 }
                 return;
             }
-            if (iosMu()) {
-                var ipucu = document.getElementById("pwaIosIpucu");
-                if (ipucu) ipucu.hidden = false;
-            }
+            kurulumPenceresiniAc();
         };
         if (uygulamaIcinde()) tetikleriGizle();
         window.addEventListener("beforeinstallprompt", function (olay) {
@@ -9710,6 +10126,20 @@
             kapat.addEventListener("click", function () {
                 var ipucu = document.getElementById("pwaIosIpucu");
                 if (ipucu) ipucu.hidden = true;
+            });
+        }
+        var sekmeler = document.querySelectorAll("[data-kurulum]");
+        for (var s = 0; s < sekmeler.length; s++) {
+            sekmeler[s].addEventListener("click", function () {
+                kurulumSekmesi(this.getAttribute("data-kurulum"));
+            });
+        }
+        var bildirimKur = document.getElementById("kurulumBildirimAc");
+        if (bildirimKur) {
+            bildirimKur.addEventListener("click", function () {
+                if (typeof window.bildirimAboneliginiAc === "function") window.bildirimAboneliginiAc();
+                setTimeout(bildirimDurumunuYaz, 400);
+                setTimeout(bildirimDurumunuYaz, 1600);
             });
         }
         if ("serviceWorker" in navigator) {
